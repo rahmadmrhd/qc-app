@@ -70,7 +70,7 @@ test('ganti nama: isian terisi nama lama, BU bawaan tampil sebagai chip, simpan 
   );
   const input = screen.getByLabelText('Nama merk');
   expect(input).toHaveValue('Mikrotik');
-  expect(screen.getByRole('button', { name: 'Hapus Retail (RTL)' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Hapus RTL - Retail' })).toBeInTheDocument();
   await userEvent.clear(input);
   await userEvent.type(input, 'MikroTik');
   await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
@@ -81,9 +81,9 @@ test('memilih BU bawaan lalu simpan mengirim businessUnitIds; chip dapat dilepas
   const onSave = vi.fn().mockResolvedValue(null);
   render(<Harness onSave={onSave} />);
   await userEvent.type(screen.getByLabelText('Nama merk'), 'Ubiquiti');
-  await pickBusinessUnit('Wholesale (WHL)');
-  await pickBusinessUnit('Retail (RTL)');
-  await userEvent.click(screen.getByRole('button', { name: 'Hapus Retail (RTL)' }));
+  await pickBusinessUnit('WHL - Wholesale');
+  await pickBusinessUnit('RTL - Retail');
+  await userEvent.click(screen.getByRole('button', { name: 'Hapus RTL - Retail' }));
   await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
   expect(onSave).toHaveBeenCalledWith({ name: 'Ubiquiti', businessUnitIds: ['bu-b'] });
 });
@@ -93,12 +93,12 @@ test('BU nonaktif yang melekat tampil sebagai chip, boleh dilepas, dan tidak dit
   render(
     <Harness onSave={onSave} brand={{ id: 'b2', name: 'Lama', businessUnitIds: ['bu-old'] }} />,
   );
-  expect(screen.getByRole('button', { name: 'Hapus Lama (OLD) — nonaktif' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Hapus OLD - Lama — nonaktif' })).toBeInTheDocument();
   await userEvent.click(screen.getByRole('combobox', { name: 'BU bawaan' }));
   const names = (await screen.findAllByRole('option')).map((option) => option.textContent);
-  expect(names).toEqual(['Retail (RTL)', 'Wholesale (WHL)']);
+  expect(names).toEqual(['RTL - Retail', 'WHL - Wholesale']);
   await userEvent.keyboard('{Escape}');
-  await userEvent.click(screen.getByRole('button', { name: 'Hapus Lama (OLD) — nonaktif' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Hapus OLD - Lama — nonaktif' }));
   await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
   expect(onSave).toHaveBeenCalledWith({ id: 'b2', name: 'Lama', businessUnitIds: [] });
 });
@@ -160,7 +160,7 @@ test('Enter menyimpan dan tidak menjalar ke form induk', async () => {
 
 test('field BU bawaan: Buka dan Tambah BU hanya muncul bila disediakan', async () => {
   render(<Harness onSave={vi.fn()} />);
-  await pickBusinessUnit('Retail (RTL)');
+  await pickBusinessUnit('RTL - Retail');
   expect(screen.queryByRole('link', { name: /Buka/ })).toBeNull();
   await userEvent.click(screen.getByRole('combobox', { name: 'BU bawaan' }));
   expect(screen.queryByRole('option', { name: 'Tambah BU bawaan' })).toBeNull();
@@ -173,8 +173,8 @@ test('field BU bawaan: Buka dan Tambah BU hanya muncul bila disediakan', async (
       onCreateBusinessUnit={vi.fn()}
     />,
   );
-  await pickBusinessUnit('Retail (RTL)');
-  expect(screen.getByRole('link', { name: 'Buka Retail (RTL)' })).toHaveAttribute(
+  await pickBusinessUnit('RTL - Retail');
+  expect(screen.getByRole('link', { name: 'Buka RTL - Retail' })).toHaveAttribute(
     'href',
     '/access/business-units/bu-a',
   );
@@ -205,7 +205,7 @@ test('Tambah BU bawaan membuat BU lewat dialog turunan dan langsung memilihnya',
   await waitFor(() => expect(onCreateBusinessUnit).toHaveBeenCalledTimes(1));
   expect(onOuterSubmit).not.toHaveBeenCalled();
   const brandDialog = await screen.findByRole('alertdialog', { name: 'Tambah merk' });
-  expect(within(brandDialog).getByText('Baru (NEW)')).toBeInTheDocument();
+  expect(within(brandDialog).getByText('NEW - Baru')).toBeInTheDocument();
   await userEvent.click(within(brandDialog).getByRole('button', { name: 'Simpan' }));
   await waitFor(() =>
     expect(onSave).toHaveBeenCalledWith({ name: 'Merk X', businessUnitIds: ['bu-new'] }),

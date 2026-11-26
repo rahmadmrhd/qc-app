@@ -22,6 +22,11 @@ export const stickerTypeFormSchema = z.object({
     .min(1, 'Nama jenis wajib diisi')
     .max(STICKER_LIMITS.nameMax, `Nama jenis maksimal ${STICKER_LIMITS.nameMax} karakter`),
   rule: z.enum(USER_STICKER_RULES),
+  defaultMinQty: z
+    .number('Minimum bawaan harus berupa angka')
+    .int('Minimum bawaan harus bilangan bulat')
+    .min(0, 'Minimum bawaan tidak boleh negatif')
+    .max(STICKER_LIMITS.qtyMax, `Minimum bawaan maksimal ${STICKER_LIMITS.qtyMax}`),
 });
 export type StickerTypeFormValues = z.infer<typeof stickerTypeFormSchema>;
 

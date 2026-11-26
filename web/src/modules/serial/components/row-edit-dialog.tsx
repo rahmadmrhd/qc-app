@@ -1,3 +1,4 @@
+import { formatBuLabel } from '@shared/business-units';
 import { MAX_IMAGE_BYTES } from '@shared/files';
 import {
   isIsoDate,
@@ -106,7 +107,9 @@ export function RowEditDialog({
   const buChoices = useMemo(
     () =>
       existing
-        ? choicesFor(existing.recheckBuIds, bus, [{ id: existing.buId, code: existing.buCode }])
+        ? choicesFor(existing.recheckBuIds, bus, [
+            { id: existing.buId, code: existing.buCode, name: existing.buName },
+          ])
         : [],
     [existing, bus],
   );
@@ -332,8 +335,10 @@ export function RowEditDialog({
                   role="status"
                   className="rounded-md border border-primary/40 bg-primary/5 px-3 py-2 text-sm"
                 >
-                  Cek ulang: serial ini sudah tercatat di {existing.buCode}. Entri ini menjadi
-                  kejadian cek ulang lolos pada catatan yang sama; item mengikuti catatan itu.
+                  Cek ulang: serial ini sudah tercatat di{' '}
+                  {formatBuLabel({ code: existing.buCode, name: existing.buName })}. Entri ini
+                  menjadi kejadian cek ulang lolos pada catatan yang sama; item mengikuti catatan
+                  itu.
                 </p>
                 {blocked !== null ? (
                   <p role="alert" className="text-sm text-destructive-text">

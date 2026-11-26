@@ -3,6 +3,7 @@
 // unggah ke Serial Number (BU + lokasi wajib di sana) tidak perlu bertanya lagi. Pilihan terakhir diingat per komputer
 // (operator biasanya mengerjakan satu lokasi seharian) dan dibuang bila sudah tak ada di katalog.
 
+import { formatBuLabel } from '@shared/business-units';
 import type { DesktopCatalogDto } from '@shared/desktop-catalog';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
@@ -38,7 +39,7 @@ export interface InjectTarget {
   pendingTarget: PendingTarget;
 }
 
-/** Label tampilan dan catatan: kode lalu nama (kode saja tak cukup jelas, nama saja bisa kembar). */
+/** Label lokasi untuk tampilan dan catatan: kode lalu nama (BU memakai `formatBuLabel`, satu pembentuk label BU). */
 export const targetLabel = (ref: Pick<Ref, 'code' | 'name'>): string =>
   ref.code === '' ? ref.name : `${ref.code} - ${ref.name}`;
 
@@ -68,8 +69,8 @@ function saveStored(value: { buId: string; locationId: string }): void {
 
 const NO_REFS: readonly Ref[] = [];
 
-const toOptions = (refs: readonly Ref[]): TargetOption[] =>
-  refs.map((ref) => ({ id: ref.id, label: targetLabel(ref) }));
+const toOptions = (refs: readonly Ref[], label: (ref: Ref) => string): TargetOption[] =>
+  refs.map((ref) => ({ id: ref.id, label: label(ref) }));
 
 /**
  * @param catalog potret katalog (null = belum termuat)
@@ -90,8 +91,8 @@ export function useInjectTarget(
     : (catalog?.businessUnits ?? NO_REFS);
   const locationRefs: readonly Ref[] = catalog?.locations ?? NO_REFS;
 
-  const buOptions = useMemo(() => toOptions(buRefs), [buRefs]);
-  const locationOptions = useMemo(() => toOptions(locationRefs), [locationRefs]);
+  const buOptions = useMemo(() => toOptions(buRefs, formatBuLabel), [buRefs]);
+  const locationOptions = useMemo(() => toOptions(locationRefs, targetLabel), [locationRefs]);
 
   // Nilai yang berlaku = pilihan yang masih ada di daftar; selain itu kosong (tanpa menimpa ingatan sebelum katalog termuat).
   const buId = buRefs.some((ref) => ref.id === rawBu) ? rawBu : '';
@@ -127,7 +128,7 @@ export function useInjectTarget(
     const bu = buRefs.find((ref) => ref.id === buId);
     if (bu) {
       target.buId = bu.id;
-      target.buLabel = targetLabel(bu);
+      target.buLabel = formatBuLabel(bu);
     }
     const location = locationRefs.find((ref) => ref.id === locationId);
     if (location) {

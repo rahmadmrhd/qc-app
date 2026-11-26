@@ -159,7 +159,12 @@ beforeEach(() => {
     if (id === 'serials.itemOptions') {
       return Promise.resolve({
         items: [
-          { id: 'i1', label: 'Cisco C9200', buIds: ['b1'], buOptions: [{ id: 'b1', code: 'BU1' }] },
+          {
+            id: 'i1',
+            label: 'Cisco C9200',
+            buIds: ['b1'],
+            buOptions: [{ id: 'b1', code: 'BU1', name: 'Business Unit 1' }],
+          },
         ],
         nextCursor: null,
       });
@@ -589,12 +594,12 @@ test('filter BU hanya menawarkan BU yang terbaca (serial atau serialservice) dan
   await screen.findByText('ABC123');
   await openChip('BU');
   const names = await linkOptionNames(screen, 'Filter BU');
-  expect(names).toEqual(['B1 · Unit b1', 'B2 · Unit b2']);
+  expect(names).toEqual(['B1 - Unit b1', 'B2 - Unit b2']);
   // Teks bantu hanya selagi filter BU aktif: serial yang pernah di BU itu ikut tampil.
   expect(screen.queryByText(/pernah di BU ini/)).toBeNull();
-  await userEvent.click(await screen.findByRole('option', { name: 'B2 · Unit b2' }));
+  await userEvent.click(await screen.findByRole('option', { name: 'B2 - Unit b2' }));
   // Mode banyak pilihan tetap terbuka: pilihan kedua menambah draf dan daftar baru diminta saat chip menutup.
-  await userEvent.click(await screen.findByRole('option', { name: 'B1 · Unit b1' }));
+  await userEvent.click(await screen.findByRole('option', { name: 'B1 - Unit b1' }));
   expect(lastListInput()).not.toHaveProperty('buIds');
   await closeFilterChip();
   await waitFor(() => expect(lastListInput()).toMatchObject({ buIds: ['b2', 'b1'] }));

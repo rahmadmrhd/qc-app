@@ -39,7 +39,26 @@ export function AppBreadcrumb() {
   const isMobile = useIsMobile();
   const [, bump] = useReducer((n: number) => n + 1, 0);
 
-  useEffect(() => queryClient.getQueryCache().subscribe(() => bump()), [queryClient]);
+  useEffect(() => {
+    // Cache bisa berubah saat komponen LAIN sedang render (mis. `useQuery` membuat query baru). Memanggil
+    // `bump` sinkron saat itu memicu peringatan React "Cannot update a component while rendering a
+    // different component"; menundanya ke microtask memindahkan update keluar dari fase render itu.
+    // Perubahan beruntun digabung jadi satu render ulang.
+    let alive = true;
+    let queued = false;
+    const unsubscribe = queryClient.getQueryCache().subscribe(() => {
+      if (queued) return;
+      queued = true;
+      queueMicrotask(() => {
+        queued = false;
+        if (alive) bump();
+      });
+    });
+    return () => {
+      alive = false;
+      unsubscribe();
+    };
+  }, [queryClient]);
 
   const trail = findNavTrail(NAV_GROUPS, (to, fuzzy) =>
     Boolean(matchRoute({ to: to as NavItem['to'], fuzzy })),

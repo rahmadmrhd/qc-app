@@ -86,7 +86,7 @@ export function StickerTypeView({
                 primary: true,
                 action: 'edit',
                 label: 'Ubah',
-                hidden: !(canEdit && !system && onEdit),
+                hidden: !(onEdit && (system ? canManage : canEdit)),
                 onSelect: () => onEdit?.(),
               },
               {
@@ -135,7 +135,8 @@ export function StickerTypeView({
             { label: 'Minimum bawaan', value: type.defaultMinQty },
             {
               label: 'Jenis sistem',
-              value: 'Dikelola aplikasi: nama dan aturan tidak dapat diubah, jenis selalu aktif.',
+              value:
+                'Dikelola aplikasi: nama dan aturan tidak dapat diubah, jenis selalu aktif; hanya minimum bawaan yang dapat diubah.',
               hidden: !system,
             },
           ]}

@@ -1,3 +1,4 @@
+import { formatBuLabel } from '@shared/business-units';
 import type { SerialDto, SerialEventDto, SerialProofPhotoDto } from '@shared/contract';
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
@@ -72,7 +73,7 @@ export function formerBuCodes(serial: SerialDto): string[] {
   return serial.buHistory
     .filter((entry) => entry.leftAt !== '')
     .sort((a, b) => a.firstAt.localeCompare(b.firstAt))
-    .map((entry) => entry.buCode);
+    .map((entry) => formatBuLabel({ code: entry.buCode, name: entry.buName }));
 }
 
 /** Foto bukti dari kejadian yang termuat ditambah foto gagal entri (tanpa ganda), terbaru dulu. */
@@ -109,7 +110,7 @@ function Summary({ serial, events }: { serial: SerialDto; events: readonly Seria
             value: (
               <span className="inline-flex flex-wrap items-center gap-2">
                 <Badge variant="outline" color="primary">
-                  {serial.buCode}
+                  {formatBuLabel({ code: serial.buCode, name: serial.buName })}
                 </Badge>
                 {former.length > 0 ? (
                   <span className="text-xs text-muted-foreground">

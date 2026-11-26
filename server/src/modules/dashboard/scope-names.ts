@@ -5,6 +5,7 @@
  * ada lagi dilewati. Nama + penanda disusun paralel (`names[i]` ↔ `deleted[i]`).
  */
 import type { Env } from '@server/core/env';
+import { formatBuLabel } from '@shared/business-units';
 
 export interface ScopeNames {
   names: string[];
@@ -42,11 +43,12 @@ export async function buScopeNames(
 ): Promise<ScopeNames> {
   if (ids.length === 0) return { names: [], deleted: [] };
   const rows = await env.DB.prepare(
-    `SELECT b.id, b.name, CASE WHEN b.deleted_at = '' THEN 0 ELSE 1 END AS gone FROM business_units b WHERE b.id IN (${marks(ids)})`,
+    `SELECT b.id, b.code, b.name, CASE WHEN b.deleted_at = '' THEN 0 ELSE 1 END AS gone FROM business_units b WHERE b.id IN (${marks(ids)})`,
   )
     .bind(...ids)
-    .all<NameRow>();
-  return arrange(ids, rows.results, byName);
+    .all<NameRow & { code: string }>();
+  const labeled = rows.results.map((row) => ({ ...row, name: formatBuLabel(row) }));
+  return arrange(ids, labeled, byName);
 }
 
 export async function locationScopeNames(

@@ -1,3 +1,4 @@
+import { formatBuLabel } from '@shared/business-units';
 import type {
   BrandDto,
   BusinessUnitDto,
@@ -68,7 +69,7 @@ export interface BrandFormProps {
 }
 
 function buLabel(bu: BusinessUnitOptionDto): string {
-  return `${bu.name} (${bu.code})${bu.status === 'inactive' ? ' — nonaktif' : ''}`;
+  return `${formatBuLabel(bu)}${bu.status === 'inactive' ? ' — nonaktif' : ''}`;
 }
 
 /**

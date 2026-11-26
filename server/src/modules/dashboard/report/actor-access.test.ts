@@ -117,7 +117,7 @@ describe('pratinjau oleh pelaku bukan pemilik', () => {
       const body = (await response.json()) as Preview;
       expect([email, body.trimmed]).toEqual([email, false]);
       expect(body.html).not.toContain(TRIMMED_NOTE);
-      expect(body.html).toContain('Cakupan: BU: X, Y | Lokasi: Lokasi Stok<br>');
+      expect(body.html).toContain('Cakupan: BU: X - X, Y - Y | Lokasi: Lokasi Stok<br>');
     }
   });
 
@@ -127,7 +127,7 @@ describe('pratinjau oleh pelaku bukan pemilik', () => {
     expect(body.trimmed).toBe(true);
     expect(body.html).toContain(TRIMMED_NOTE);
     // kepala memuat BU pelaku saja
-    expect(body.html).toContain('Cakupan: BU: X | Lokasi: Lokasi Stok<br>');
+    expect(body.html).toContain('Cakupan: BU: X - X | Lokasi: Lokasi Stok<br>');
   });
 
   test('widget yang izin modul sumbernya tak dimiliki pelaku dihilangkan = penanda muncul', async () => {

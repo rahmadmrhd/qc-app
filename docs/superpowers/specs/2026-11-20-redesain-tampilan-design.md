@@ -139,7 +139,7 @@ Di `web/src/styles.css`, setiap warna semantik punya tiga token, didaftarkan di 
 | Warna | Terang: solid / fg / text | Gelap: solid / fg / text |
 |---|---|---|
 | primary | `#18181b` / `#fafafa` / `#18181b` | `#fafafa` / `#18181b` / `#fafafa` |
-| secondary | `#71717a` / `#fff` / `#52525b` | `#52525b` / `#fafafa` / `#a1a1aa` |
+| secondary | `#475569` / `#fff` / `#334155` | `#64748b` / `#fff` / `#e2e8f0` |
 | success | `#16a34a` / `#fff` / `#15803d` | `#16a34a` / `#fff` / `#22c55e` |
 | warning | `#f59e0b` / `#1c1917` / `#b45309` | `#d97706` / `#fff` / `#f59e0b` |
 | info | `#2563eb` / `#fff` / `#1d4ed8` | `#2563eb` / `#fff` / `#3b82f6` |
@@ -433,3 +433,7 @@ Empat pertanyaan yang timbul dari penggabungan Stok ke halaman Stiker, kebijakan
 4. Lampiran gambar di View Postel: dijawab pratinjau seragam, PDF tetap diunduh, butir 35.
 
 **Asumsi perancang yang masih terbuka-eksplisit (tidak memblokir; pemilik dapat mengoreksi):** (a) entri stok batch berupa SATU halaman "Entri stok" bermode Masuk/Keluar/Koreksi (bukan tiga halaman), (b) satu lokasi per entri batch, (c) satu alasan untuk seluruh batch pada Keluar dan Koreksi (disalin ke tiap baris riwayat), (d) maksimal `STICKER_LIMITS.opnameRows` (100) baris per permintaan, (e) kiriman ulang idempoten lewat `clientId` per baris (diputuskan pemilik 2026-11-21, butir 43; bukan lagi asumsi). Rincian di rencana 4a Task 2b dan 4b.
+
+**Keputusan 2026-11-25 (disetujui pemilik produk)**: warna `secondary` diganti slate tegas (tabel di atas) karena abu lama terbaca seperti komponen nonaktif; tiap palet mendapat token `--X-disabled` dan `--X-disabled-foreground` (terang dan gelap) yang dipakai kelas `disabled:` di `variant-style.ts`, menggantikan `opacity-50`. Pasangan nonaktif dijaga >= 3:1.
+
+**Pembaruan 2026-11-25 (pemilik produk):** solid secondary tetap slate, tetapi warna teks/garis untuk gaya soft, outline, dan ghost dibuat lebih kontras (terang `#334155`, gelap `#e2e8f0`) karena teks lama hampir sama dengan teks komponen nonaktif (`secondary-disabled-foreground`). Tes `styles.contrast.test.ts` menjaga selisih kontras minimal 3 antara keduanya.

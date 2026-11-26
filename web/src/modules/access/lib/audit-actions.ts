@@ -149,6 +149,11 @@ const AUDIT_FIELD_LABELS: Record<string, string> = {
   rule: 'Aturan',
   fileId: 'Gambar',
   minQty: 'Minimum stok',
+  defaultMinQty: 'Minimum stok bawaan',
+  openingStock: 'Total stok awal',
+  openingStocks: 'Stok awal per lokasi',
+  // Entri audit lama (sebelum 2026-11-26) mencatat id lokasi mentah.
+  openingStockLocation: 'Lokasi stok awal',
   presetId: 'Preset',
   buId: 'Business Unit',
   title: 'Judul',

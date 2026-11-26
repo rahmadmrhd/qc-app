@@ -1,3 +1,4 @@
+import { formatBuLabel } from '@shared/business-units';
 import type { MeDto } from '@shared/contract';
 import {
   type DashboardRange,
@@ -32,7 +33,7 @@ export function buFilterOptions(me: MeDto): LinkOption[] {
   ]);
   return (me.businessUnits ?? [])
     .filter((bu) => !bu.deleted && readable.has(bu.id))
-    .map((bu) => ({ id: bu.id, label: `${bu.code} · ${bu.name}` }));
+    .map((bu) => ({ id: bu.id, label: formatBuLabel(bu) }));
 }
 
 /** Lokasi yang boleh dipilih: lokasi tempat pengguna membaca Serah Terima, QC, atau stok (atau semua bila pemegang Serial). */

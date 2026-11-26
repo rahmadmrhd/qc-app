@@ -1,3 +1,4 @@
+import { formatBuLabel } from '@shared/business-units';
 import type { ItemSummaryDto } from '@shared/contract';
 import type { ReactNode } from 'react';
 import { type DataColumn, DataTable, LinkCell, type RowAction } from '@/components/data-table';
@@ -131,11 +132,11 @@ export function ItemsTable({
                 params={{ businessUnitId: bu.id }}
                 title={bu.name}
               >
-                {bu.code}
+                {formatBuLabel(bu)}
               </LinkCell>
             ) : (
               <Badge key={bu.id} variant="outline" color="primary" title={bu.name}>
-                {bu.code}
+                {formatBuLabel(bu)}
               </Badge>
             ),
           )}

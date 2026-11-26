@@ -76,15 +76,39 @@ describe('sn.total dan sn.avgMinutes', () => {
     expect(await run('sn.total')).toMatchObject({ kind: 'number', value: 2, previous: 1 });
   });
 
-  test('sn.avgMinutes = jam kerja x 60 / jumlah serial; tanpa serial = 0', async () => {
+  test('sn.avgMinutes = jam kerja x 60 x hari aktif / jumlah serial; tanpa serial = 0', async () => {
     expect(AVG_MINUTES_WORK_HOURS).toBe(4);
-    expect(averageMinutes(0)).toBe(0);
-    expect(averageMinutes(240)).toBe(1);
-    expect(averageMinutes(7)).toBe(34.3);
+    expect(averageMinutes(0, 0)).toBe(0);
+    expect(averageMinutes(5, 0)).toBe(0);
+    expect(averageMinutes(240, 1)).toBe(1);
+    expect(averageMinutes(7, 1)).toBe(34.3);
+    expect(averageMinutes(10, 3)).toBe(72);
+  });
+
+  test('sn.avgMinutes menghitung hanya hari yang punya unit, dan memberi keterangan total hari', async () => {
+    // Dua unit pada satu hari: 240 x 1 / 2 = 120 menit, 1 hari.
     await seed(env, { id: 's1', createdAt: IN_RANGE });
     await seed(env, { id: 's2', createdAt: IN_RANGE });
-    expect(await run('sn.avgMinutes')).toMatchObject({ kind: 'number', value: 120 });
-    expect(await run('sn.avgMinutes', scopeOf({ buIds: [] }))).toMatchObject({ value: 0 });
+    expect(await run('sn.avgMinutes')).toMatchObject({
+      kind: 'number',
+      value: 120,
+      note: '1 hari',
+    });
+    // Tambah satu unit di hari lain dalam rentang (3 unit, 2 hari): 240 x 2 / 3 = 160. Hari tanpa unit tak dihitung.
+    await seed(env, { id: 's3', createdAt: '2026-11-14T03:00:00.000Z' });
+    expect(await run('sn.avgMinutes')).toMatchObject({ value: 160, note: '2 hari' });
+    // Pergantian hari memakai WIB: 17:30 UTC tanggal 14 = 00:30 WIB tanggal 15, jadi hari ketiga.
+    await seed(env, { id: 's4', createdAt: '2026-11-14T17:30:00.000Z' });
+    expect(await run('sn.avgMinutes')).toMatchObject({ value: 180, note: '3 hari' });
+  });
+
+  test('sn.avgMinutes tanpa serial atau tanpa cakupan = 0 dengan keterangan 0 hari', async () => {
+    expect(await run('sn.avgMinutes')).toMatchObject({ value: 0, note: '0 hari' });
+    await seed(env, { id: 's1', createdAt: IN_RANGE });
+    expect(await run('sn.avgMinutes', scopeOf({ buIds: [] }))).toMatchObject({
+      value: 0,
+      note: '0 hari',
+    });
   });
 });
 

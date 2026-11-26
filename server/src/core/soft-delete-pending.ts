@@ -282,13 +282,13 @@ export const SOFT_DELETE_EXEMPT: Record<string, string> = {
     'Semua baris serial dihitung tanpa penyaring keadaan: pengisi riwayat BU dan kumpulan BU terlibat berlaku untuk serial terhapus juga agar tetap benar saat dipulihkan.',
   'server/src/modules/serial/bu-history.ts#serials@5#616ca633':
     'Semua baris serial dihitung tanpa penyaring keadaan: pengisi riwayat BU dan kumpulan BU terlibat berlaku untuk serial terhapus juga agar tetap benar saat dipulihkan.',
-  'server/src/modules/serial/case-list.ts#locations@1#d66bb0c7':
+  'server/src/modules/serial/case-list.ts#locations@1#e93022d2':
     'Penampil rujukan: nama lokasi tampil walau lokasi terhapus (lokasi terhapus dibaca nonaktif, soft delete); jalur tulis memeriksa lokasi hidup (`activeLocationName` memakai `liveWhere`).',
-  'server/src/modules/serial/case-list.ts#business_units@1#d66bb0c7':
+  'server/src/modules/serial/case-list.ts#business_units@1#e93022d2':
     'Penampil rujukan atau pembaca kode BU menurut id yang sudah divalidasi hidup oleh jalur tulis (`activeItemWritableForBu`, `liveWhere` pada BU target); BU terhapus tetap memberi nama dan hak (soft delete 9).',
-  'server/src/modules/serial/case-list.ts#items@1#d66bb0c7':
+  'server/src/modules/serial/case-list.ts#items@1#e93022d2':
     'Penampil rujukan: serial menampilkan nama item (LEFT JOIN) walau item terhapus; item terhapus tak dihitung/dipilih di jalur tulis (jalur tulis lain: `activeItemWritableForBu` (serial/repo.ts) menyaring hidup).',
-  'server/src/modules/serial/case-list.ts#brands@1#d66bb0c7':
+  'server/src/modules/serial/case-list.ts#brands@1#e93022d2':
     'Nama merk untuk tampilan/rujukan: merk terhapus tetap memberi nama pada item yang memakainya (keputusan T1, rujukan tersimpan tetap sah).',
   'server/src/modules/serial/case-list.ts#serial_cases@2#97fc5d0f':
     'Anak serial (kejadian, laporan, foto, stiker) dimuat atau ditulis menurut id serial atau laporan yang sudah lolos pemeriksaan hidup dan hak di pemanggil (`loadReadableSerialRow`, `loadSerialRow`, token laporan publik yang memeriksa serial hidup); tidak ada daftar lintas serial yang tak tersaring.',
@@ -338,11 +338,11 @@ export const SOFT_DELETE_EXEMPT: Record<string, string> = {
     'Penampil rujukan atau pembaca kode BU menurut id yang sudah divalidasi hidup oleh jalur tulis (`activeItemWritableForBu`, `liveWhere` pada BU target); BU terhapus tetap memberi nama dan hak (soft delete 9).',
   'server/src/modules/serial/recheck-entry.ts#serial_events@1#cb0debcf':
     'Anak serial (kejadian, laporan, foto, stiker) dimuat atau ditulis menurut id serial atau laporan yang sudah lolos pemeriksaan hidup dan hak di pemanggil (`loadReadableSerialRow`, `loadSerialRow`, token laporan publik yang memeriksa serial hidup); tidak ada daftar lintas serial yang tak tersaring.',
-  'server/src/modules/serial/recheck-entry.ts#business_units@4#6f78ec3f':
+  'server/src/modules/serial/recheck-entry.ts#business_units@4#27d835b8':
     'Penampil rujukan atau pembaca kode BU menurut id yang sudah divalidasi hidup oleh jalur tulis (`activeItemWritableForBu`, `liveWhere` pada BU target); BU terhapus tetap memberi nama dan hak (soft delete 9).',
-  'server/src/modules/serial/recheck-entry.ts#items@1#6f78ec3f':
+  'server/src/modules/serial/recheck-entry.ts#items@1#27d835b8':
     'Penampil rujukan: serial menampilkan nama item (LEFT JOIN) walau item terhapus; item terhapus tak dihitung/dipilih di jalur tulis (jalur tulis lain: `activeItemWritableForBu` (serial/repo.ts) menyaring hidup).',
-  'server/src/modules/serial/recheck-entry.ts#brands@1#6f78ec3f':
+  'server/src/modules/serial/recheck-entry.ts#brands@1#27d835b8':
     'Nama merk untuk tampilan/rujukan: merk terhapus tetap memberi nama pada item yang memakainya (keputusan T1, rujukan tersimpan tetap sah).',
   'server/src/modules/serial/repo.ts#serials@1#ef199223':
     'Pembaca menilai `deleted_at` baris itu sendiri (kolomnya dibaca, bukan disaring): kiriman ulang `clientId`, hak baca berkas/foto bagi pemulih, keadaan foto; serial terhapus hanya terbaca pemegang hak Pulihkan.',
@@ -378,7 +378,7 @@ export const SOFT_DELETE_EXEMPT: Record<string, string> = {
     'Penampil rujukan: nama lokasi tampil walau lokasi terhapus (lokasi terhapus dibaca nonaktif, soft delete); jalur tulis memeriksa lokasi hidup (`activeLocationName` memakai `liveWhere`).',
   'server/src/modules/serial/repo.ts#serial_cases@2#bbce0dc9':
     'Baca serial menurut id, hidup atau terhapus: pemanggil menilai `deleted_at` dan hak sendiri (`loadReadableSerialRow` bagi pemulih, perencana hapus/pulihkan); gabungan tampilan ikut.',
-  'server/src/modules/serial/repo.ts#business_units@3#029cb2ae':
+  'server/src/modules/serial/repo.ts#business_units@3#92fe2893':
     'Penampil rujukan atau pembaca kode BU menurut id yang sudah divalidasi hidup oleh jalur tulis (`activeItemWritableForBu`, `liveWhere` pada BU target); BU terhapus tetap memberi nama dan hak (soft delete 9).',
   'server/src/modules/serial/repo.ts#business_units@4#4a07381f':
     'Penampil rujukan atau pembaca kode BU menurut id yang sudah divalidasi hidup oleh jalur tulis (`activeItemWritableForBu`, `liveWhere` pada BU target); BU terhapus tetap memberi nama dan hak (soft delete 9).',
@@ -428,9 +428,9 @@ export const SOFT_DELETE_EXEMPT: Record<string, string> = {
     'Nama merk untuk tampilan/rujukan: merk terhapus tetap memberi nama pada item yang memakainya (keputusan T1, rujukan tersimpan tetap sah).',
   'server/src/modules/serial/report.ts#business_units@1#71a9e696':
     'Penampil rujukan atau pembaca kode BU menurut id yang sudah divalidasi hidup oleh jalur tulis (`activeItemWritableForBu`, `liveWhere` pada BU target); BU terhapus tetap memberi nama dan hak (soft delete 9).',
-  'server/src/modules/serial/service.ts#item_business_units@1#43393540':
+  'server/src/modules/serial/service.ts#item_business_units@1#3232c3a8':
     "Subkueri BU item di `serials.itemOptions`: item yang dibaca disaring `liveWhere('i')` di literal kueri yang sama; tabel penghubung `item_business_units` tak punya kolom terhapus sendiri.",
-  'server/src/modules/serial/service.ts#business_units@1#43393540':
+  'server/src/modules/serial/service.ts#business_units@1#3232c3a8':
     'Penampil rujukan atau pembaca kode BU menurut id yang sudah divalidasi hidup oleh jalur tulis (`activeItemWritableForBu`, `liveWhere` pada BU target); BU terhapus tetap memberi nama dan hak (soft delete 9).',
   'server/src/modules/serial/service.ts#items@3#122b7dd8':
     'Penampil rujukan: serial menampilkan nama item (LEFT JOIN) walau item terhapus; item terhapus tak dihitung/dipilih di jalur tulis (jalur tulis lain: `activeItemWritableForBu` (serial/repo.ts) menyaring hidup).',

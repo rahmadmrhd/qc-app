@@ -1,3 +1,4 @@
+import { formatBuLabel } from '@shared/business-units';
 import type { SerialEventDto } from '@shared/contract';
 import { parseFileRef } from '@shared/files';
 import type { SerialPublicEventDto } from '@shared/serial-public';
@@ -171,7 +172,7 @@ export function PublicReportPage({ token, onOpenSerial }: PublicReportPageProps)
           </Fact>
           <Fact label="Item">{data.unit.itemLabel}</Fact>
           <Fact label="Business Unit">
-            {data.unit.buCode} · {data.unit.buName}
+            {formatBuLabel({ code: data.unit.buCode, name: data.unit.buName })}
           </Fact>
           <Fact label="Lokasi">{data.unit.locationName || '—'}</Fact>
           <Fact label="Tanggal uji">{formatDay(data.unit.testDate)}</Fact>

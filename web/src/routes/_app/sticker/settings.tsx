@@ -20,6 +20,7 @@ import {
 } from '@/modules/sticker/queries';
 
 const searchSchema = z.object({
+  // Nilai tak dikenal (mis. 'minimum' dari tautan lama) jatuh ke tab bawaan.
   tab: z.enum(SETTINGS_TABS).optional().catch(undefined),
 });
 
@@ -53,11 +54,11 @@ function StickerSettingsRoute() {
       settings={settings}
       postelSettings={postelSettings}
       users={canReadUsers ? (users.data ?? null) : null}
-      tab={tab ?? 'minimum'}
+      tab={tab ?? 'ringkasan'}
       // Berpindah tab = mengganti isi halaman yang sama (replace), bukan langkah riwayat baru.
       onTabChange={(next) =>
         navigate({
-          search: (prev) => ({ ...prev, tab: next === 'minimum' ? undefined : next }),
+          search: (prev) => ({ ...prev, tab: next === 'ringkasan' ? undefined : next }),
           replace: true,
         })
       }

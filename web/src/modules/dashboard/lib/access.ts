@@ -36,7 +36,10 @@ export function visibleWidgetsByGroup(
   })).filter((entry) => entry.widgets.length > 0);
 }
 
-/** Ada minimal satu widget yang boleh dilihat (menentukan butir menu Dashboard). */
+/**
+ * Butir menu Dashboard tampil bila pengguna punya izin modul `dashboard` (minimal Lihat) ATAU ada minimal satu widget
+ * yang boleh dilihat lewat izin modul sumber (perilaku lama tetap berlaku; keputusan pemilik 2026-11-25).
+ */
 export function canSeeDashboard(me: MeDto | null | undefined): boolean {
-  return WIDGETS.some((meta) => widgetVisible(me, meta));
+  return can(me, 'dashboard', 'view') || WIDGETS.some((meta) => widgetVisible(me, meta));
 }

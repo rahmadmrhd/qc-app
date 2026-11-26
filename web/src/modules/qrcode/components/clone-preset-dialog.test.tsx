@@ -58,7 +58,7 @@ test('mengubah nama salinan mendaftarkan perubahan belum disimpan; nilai awal ti
 test('BU yang sudah punya preset dan BU nonaktif tidak ditawarkan', async () => {
   renderDialog();
   const dialog = screen.getByRole('dialog');
-  expect(await linkOptionNames(within(dialog), 'Business Unit tujuan')).toEqual(['Arcadia']);
+  expect(await linkOptionNames(within(dialog), 'Business Unit tujuan')).toEqual(['ARC - Arcadia']);
 });
 
 test('nama awal bukan nama sumber (nama preset unik): "<nama> (salinan)", dengan batas panjang dari QR_LIMITS', () => {
@@ -73,7 +73,7 @@ test('memilih BU tujuan dan nama baru lalu mengirim kloning; tombol nonaktif seb
   const dialog = screen.getByRole('dialog');
   const submit = within(dialog).getByRole('button', { name: 'Kloning' });
   expect(submit).toBeDisabled();
-  await pickLink(within(dialog), 'Business Unit tujuan', 'Arcadia');
+  await pickLink(within(dialog), 'Business Unit tujuan', 'ARC - Arcadia');
   const name = within(dialog).getByLabelText('Nama preset baru');
   await userEvent.clear(name);
   await userEvent.type(name, 'Standar Arcadia');

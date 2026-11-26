@@ -299,11 +299,11 @@ describe('jenis stiker', () => {
   });
 
   test('pengguna tidak dapat membuat jenis group lewat stickerTypes.save (VALIDATION)', async () => {
-    const error = captureAppError(() =>
-      validateSaveStickerType({ name: 'Kelompok', rule: 'group' }),
-    );
-    expect(error.code).toBe('VALIDATION');
-    expect(error.fields).toMatchObject({ rule: 'Nilai tidak valid' });
+    // Validator hanya memeriksa bentuk (aturan `group` dikenal agar form jenis sistem dapat mengirimnya);
+    // penolakan untuk jenis biasa ada di service (`assertUserRule`), dan itu yang dijamin lewat REST.
+    expect(validateSaveStickerType({ name: 'Kelompok', rule: 'group' })).toMatchObject({
+      rule: 'group',
+    });
     const result = await restCall(env, 'admin@gmail.com', 'stickerTypes.save', {
       name: 'Kelompok',
       rule: 'group',

@@ -88,26 +88,32 @@ const total: WidgetImpl = {
 export const AVG_MINUTES_WORK_HOURS = 4;
 
 /**
- * Rata-rata menit per serial = (4 jam x 60 menit) / jumlah serial dicatat pada periode, satu desimal; tanpa serial = 0.
- * Rumus mengikuti permintaan pemilik apa adanya (4 jam TOTAL untuk seluruh periode, bukan per hari).
+ * Rata-rata menit per serial = (4 jam x 60 menit x hari aktif) / jumlah serial dicatat pada periode, satu desimal
+ * (keputusan pemilik 2026-11-25; mengganti rumus 4 jam total per periode). Hari aktif = jumlah hari WIB berbeda yang
+ * punya minimal satu serial dicatat; hari tanpa serial tidak dihitung. Tanpa serial = 0.
  */
-export function averageMinutes(serialCount: number): number {
-  if (serialCount <= 0) return 0;
-  return Math.round(((AVG_MINUTES_WORK_HOURS * 60) / serialCount) * 10) / 10;
+export function averageMinutes(serialCount: number, activeDays: number): number {
+  if (serialCount <= 0 || activeDays <= 0) return 0;
+  return Math.round(((AVG_MINUTES_WORK_HOURS * 60 * activeDays) / serialCount) * 10) / 10;
 }
 
 const avgMinutes: WidgetImpl = {
   id: 'sn.avgMinutes',
   async run(ctx): Promise<NumberData> {
-    if (noScope(ctx)) return { kind: 'number', value: 0 };
+    if (noScope(ctx)) return { kind: 'number', value: 0, note: '0 hari' };
     const where = conditions(ctx);
     const row = await ctx.db
       .prepare(
-        `SELECT COUNT(*) AS n FROM serials s WHERE ${liveWhere('s')}${where.sql} AND s.created_at >= ? AND s.created_at < ?`,
+        `SELECT COUNT(*) AS n, COUNT(DISTINCT ${wibDaySql('s.created_at')}) AS days FROM serials s WHERE ${liveWhere('s')}${where.sql} AND s.created_at >= ? AND s.created_at < ?`,
       )
       .bind(...where.binds, ctx.scope.fromIso, ctx.scope.toIso)
-      .first<{ n: number | string }>();
-    return { kind: 'number', value: averageMinutes(num(row?.n)) };
+      .first<{ n: number | string; days: number | string }>();
+    const days = num(row?.days);
+    return {
+      kind: 'number',
+      value: averageMinutes(num(row?.n), days),
+      note: `${days} hari`,
+    };
   },
 };
 

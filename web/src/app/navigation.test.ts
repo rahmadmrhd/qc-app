@@ -322,10 +322,10 @@ test('induk Stiker memuat Jenis (sticker view) dan hanya tampil bagi user ber-iz
   expect(visibleLabels(stickerMe({ sticker: 'view' }))).toContain('Jenis');
 });
 
-test('menu Katalog tidak ikut aktif di Jenis, Pustaka, Konfigurasi; tetap aktif di opname', () => {
+test('menu Katalog & Stok tidak ikut aktif di Jenis, Pustaka, Konfigurasi; tetap aktif di opname', () => {
   const katalog = itemTo('/sticker');
   expect(katalog).toMatchObject({
-    label: 'Katalog',
+    label: 'Katalog & Stok',
     permission: [
       { module: 'sticker', level: 'view' },
       { module: 'stickerstock', level: 'view', scope: 'location' },
@@ -348,7 +348,7 @@ test('Stok digabung ke Katalog: tidak ada menu Stok tersendiri', () => {
   expect(children.some((entry) => entry.to === '/sticker/stock')).toBe(false);
 });
 
-test('menu Katalog tampil bagi pemegang sticker view ATAU stickerstock view di lokasi aktif', () => {
+test('menu Katalog & Stok tampil bagi pemegang sticker view ATAU stickerstock view di lokasi aktif', () => {
   const me: MeDto = {
     ...stickerMe({}),
     locations: [
@@ -367,12 +367,12 @@ test('menu Katalog tampil bagi pemegang sticker view ATAU stickerstock view di l
     ],
   };
   // Hanya izin stok: tampil di lokasi yang berizin, tidak di lokasi lain.
-  expect(visibleLabels(me, ['l-a'])).toContain('Katalog');
-  expect(visibleLabels(me, ['l-b'])).not.toContain('Katalog');
+  expect(visibleLabels(me, ['l-a'])).toContain('Katalog & Stok');
+  expect(visibleLabels(me, ['l-b'])).not.toContain('Katalog & Stok');
   // Hanya izin katalog: tampil di lokasi mana pun.
   expect(
     visibleLabels({ ...me, ...stickerMe({ sticker: 'view' }), locations: me.locations }, ['l-b']),
-  ).toContain('Katalog');
+  ).toContain('Katalog & Stok');
 });
 
 test('menu Pustaka Gambar tampil bagi pemegang item view atau sticker view saja, dan aktif sendiri', () => {
@@ -593,11 +593,16 @@ test('Dashboard: menu biasa tanpa submenu; Laporan terjadwal dan Tautan dibagika
     'Tautan dibagikan',
   ]);
   expect(section?.items.every((entry) => !isNavParent(entry))).toBe(true);
-  // Pemegang kelola tanpa izin sumber widget: Dashboard tersembunyi, section Laporan tetap ada.
+  // Izin modul Dashboard (minimal Lihat) membuka butir Dashboard walau tanpa izin sumber widget
+  // (keputusan pemilik 2026-11-25); section Laporan hanya untuk edit/manage.
+  const hasDashboard = (groups: ReturnType<typeof visibleNavGroups>) =>
+    groups.some((group) => group.items.some((entry) => entry.label === 'Dashboard'));
   const managerOnly = visibleNavGroups(NAV_GROUPS, stickerMe({ dashboard: 'manage' }));
-  expect(
-    managerOnly.some((group) => group.items.some((entry) => entry.label === 'Dashboard')),
-  ).toBe(false);
+  expect(hasDashboard(managerOnly)).toBe(true);
+  const viewOnly = visibleNavGroups(NAV_GROUPS, stickerMe({ dashboard: 'view' }));
+  expect(hasDashboard(viewOnly)).toBe(true);
+  expect(viewOnly.find((group) => group.label === 'Laporan')).toBeUndefined();
+  expect(hasDashboard(visibleNavGroups(NAV_GROUPS, stickerMe({})))).toBe(false);
   expect(managerOnly.find((group) => group.label === 'Laporan')?.items).toHaveLength(2);
   expect(itemTo('/dashboard/laporan').permission).toEqual({ module: 'dashboard', level: 'edit' });
   expect(itemTo('/dashboard/tautan').permission).toEqual({ module: 'dashboard', level: 'edit' });

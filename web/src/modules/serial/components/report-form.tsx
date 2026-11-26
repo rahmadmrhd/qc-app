@@ -1,3 +1,4 @@
+import { formatBuLabel } from '@shared/business-units';
 import type { SerialLookupMatchDto } from '@shared/contract';
 import { extractFileRefs } from '@shared/items';
 import { SERIAL_LIMITS } from '@shared/serials';
@@ -161,7 +162,7 @@ export function UnitSummary({ match }: { match: SerialLookupMatchDto }) {
       </div>
       <div>
         <dt className="text-xs text-muted-foreground">Business Unit</dt>
-        <dd className="text-sm">{match.buCode}</dd>
+        <dd className="text-sm">{formatBuLabel({ code: match.buCode, name: match.buName })}</dd>
       </div>
       <div>
         <dt className="text-xs text-muted-foreground">Status dan lokasi</dt>

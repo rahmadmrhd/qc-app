@@ -11,7 +11,7 @@ import { describeError } from '@/lib/api/describe-error';
 import { itemFormLinkAccess } from '@/lib/link-access';
 import { pickFieldErrors } from '@/modules/access/lib/field-errors';
 import { useSaveBusinessUnit } from '@/modules/access/queries';
-import { can, liveBuIdsWithLevelOf } from '@/modules/auth/permissions';
+import { can, liveBuIdsWithLevelOf, locationsWith } from '@/modules/auth/permissions';
 import { useMe } from '@/modules/auth/use-me';
 import { useSaveBrand } from '@/modules/brand/queries';
 import { useSaveSticker, useSaveStickerType } from '@/modules/sticker/queries';
@@ -73,6 +73,7 @@ export function useItemFormController({
   const saveBusinessUnit = useSaveBusinessUnit();
   const saveSticker = useSaveSticker();
   const saveStickerType = useSaveStickerType();
+  // Tanpa tombol "Buka untuk ekspor": pindah halaman akan membuang isian form item.
   const links = itemFormLinkAccess(me);
   const [submitError, setSubmitError] = useState<string | null>(null);
   // Gambar yang masih diunggah di form: pembungkus menahan Simpan selama true (`blocking`).
@@ -115,6 +116,16 @@ export function useItemFormController({
     onCreateStickerType: links.canCreateStickerType
       ? (input) => saveStickerType.mutateAsync(input)
       : undefined,
+    canSetStickerTypeDefaultMin: can(me, 'sticker', 'manage'),
+    // Dialog tambah stiker dari form Item: tambah jenis, tambah BU, stok awal, dan tautan jenis. Postel/Manual Book
+    // sengaja tidak dipasang di sini (dari form Item hasilnya tak bisa menjadi sasaran penanda dan dialognya
+    // bertumpuk); keduanya dibuat dari halaman Postel/QR atau katalog stiker.
+    openStickerTypeHref: links.openStickerTypeHref,
+    stockLocations: locationsWith(me, 'stickerstock', 'edit').map((location) => ({
+      id: location.id,
+      name: location.name,
+      code: location.code,
+    })),
     ...(item
       ? {
           itemId: item.id,

@@ -72,7 +72,7 @@ export function DashboardPage({
                 <Button
                   type="button"
                   size="sm"
-                  variant="outline"
+                  variant="solid"
                   color="primary"
                   onClick={() => setDialog('share')}
                 >

@@ -58,7 +58,7 @@ test('nama dan BU berupa tautan; tidak ada tombol "Lihat"', async () => {
     'href',
     '/qrcode/default/p1',
   );
-  expect(screen.getByRole('link', { name: 'Spectrum' })).toHaveAttribute(
+  expect(screen.getByRole('link', { name: 'SPC - Spectrum' })).toHaveAttribute(
     'href',
     '/access/business-units/bu1',
   );
@@ -69,8 +69,8 @@ test('tanpa hak buka BU, nama BU tampil sebagai teks biasa; preset tanpa BU "Bel
   await renderTable([preset(), preset({ id: 'p2', name: 'Lama', buId: '' })], {
     canOpenBusinessUnit: false,
   });
-  expect(screen.queryByRole('link', { name: 'Spectrum' })).toBeNull();
-  expect(screen.getByText('Spectrum')).toBeInTheDocument();
+  expect(screen.queryByRole('link', { name: 'SPC - Spectrum' })).toBeNull();
+  expect(screen.getByText('SPC - Spectrum')).toBeInTheDocument();
   expect(screen.getByText('Belum diatur')).toBeInTheDocument();
 });
 

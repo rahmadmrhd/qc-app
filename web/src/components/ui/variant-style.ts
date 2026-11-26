@@ -44,8 +44,49 @@ const GHOST: Record<Exclude<UiColor, 'primary'>, string> = {
   destructive: 'hover:bg-destructive-text/12',
 }
 
+/**
+ * Keadaan nonaktif per palet (token `--X-disabled` dan `--X-disabled-foreground`): masih tampak warnanya,
+ * tetapi jelas nonaktif. Menggantikan `opacity-50` seragam (keputusan pemilik 2026-11-25).
+ */
+const DISABLED_FILL: Record<UiColor, string> = {
+  primary: 'disabled:bg-primary-disabled disabled:text-primary-disabled-foreground',
+  secondary: 'disabled:bg-secondary-disabled disabled:text-secondary-disabled-foreground',
+  success: 'disabled:bg-success-disabled disabled:text-success-disabled-foreground',
+  warning: 'disabled:bg-warning-disabled disabled:text-warning-disabled-foreground',
+  info: 'disabled:bg-info-disabled disabled:text-info-disabled-foreground',
+  destructive: 'disabled:bg-destructive-disabled disabled:text-destructive-disabled-foreground',
+}
+
+const DISABLED_OUTLINE: Record<UiColor, string> = {
+  primary: 'disabled:bg-transparent disabled:border-primary-disabled-foreground/40 disabled:text-primary-disabled-foreground',
+  secondary: 'disabled:bg-transparent disabled:border-secondary-disabled-foreground/40 disabled:text-secondary-disabled-foreground',
+  success: 'disabled:bg-transparent disabled:border-success-disabled-foreground/40 disabled:text-success-disabled-foreground',
+  warning: 'disabled:bg-transparent disabled:border-warning-disabled-foreground/40 disabled:text-warning-disabled-foreground',
+  info: 'disabled:bg-transparent disabled:border-info-disabled-foreground/40 disabled:text-info-disabled-foreground',
+  destructive: 'disabled:bg-transparent disabled:border-destructive-disabled-foreground/40 disabled:text-destructive-disabled-foreground',
+}
+
+const DISABLED_TEXT: Record<UiColor, string> = {
+  primary: 'disabled:text-primary-disabled-foreground',
+  secondary: 'disabled:text-secondary-disabled-foreground',
+  success: 'disabled:text-success-disabled-foreground',
+  warning: 'disabled:text-warning-disabled-foreground',
+  info: 'disabled:text-info-disabled-foreground',
+  destructive: 'disabled:text-destructive-disabled-foreground',
+}
+
 /** Kelas warna untuk satu kombinasi gaya x warna (tanpa kelas dasar/ukuran). */
 export function colorVariantClasses(variant: UiVariant, color: UiColor): string {
+  return `${enabledClasses(variant, color)} ${disabledClasses(variant, color)}`
+}
+
+function disabledClasses(variant: UiVariant, color: UiColor): string {
+  if (variant === 'solid' || variant === 'soft') return DISABLED_FILL[color]
+  if (variant === 'outline') return DISABLED_OUTLINE[color]
+  return DISABLED_TEXT[color]
+}
+
+function enabledClasses(variant: UiVariant, color: UiColor): string {
   const text = TEXT[color]
   if (variant === 'solid') return SOLID[color]
   if (variant === 'link') return `${text} underline-offset-4 hover:underline`

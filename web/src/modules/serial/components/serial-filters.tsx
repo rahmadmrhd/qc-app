@@ -1,3 +1,4 @@
+import { formatBuLabel } from '@shared/business-units';
 import { useQuery } from '@tanstack/react-query';
 import { useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
@@ -77,7 +78,7 @@ export function SerialFilters({ search, onChange, canSeeDeleted = false }: Seria
   ]);
   const buOptions: LinkOption[] = (me.businessUnits ?? [])
     .filter((bu) => !bu.deleted && readableBuIds.has(bu.id))
-    .map((bu) => ({ id: bu.id, label: `${bu.code} · ${bu.name}` }));
+    .map((bu) => ({ id: bu.id, label: formatBuLabel(bu) }));
   const lists = searchLists(search);
   const [itemTerm, setItemTerm] = useState('');
   const { data, isFetching } = useQuery(serialItemOptionsQueryOptions(itemTerm.trim()));

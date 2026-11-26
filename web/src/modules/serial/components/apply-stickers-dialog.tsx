@@ -1,3 +1,4 @@
+import { formatBuLabel } from '@shared/business-units';
 import type { SerialSummaryDto } from '@shared/contract';
 import { SERIAL_LIMITS } from '@shared/serials';
 import { useQuery } from '@tanstack/react-query';
@@ -68,12 +69,12 @@ function GroupSection({
   const stickers = options.data?.stickers ?? [];
   return (
     <section
-      aria-label={`${group.itemLabel} · ${group.buCode}`}
+      aria-label={`${group.itemLabel} · ${formatBuLabel({ code: group.buCode, name: group.buName })}`}
       className="space-y-2 rounded-lg border p-3"
     >
       <div>
         <h3 className="text-sm font-semibold">
-          {group.itemLabel} · {group.buCode}
+          {group.itemLabel} · {formatBuLabel({ code: group.buCode, name: group.buName })}
         </h3>
         <p className="text-xs text-muted-foreground">
           {group.ids.length} Serial Number: {serialSample(group.serials)}

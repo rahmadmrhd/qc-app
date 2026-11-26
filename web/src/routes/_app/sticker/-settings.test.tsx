@@ -1,6 +1,6 @@
 import type { PostelSettingsDto, StickerSettingsDto } from '@shared/contract';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { type ComponentType, Suspense, useReducer } from 'react';
 import { beforeEach, expect, test, vi } from 'vitest';
@@ -123,13 +123,23 @@ async function mount() {
 
 const openTab = (name: string) => userEvent.click(screen.getByRole('tab', { name }));
 
+// Label yang sama ada di dua panel (keduanya tetap ter-mount): dicari di dalam bagian Ringkasan stok (lewat judulnya;
+// `hidden: true` karena panel yang tak aktif disembunyikan), bukan lewat urutan kemunculan.
+const hourField = () =>
+  within(
+    screen
+      .getByRole('heading', { name: 'Ringkasan harian stok menipis dan habis', hidden: true })
+      .closest('section') as HTMLElement,
+  ).getByLabelText('Jam kirim (WIB)');
+
 const calls = (id: string) => apiMock.mock.calls.filter(([name]) => name === id).length;
 
-test('menyimpan peringatan Postel tidak mereset draf Konfigurasi Stiker', async () => {
+test('menyimpan peringatan Postel tidak mereset draf Ringkasan stok', async () => {
   await mount();
-  const min = await screen.findByLabelText('Minimum bawaan QC Hijau');
-  await userEvent.clear(min);
-  await userEvent.type(min, '25');
+  await screen.findByRole('tab', { name: 'Ringkasan stok' });
+  const hour = hourField();
+  await userEvent.clear(hour);
+  await userEvent.type(hour, '11');
   await openTab('Peringatan Postel');
   const repeat = screen.getByLabelText('Ulangi setiap (hari)');
   await userEvent.clear(repeat);
@@ -143,14 +153,14 @@ test('menyimpan peringatan Postel tidak mereset draf Konfigurasi Stiker', async 
     ),
   );
   // form Postel dimuat ulang dari hasil simpan (versi baru), draf stok tetap utuh dan tanpa simpan stok
-  expect(screen.getByLabelText('Minimum bawaan QC Hijau')).toHaveValue(25);
+  expect(hourField()).toHaveValue(11);
   expect(calls('stickerSettings.save')).toBe(0);
   expect(screen.getByLabelText('Ulangi setiap (hari)')).toHaveValue(3);
 });
 
-test('menyimpan Konfigurasi Stiker tidak mereset draf peringatan Postel', async () => {
+test('menyimpan Ringkasan stok tidak mereset draf peringatan Postel dan tak mengirim defaults', async () => {
   await mount();
-  await screen.findByLabelText('Minimum bawaan QC Hijau');
+  await screen.findByRole('tab', { name: 'Ringkasan stok' });
   await openTab('Peringatan Postel');
   const repeat = screen.getByLabelText('Ulangi setiap (hari)');
   await userEvent.clear(repeat);
@@ -162,6 +172,8 @@ test('menyimpan Konfigurasi Stiker tidak mereset draf peringatan Postel', async 
   await openTab('Ringkasan stok');
   await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
   await waitFor(() => expect(calls('stickerSettings.save')).toBe(1));
+  const saved = apiMock.mock.calls.find(([name]) => name === 'stickerSettings.save');
+  expect(saved?.[1]).not.toHaveProperty('defaults');
   // katalog stiker dimuat ulang (versi baru); pengaturan Postel tidak ikut dimuat ulang dan draf-nya tetap
   await waitFor(() => expect(calls('stickerSettings.get')).toBeGreaterThanOrEqual(2));
   expect(calls('postelSettings.get')).toBe(1);
@@ -172,11 +184,24 @@ test('menyimpan Konfigurasi Stiker tidak mereset draf peringatan Postel', async 
 
 test('berpindah tab menulis search param tab (replace) dan Batal kembali ke daftar Stiker', async () => {
   await mount();
-  await screen.findByLabelText('Minimum bawaan QC Hijau');
+  await screen.findByRole('tab', { name: 'Ringkasan stok' });
   await openTab('Peringatan Postel');
   expect(nav.search.tab).toBe('postel');
-  await openTab('Minimum stok');
+  await openTab('Ringkasan stok');
   expect(nav.search.tab).toBeUndefined();
   await userEvent.click(screen.getByRole('button', { name: 'Batal' }));
   expect(nav.pop).toHaveBeenCalledWith({ to: '/sticker' });
+});
+
+test('tab lama "minimum" di URL jatuh ke Ringkasan stok tanpa galat', async () => {
+  nav.search = { tab: 'minimum' };
+  vi.spyOn(Route, 'useSearch').mockImplementation(() => nav.search as never);
+  const validate = Route.options.validateSearch as unknown as (search: Record<string, unknown>) => {
+    tab?: string;
+  };
+  const parsed = validate({ tab: 'minimum' });
+  expect(parsed.tab).toBeUndefined();
+  nav.search = parsed;
+  await mount();
+  expect(await screen.findByRole('tab', { name: 'Ringkasan stok', selected: true })).toBeVisible();
 });

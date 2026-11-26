@@ -415,6 +415,7 @@ describe('serials.lookupMany', () => {
         itemLabel: 'Merk Beta',
         buId: 'bu-a',
         buCode: 'A',
+        buName: 'A',
         status: 'good',
         hasOpenCase: false,
         proofRequired: true,
@@ -440,6 +441,27 @@ describe('serials.lookupMany', () => {
     expect(writer.data.found[0]).toMatchObject({ buCode: 'B', recheckBuIds: [] });
     const bOnly = await call(B_ONLY, 'serials.lookupMany', { serials: ['AB12'] });
     expect(bOnly.data.found[0].recheckBuIds).toEqual(['bu-b']);
+  });
+
+  test('nama BU hanya dikirim bila BU itu terbaca pengguna; BU tak terbaca cukup kodenya', async () => {
+    await env.DB.prepare(
+      "UPDATE business_units SET name = 'Nama Rahasia B' WHERE id = 'bu-b'",
+    ).run();
+    await env.DB.batch(
+      moveBuStatements(env, {
+        serialId: 'sn1',
+        fromBuId: 'bu-a',
+        toBuId: 'bu-b',
+        now: '2026-11-13T00:00:00.000Z',
+      }),
+    );
+    // Pencatat hanya-A tidak boleh membaca BU B: kode tetap ada, nama tidak.
+    const writer = await call(W, 'serials.lookupMany', { serials: ['AB12'] });
+    expect(writer.data.found[0].buCode).toBe('B');
+    expect('buName' in writer.data.found[0]).toBe(false);
+    // Pengguna yang membaca BU B menerima namanya.
+    const bOnly = await call(B_ONLY, 'serials.lookupMany', { serials: ['AB12'] });
+    expect(bOnly.data.found[0]).toMatchObject({ buCode: 'B', buName: 'Nama Rahasia B' });
   });
 
   test('BU nonaktif tidak termasuk recheckBuIds; BU saat ini tetap termasuk walau nonaktif', async () => {

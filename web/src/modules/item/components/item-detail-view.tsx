@@ -1,3 +1,4 @@
+import { formatBuLabel } from '@shared/business-units';
 import type { ItemDto, ItemPostelDto } from '@shared/contract';
 import { firmwareOptionsFor } from '@shared/firmware';
 import { DetailList, ViewMeta, ViewPage, ViewSection } from '@/components/page/view-page';
@@ -112,11 +113,11 @@ export function ItemDetailView({
                       const href = openBusinessUnitHref?.(bu.id);
                       return href ? (
                         <a key={bu.id} href={href} title={bu.name} className={textLink}>
-                          {bu.code}
+                          {formatBuLabel(bu)}
                         </a>
                       ) : (
                         <Badge key={bu.id} variant="outline" color="primary" title={bu.name}>
-                          {bu.code}
+                          {formatBuLabel(bu)}
                         </Badge>
                       );
                     })}
@@ -179,7 +180,7 @@ export function ItemDetailView({
       canEdit={canEdit && !deleted}
       editHref={`/item/${encodeURIComponent(item.id)}/edit`}
       onEdit={onEdit}
-      buLabels={Object.fromEntries(item.businessUnits.map((bu) => [bu.id, bu.code]))}
+      buLabels={Object.fromEntries(item.businessUnits.map((bu) => [bu.id, formatBuLabel(bu)]))}
       multiBu={item.businessUnits.length > 1}
     />
   );

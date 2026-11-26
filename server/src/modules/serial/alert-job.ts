@@ -1,4 +1,5 @@
 import type { DbStatement } from '@server/core/db';
+import { ctaButton, kvTable, paragraph, renderEmailDocument } from '@server/core/email-layout';
 import type { Env } from '@server/core/env';
 import { nowIso } from '@server/core/env';
 import { newId } from '@server/core/id';
@@ -6,6 +7,7 @@ import { sendableMailLists } from '@server/core/mail-lists';
 import { liveWhere } from '@server/core/soft-delete';
 import { insertJobStmt } from '@server/modules/jobs/repo';
 import { JOB_SYSTEM_ACTOR } from '@server/modules/jobs/service';
+import { formatBuLabel } from '@shared/business-units';
 import { mailListsCount } from '@shared/mail-lists';
 import { markdownToPlain } from '@shared/markdown-plain';
 import { isPostelRecipient, stripControlChars, wibDateIso } from '@shared/postel';
@@ -79,6 +81,7 @@ export interface SerialBrokenSnapshot {
 export function serialBrokenMail(snapshot: SerialBrokenSnapshot): {
   subject: string;
   text: string;
+  html: string;
 } {
   const clean = (value: string) => stripControlChars(value);
   const { text: plain, imageCount } = markdownToPlain(snapshot.note);
@@ -92,7 +95,7 @@ export function serialBrokenMail(snapshot: SerialBrokenSnapshot): {
     '',
     `Serial Number: ${clean(snapshot.serial)}`,
     `Item: ${clean(snapshot.itemLabel)}`,
-    `BU: ${clean(snapshot.buName)} (${clean(snapshot.buCode)})`,
+    `BU: ${formatBuLabel({ code: clean(snapshot.buCode), name: clean(snapshot.buName) })}`,
     `Nomor LP: ${clean(snapshot.caseNumber)}`,
     `Lokasi unit: ${clean(snapshot.locationName)}`,
     `Dilaporkan: ${clean(snapshot.reportedOn)}`,
@@ -109,9 +112,46 @@ export function serialBrokenMail(snapshot: SerialBrokenSnapshot): {
       lines.push(`Tautan berlaku sampai ${clean(snapshot.linkExpiresOn)}.`);
     }
   }
+  const body = [
+    paragraph('Ada Serial Number yang dinyatakan rusak.'),
+    '<div style="height:10px;line-height:10px;font-size:0">&nbsp;</div>',
+    kvTable([
+      { label: 'Serial Number', value: snapshot.serial },
+      { label: 'Item', value: snapshot.itemLabel },
+      { label: 'BU', value: formatBuLabel({ code: snapshot.buCode, name: snapshot.buName }) },
+      { label: 'Nomor LP', value: snapshot.caseNumber },
+      { label: 'Lokasi unit', value: snapshot.locationName },
+      { label: 'Dilaporkan', value: snapshot.reportedOn },
+      { label: 'Dinyatakan rusak', value: snapshot.brokenOn },
+      { label: 'Oleh', value: publicActorName(snapshot.actorName) },
+    ]),
+    '<div style="height:8px;line-height:8px;font-size:0">&nbsp;</div>',
+    paragraph('Catatan', { muted: true, size: 13 }),
+    paragraph(noteLines === '' ? '-' : noteLines),
+    ...(imageCount > 0
+      ? [paragraph(`(${imageCount} gambar, lihat di tautan)`, { muted: true, size: 13 })]
+      : []),
+    ...(snapshot.link !== ''
+      ? [
+          ctaButton(snapshot.link, 'Buka laporan'),
+          ...(snapshot.linkExpiresOn !== ''
+            ? [
+                `<div style="text-align:center">${paragraph(`Tautan berlaku sampai ${snapshot.linkExpiresOn}.`, { muted: true, size: 12 })}</div>`,
+              ]
+            : []),
+        ]
+      : []),
+  ];
+  const html = renderEmailDocument({
+    title: 'Serial Number rusak',
+    preheader: `${snapshot.serial}, ${snapshot.itemLabel}, ${snapshot.buCode}: dinyatakan rusak`,
+    headerBadge: { text: 'Rusak', tone: 'bad' },
+    body,
+  });
   return {
     subject: `Serial Number rusak: ${clean(snapshot.serial)} (${clean(snapshot.itemModel)}, ${clean(snapshot.buCode)})`,
     text: `${lines.join('\n')}\n`,
+    html,
   };
 }
 
@@ -225,6 +265,7 @@ export const serialAlertHandler: JobHandler = {
       bcc: lists.bcc,
       subject: mail.subject,
       text: mail.text,
+      html: mail.html,
     });
     return { progress: 100, done: { result: 'sent' } };
   },

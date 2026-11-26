@@ -39,14 +39,18 @@ const NONE_LEVELS = {
   dashboard: 'none',
 } as MeDto['permissions'];
 
-function makeUser(options: { handover?: boolean; serial?: boolean }): MeDto {
+function makeUser(options: {
+  handover?: boolean;
+  serial?: boolean;
+  dashboard?: 'view' | 'edit' | 'manage';
+}): MeDto {
   return {
     email: 'a@x.com',
     name: 'A',
     isSuperAdmin: false,
     canManageSerialSettings: false,
     sharedAccount: false,
-    permissions: NONE_LEVELS,
+    permissions: options.dashboard ? { ...NONE_LEVELS, dashboard: options.dashboard } : NONE_LEVELS,
     locations: options.handover
       ? [
           {
@@ -178,6 +182,22 @@ test('tanpa izin apa pun: pesan tanpa akses dan tanpa permintaan', async () => {
   await renderInRouter(<Harness />);
   expect(await screen.findByText('Anda belum punya akses ke data dashboard.')).toBeTruthy();
   expect(queryCalls()).toHaveLength(0);
+});
+
+test('izin Lihat dashboard: tanpa tombol Bagikan dan Tautan dibagikan', async () => {
+  me = makeUser({ handover: true, dashboard: 'view' });
+  await renderInRouter(<Harness />);
+  expect(await screen.findByRole('tab', { name: 'Serah Terima' })).toBeTruthy();
+  expect(screen.queryByRole('button', { name: 'Bagikan' })).toBeNull();
+  expect(screen.queryByRole('link', { name: 'Tautan dibagikan' })).toBeNull();
+});
+
+test('izin Ubah dashboard: tombol Bagikan tampil sebagai aksi utama (solid primary)', async () => {
+  me = makeUser({ handover: true, dashboard: 'edit' });
+  await renderInRouter(<Harness />);
+  const button = await screen.findByRole('button', { name: 'Bagikan' });
+  expect(button.className).toContain('bg-primary');
+  expect(screen.getByRole('link', { name: 'Tautan dibagikan' })).toBeTruthy();
 });
 
 test('mengubah chip Tanggal memanggil dashboard.query dengan rentang baru', async () => {

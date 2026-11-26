@@ -198,7 +198,10 @@ function numberCell(item: EmailWidgetInput, data: NumberData): string {
   const deltaRow = delta
     ? `<tr><td style="${FONT};font-size:12px;line-height:16px;color:${delta.color};padding-top:2px">${delta.arrow} ${esc(delta.text)}</td></tr>`
     : '';
-  return `<td class="ncell" width="50%" valign="top" style="padding:4px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="#ffffff" style="border:1px solid ${BORDER};border-radius:8px"><tr><td style="padding:12px 12px 2px;${FONT};font-size:13px;line-height:18px;color:${MUTED}">${esc(item.meta.title)}</td></tr><tr><td style="padding:0 12px;${FONT};font-size:30px;line-height:36px;font-weight:bold;color:${TEXT}">${esc(formatNumber(data.value))}</td></tr>${deltaRow}<tr><td height="10" style="${BLOCK}">&nbsp;</td></tr></table></td>`;
+  const noteRow = data.note
+    ? `<tr><td style="${FONT};font-size:12px;line-height:16px;color:${MUTED};padding-top:2px">${esc(data.note)}</td></tr>`
+    : '';
+  return `<td class="ncell" width="50%" valign="top" style="padding:4px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="#ffffff" style="border:1px solid ${BORDER};border-radius:8px"><tr><td style="padding:12px 12px 2px;${FONT};font-size:13px;line-height:18px;color:${MUTED}">${esc(item.meta.title)}</td></tr><tr><td style="padding:0 12px;${FONT};font-size:30px;line-height:36px;font-weight:bold;color:${TEXT}">${esc(formatNumber(data.value))}</td></tr>${deltaRow}${noteRow}<tr><td height="10" style="${BLOCK}">&nbsp;</td></tr></table></td>`;
 }
 
 function numberRow(items: { item: EmailWidgetInput; data: NumberData }[]): string {

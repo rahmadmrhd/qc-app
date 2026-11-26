@@ -145,7 +145,7 @@ describe('declare_broken dan antrean job', () => {
         '',
         'Serial Number: AB12',
         'Item: Merk Alfa',
-        'BU: A (A)',
+        'BU: A - A',
         'Nomor LP: LP/A/2611-0001',
         'Lokasi unit: Surabaya',
         'Dilaporkan: 2026-11-10',

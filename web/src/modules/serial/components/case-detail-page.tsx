@@ -1,3 +1,4 @@
+import { formatBuLabel } from '@shared/business-units';
 import type { SerialCaseDetailDto } from '@shared/contract';
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
@@ -70,7 +71,7 @@ function Summary({ report }: { report: SerialCaseDetailDto }) {
             label: 'Business Unit',
             value: (
               <Badge variant="outline" color="primary">
-                {report.buCode}
+                {formatBuLabel({ code: report.buCode, name: report.buName })}
               </Badge>
             ),
           },

@@ -1,3 +1,4 @@
+import { formatBuLabel } from '@shared/business-units';
 import { useQuery } from '@tanstack/react-query';
 import { LinkField, type LinkOption } from '@/components/link-field';
 import { serialBuOptionsQueryOptions } from '../queries';
@@ -5,13 +6,17 @@ import { serialBuOptionsQueryOptions } from '../queries';
 export interface BuChoice {
   id: string;
   code: string;
+  /** Nama BU (opsional); bersama `code` membentuk label `<kode> - <nama>`. */
+  name?: string | undefined;
 }
 
 /** BU yang boleh ditulis pengguna (`serials.buOptions`); `bus` kosong (`null`) selagi memuat atau bila gagal. */
 export function useWritableBus(enabled = true): { bus: BuChoice[] | null; loading: boolean } {
   const { data, isPending } = useQuery({ ...serialBuOptionsQueryOptions(), enabled });
   return {
-    bus: data ? data.businessUnits.map((bu) => ({ id: bu.id, code: bu.code })) : null,
+    bus: data
+      ? data.businessUnits.map((bu) => ({ id: bu.id, code: bu.code, name: bu.name }))
+      : null,
     loading: enabled && isPending,
   };
 }
@@ -27,9 +32,9 @@ export function choicesFor(
   fallback: readonly BuChoice[] = [],
 ): BuChoice[] {
   return allowedIds.flatMap((id) => {
-    const code = bus?.find((bu) => bu.id === id)?.code ?? fallback.find((bu) => bu.id === id)?.code;
+    const found = bus?.find((bu) => bu.id === id) ?? fallback.find((bu) => bu.id === id);
     // Id yang kodenya tidak diketahui disembunyikan: label tak boleh berupa id mentah.
-    return code === undefined ? [] : [{ id, code }];
+    return found === undefined ? [] : [{ ...found, id }];
   });
 }
 
@@ -63,7 +68,7 @@ export function RecheckBuField({
   placeholder = 'Pilih Business Unit…',
   required,
 }: RecheckBuFieldProps) {
-  const options: LinkOption[] = choices.map((bu) => ({ id: bu.id, label: bu.code }));
+  const options: LinkOption[] = choices.map((bu) => ({ id: bu.id, label: formatBuLabel(bu) }));
   return (
     <LinkField
       id={id}
@@ -72,14 +77,16 @@ export function RecheckBuField({
       placeholder={placeholder}
       value={value.buId === '' ? null : value.buId}
       labelOf={(buId) =>
-        buId === value.buId ? value.buLabel : (choices.find((bu) => bu.id === buId)?.code ?? buId)
+        buId === value.buId
+          ? value.buLabel
+          : formatBuLabel(choices.find((bu) => bu.id === buId) ?? {}) || buId
       }
       options={options}
       loading={loading ?? false}
       localFilter
       onChange={(buId) => {
         const bu = choices.find((choice) => choice.id === buId);
-        onChange({ buId: bu?.id ?? '', buLabel: bu?.code ?? '' });
+        onChange({ buId: bu?.id ?? '', buLabel: bu ? formatBuLabel(bu) : '' });
       }}
       error={error}
       disabled={disabled ?? false}

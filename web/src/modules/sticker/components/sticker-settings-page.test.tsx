@@ -91,20 +91,19 @@ async function openTab(name: string) {
 const digest = () => within(screen.getByRole('tabpanel', { name: 'Ringkasan stok' }));
 const postel = () => within(screen.getByRole('tabpanel', { name: 'Peringatan Postel' }));
 
-test('tiga tab: Minimum stok (aktif), Ringkasan stok, Peringatan Postel; judul halaman', async () => {
+test('dua tab: Ringkasan stok (aktif) dan Peringatan Postel; tanpa tab Minimum stok; judul halaman', async () => {
   await renderPage();
   expect(screen.getByRole('heading', { level: 1, name: 'Konfigurasi Stiker' })).toBeInTheDocument();
-  expect(screen.getByRole('tab', { name: 'Minimum stok', selected: true })).toBeInTheDocument();
-  expect(screen.getByRole('tab', { name: 'Ringkasan stok' })).toBeInTheDocument();
+  expect(screen.getByRole('tab', { name: 'Ringkasan stok', selected: true })).toBeInTheDocument();
   expect(screen.getByRole('tab', { name: 'Peringatan Postel' })).toBeInTheDocument();
+  expect(screen.queryByRole('tab', { name: 'Minimum stok' })).toBeNull();
+  expect(screen.getAllByRole('tab')).toHaveLength(2);
 });
 
-test('menampilkan minimum bawaan tiap jenis (jenis sistem diberi label) dan pengaturan email', async () => {
+test('tidak lagi menampilkan minimum stok bawaan (diatur di form Jenis); pengaturan email tampil', async () => {
   await renderPage();
-  expect(screen.getByLabelText('Minimum bawaan QC Hijau')).toHaveValue(0);
-  expect(screen.getByLabelText('Minimum bawaan Manual Book')).toHaveValue(50);
-  expect(screen.getByText('Sistem')).toBeInTheDocument();
-  await openTab('Ringkasan stok');
+  expect(screen.queryByText(/Minimum stok bawaan/)).toBeNull();
+  expect(screen.queryByLabelText(/Minimum bawaan/)).toBeNull();
   expect(screen.getByLabelText('Kirim ringkasan harian stok menipis dan habis')).toBeChecked();
   expect(
     screen.getByText(/Bagian "Habis": stiker aktif yang total stok semua lokasinya 0 atau kurang/),
@@ -118,12 +117,8 @@ test('menampilkan minimum bawaan tiap jenis (jenis sistem diberi label) dan peng
   expect(screen.getByText('qc@contoh.com')).toBeInTheDocument();
 });
 
-test('menyimpan: expectedUpdatedAt, alert, dan hanya jenis yang minimumnya berubah', async () => {
+test('menyimpan: expectedUpdatedAt dan alert saja, tanpa field defaults', async () => {
   const { onSave, onSavePostel } = await renderPage();
-  const input = screen.getByLabelText('Minimum bawaan QC Hijau');
-  await userEvent.clear(input);
-  await userEvent.type(input, '25');
-  await openTab('Ringkasan stok');
   const hour = digest().getByLabelText('Jam kirim (WIB)');
   await userEvent.clear(hour);
   await userEvent.type(hour, '9');
@@ -138,20 +133,21 @@ test('menyimpan: expectedUpdatedAt, alert, dan hanya jenis yang minimumnya berub
       digestHour: 9,
       intervalDays: 1,
     },
-    defaults: [{ typeId: 't-bu', defaultMinQty: 25 }],
   });
+  expect(onSave.mock.calls[0]?.[0]).not.toHaveProperty('defaults');
   expect(onSavePostel).not.toHaveBeenCalled();
 });
 
 test('isian dipertahankan saat berpindah tab (pindah ke Postel lalu kembali)', async () => {
   await renderPage();
-  const input = screen.getByLabelText('Minimum bawaan QC Hijau');
-  await userEvent.clear(input);
-  await userEvent.type(input, '25');
+  await openTab('Ringkasan stok');
+  const hour = digest().getByLabelText('Jam kirim (WIB)');
+  await userEvent.clear(hour);
+  await userEvent.type(hour, '11');
   await openTab('Peringatan Postel');
   await addMailAddress(TO_FIELD, 'baru@contoh.com');
-  await openTab('Minimum stok');
-  expect(screen.getByLabelText('Minimum bawaan QC Hijau')).toHaveValue(25);
+  await openTab('Ringkasan stok');
+  expect(digest().getByLabelText('Jam kirim (WIB)')).toHaveValue(11);
   await openTab('Peringatan Postel');
   expect(postel().getByText('baru@contoh.com')).toBeInTheDocument();
 });
@@ -165,18 +161,15 @@ test('Simpan di tab Postel hanya menyimpan peringatan Postel; tab lain hanya pen
   expect(onSave).not.toHaveBeenCalled();
 });
 
-test('galat validasi di tab lain membuka tab itu dan memberi titik galat pada tabnya', async () => {
+test('galat validasi menandai tab Ringkasan stok dengan titik galat', async () => {
   const { onSave } = await renderPage();
-  await openTab('Ringkasan stok');
   const hour = digest().getByLabelText('Jam kirim (WIB)');
   await userEvent.clear(hour);
   await userEvent.type(hour, '24');
-  await openTab('Minimum stok');
   await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
   expect(onSave).not.toHaveBeenCalled();
-  expect(await screen.findByRole('tab', { name: 'Ringkasan stok', selected: true })).toBeVisible();
   expect(await screen.findByText('Jam harus bilangan bulat 0 sampai 23')).toBeInTheDocument();
-  const tab = screen.getByRole('tab', { name: 'Ringkasan stok' });
+  const tab = screen.getByRole('tab', { name: 'Ringkasan stok', selected: true });
   expect(tab.querySelector('[data-slot="tab-error-dot"]')).not.toBeNull();
 });
 
@@ -271,7 +264,7 @@ test('batas 20 penerima per daftar', async () => {
   expect(await screen.findByText(/Maksimal 20 pilihan/)).toBeInTheDocument();
 });
 
-test('jam di luar 0-23 atau minimum negatif tidak dikirim', async () => {
+test('jam di luar 0-23 tidak dikirim', async () => {
   const { onSave } = await renderPage();
   await openTab('Ringkasan stok');
   const hour = digest().getByLabelText('Jam kirim (WIB)');
@@ -280,18 +273,6 @@ test('jam di luar 0-23 atau minimum negatif tidak dikirim', async () => {
   await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
   expect(onSave).not.toHaveBeenCalled();
   expect(await screen.findByText('Jam harus bilangan bulat 0 sampai 23')).toBeInTheDocument();
-});
-
-test('minimum bawaan negatif ditolak dan tab Minimum stok diberi titik galat', async () => {
-  const { onSave } = await renderPage();
-  const input = screen.getByLabelText('Minimum bawaan QC Hijau');
-  await userEvent.clear(input);
-  await userEvent.type(input, '-1');
-  await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
-  expect(onSave).not.toHaveBeenCalled();
-  expect(await screen.findByText(/Minimum bawaan QC Hijau: bilangan bulat 0 sampai/)).toBeVisible();
-  const tab = screen.getByRole('tab', { name: 'Minimum stok' });
-  expect(tab.querySelector('[data-slot="tab-error-dot"]')).not.toBeNull();
 });
 
 test('kartu peringatan SMTP hanya bila server belum punya SMTP', async () => {
@@ -343,7 +324,7 @@ test('ponsel (360 px): tab dan bar aksi bawah (Batal, Simpan) tersedia; Simpan m
   const media = mockMatchMedia(false);
   try {
     const { onSave } = await renderPage();
-    expect(screen.getByRole('tab', { name: 'Minimum stok' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Ringkasan stok' })).toBeInTheDocument();
     const bar = screen.getByRole('region', { name: 'Aksi form' });
     expect(within(bar).getByRole('button', { name: 'Batal' })).toBeInTheDocument();
     await userEvent.click(within(bar).getByRole('button', { name: 'Simpan' }));

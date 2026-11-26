@@ -80,10 +80,11 @@ describe('baca lewat riwayat BU', () => {
       {
         buId: 'bu-a',
         buCode: 'A',
+        buName: 'A',
         firstAt: '2026-11-12T00:00:00.000Z',
         leftAt: '2026-11-13T00:00:00.000Z',
       },
-      { buId: 'bu-b', buCode: 'B', firstAt: '2026-11-13T00:00:00.000Z', leftAt: '' },
+      { buId: 'bu-b', buCode: 'B', buName: 'B', firstAt: '2026-11-13T00:00:00.000Z', leftAt: '' },
     ]);
     const other = await call(C_USER, 'serials.get', { id: 'sn-pindah' });
     expect(other.ok).toBe(false);
