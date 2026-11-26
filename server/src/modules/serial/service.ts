@@ -886,7 +886,8 @@ export async function listSerials(
   if (custodies) filter.custodies = custodies;
   if (input.from !== undefined) filter.from = input.from;
   if (input.to !== undefined) filter.to = input.to;
-  if (input.createdBy !== undefined) filter.createdBy = input.createdBy;
+  if (input.createdBys !== undefined) filter.createdBys = input.createdBys;
+  else if (input.createdBy !== undefined) filter.createdBy = input.createdBy;
   if (input.cursor !== undefined) {
     const match = /^(.+)~(.+)$/.exec(input.cursor);
     if (match?.[1] && match[2]) filter.cursor = { createdAt: match[1], id: match[2] };

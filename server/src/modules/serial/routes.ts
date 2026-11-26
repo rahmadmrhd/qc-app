@@ -3,6 +3,7 @@ import { expectNull, validateIdBatch } from '@server/core/validate';
 import { actOnSerial } from './act';
 import { getSerialSettings, saveSerialSettings } from './alert';
 import { getSerialCase, listSerialCases } from './case-list';
+import { queryCreatorOptions } from './creator-options';
 import { serialHistory } from './history';
 import { getProof, removeProof, replaceProof, retryProof, uploadProof } from './proof/service';
 import {
@@ -36,6 +37,7 @@ import {
   validateApplyStickersBatch,
   validateGetSerial,
   validateGetSerialCase,
+  validateListSerialCreatorOptions,
   validateListSerialItemOptions,
   validateSaveSerialBatch,
   validateSaveSerialServiceSettings,
@@ -54,6 +56,7 @@ import {
 
 type SerialMethod =
   | 'serials.itemOptions'
+  | 'serials.creatorOptions'
   | 'serials.buOptions'
   | 'serials.stickerOptions'
   | 'serials.locationOptions'
@@ -105,6 +108,12 @@ export function serialRoutes(): Pick<RouteTable, SerialMethod> {
       permission: READ_PERMISSION,
       validate: validateListSerialItemOptions,
       handler: (input, ctx) => queryItemOptions(ctx.env, ctx.user, input),
+    },
+    // Pilihan filter "Dicatat oleh": pencatat serial yang boleh dibaca pemanggil (tanpa izin `access`).
+    'serials.creatorOptions': {
+      permission: READ_PERMISSION,
+      validate: validateListSerialCreatorOptions,
+      handler: (input, ctx) => queryCreatorOptions(ctx.env, ctx.user, input),
     },
     // Pemilih BU pencatatan: terbuka bagi pembaca seperti `serials.itemOptions`; cakupan BU dihitung handler.
     'serials.buOptions': {

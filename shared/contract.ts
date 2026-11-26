@@ -1605,6 +1605,10 @@ export interface ApiContract {
   'postelSettings.save': { input: SavePostelSettingsInput; output: PostelSettingsDto };
   'postels.itemOptions': { input: ListPostelItemOptionsInput; output: PostelItemOptionsPageDto };
   'serials.itemOptions': { input: ListSerialItemOptionsInput; output: SerialItemOptionsPageDto };
+  'serials.creatorOptions': {
+    input: ListSerialCreatorOptionsInput;
+    output: SerialCreatorOptionsPageDto;
+  };
   'serials.stickerOptions': { input: SerialStickerOptionsInput; output: SerialStickerOptionsDto };
   'serials.locationOptions': { input: null; output: SerialLocationOptionsDto };
   'serials.buOptions': { input: null; output: SerialBuOptionsDto };
@@ -2058,6 +2062,8 @@ export interface SerialListInput {
   from?: string;
   to?: string;
   createdBy?: string;
+  /** Pengganti `createdBy`: pembuat catatan PERTAMA serial (email), salah satu dari daftar; jamak menang atas tunggal, maks. 20, tanpa duplikat. */
+  createdBys?: string[];
   /** Filter jamak OPSIONAL: bila dikirim bersama field tunggal di atas, yang jamak menang; daftar tak kosong, tanpa duplikat, maks. 20 nilai; hanya menyempit (hak baca pemanggil tetap berlaku). Pengganti `buId` (serial pernah/ada di salah satu BU itu). */
   buIds?: string[];
   /** Pengganti `itemId`. */
@@ -2386,6 +2392,26 @@ export interface ListSerialItemOptionsInput {
 }
 export interface SerialItemOptionsPageDto {
   items: SerialItemOptionDto[];
+  nextCursor: string | null;
+}
+/** Pilihan filter "Dicatat oleh": pencatat serial yang boleh dibaca pemanggil. */
+export interface ListSerialCreatorOptionsInput {
+  /** Cari nama atau email; minimal 2 karakter bila diisi (tanpa = semua, berkursor). */
+  query?: string;
+  /** Maks. 20 email: hanya meresolusi nama nilai terpilih (hasil = pencatat yang boleh dibaca; `query`/`cursor`/`limit` diabaikan). */
+  ids?: string[];
+  cursor?: string;
+  /** 1-100, bawaan 50. */
+  limit?: number;
+}
+export interface SerialCreatorOptionDto {
+  /** Email pencatat (nilai yang dikirim ke `createdBys`). */
+  email: string;
+  /** Nama pengguna; bila tak ada baris pengguna hidup = email. */
+  name: string;
+}
+export interface SerialCreatorOptionsPageDto {
+  items: SerialCreatorOptionDto[];
   nextCursor: string | null;
 }
 /** Lokasi aktif yang boleh dipilih saat mencatat serial (tanpa penugasan lokasi: spek §3 butir 3, §11 butir 8). */

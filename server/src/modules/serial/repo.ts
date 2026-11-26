@@ -373,6 +373,8 @@ export interface SerialListFilter {
   from?: string;
   to?: string;
   createdBy?: string;
+  /** Pembuat pertama salah satu dari daftar (menang atas `createdBy`). */
+  createdBys?: readonly string[];
   /**
    * Hanya serial TERHAPUS yang boleh dipulihkan pemanggil (`restorable` = `restorableSerialsSql`); bawaan hanya yang
    * hidup. Pemanggil memastikan hak (`FORBIDDEN` bila tanpa BU ber-`manage`).
@@ -424,7 +426,11 @@ export async function listSerialRows(db: Preparer, filter: SerialListFilter): Pr
     common.push('s.test_date <= ?');
     commonBinds.push(filter.to);
   }
-  if (filter.createdBy !== undefined) {
+  if (filter.createdBys !== undefined) {
+    if (filter.createdBys.length === 0) return [];
+    common.push(`s.created_by IN (${placeholders(filter.createdBys.length)})`);
+    commonBinds.push(...filter.createdBys);
+  } else if (filter.createdBy !== undefined) {
     common.push('s.created_by = ?');
     commonBinds.push(filter.createdBy);
   }

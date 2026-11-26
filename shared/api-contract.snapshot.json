@@ -1231,6 +1231,18 @@
     "status": 200
   },
   {
+    "id": "serials.creatorOptions",
+    "verb": "GET",
+    "path": "/serials/creator-options",
+    "query": {
+      "cursor": "string",
+      "ids": "list",
+      "limit": "number",
+      "query": "string"
+    },
+    "status": 200
+  },
+  {
     "id": "serials.get",
     "verb": "GET",
     "path": "/serials/{id}",
@@ -1268,6 +1280,7 @@
       "buId": "string",
       "buIds": "list",
       "createdBy": "string",
+      "createdBys": "list",
       "cursor": "string",
       "custodies": "list",
       "custody": "string",
