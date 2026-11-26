@@ -71,11 +71,11 @@ describe('R13: AppSidebar di rentang overlay (rel ikon yang dipotong)', () => {
     const onOpenChange = vi.fn();
     render(<Tree open={false} onOpenChange={onOpenChange} />);
     // Anak induk bukan aktif: belum ada. Pohon yang sama dengan keadaan terbuka (tak ada pertukaran komponen).
-    expect(screen.queryByRole('link', { name: 'Katalog' })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Katalog & Stok' })).toBeNull();
     await userEvent.click(screen.getByRole('button', { name: 'Stiker' }));
     expect(onOpenChange).toHaveBeenCalledWith(true);
     expect(screen.queryByRole('menuitem')).toBeNull();
-    expect(await screen.findByRole('link', { name: 'Katalog' })).toBeInTheDocument();
+    expect(await screen.findByRole('link', { name: 'Katalog & Stok' })).toBeInTheDocument();
   });
 
   test('tertutup: induk aktif tetap menampilkan anaknya di DOM (disembunyikan lewat transisi CSS, bukan dilepas) dan ditandai aktif', () => {
@@ -140,7 +140,7 @@ describe('R13: AppSidebar di rentang overlay (rel ikon yang dipotong)', () => {
     });
     expect(document.querySelector('[data-slot="sidebar"]')).toHaveAttribute('data-collapsible', '');
     await userEvent.click(screen.getByRole('button', { name: 'Stiker' }));
-    expect(await screen.findByRole('link', { name: 'Katalog' })).toBeInTheDocument();
+    expect(await screen.findByRole('link', { name: 'Katalog & Stok' })).toBeInTheDocument();
     expect(screen.queryByRole('menuitem')).toBeNull();
   });
 });

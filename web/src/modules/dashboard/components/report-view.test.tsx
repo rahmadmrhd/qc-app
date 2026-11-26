@@ -145,7 +145,7 @@ describe('ReportView: pemilik', () => {
     await view();
     expect(await screen.findByRole('heading', { name: 'Ringkasan mingguan' })).toBeTruthy();
     expect(screen.getByText('Senin 08.00 WIB')).toBeTruthy();
-    expect(screen.getByText('B1 · BU Satu')).toBeTruthy();
+    expect(screen.getByText('B1 - BU Satu')).toBeTruthy();
     const handover = screen.getByRole('region', { name: 'Serah Terima' });
     expect(within(handover).getByText(/Status papan: Selesai/)).toBeTruthy();
     expect(screen.getByRole('region', { name: 'Serial Number' })).toBeTruthy();

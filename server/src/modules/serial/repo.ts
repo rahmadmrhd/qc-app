@@ -187,6 +187,7 @@ export interface SerialRow {
   client_id: string;
   bu_id: string;
   bu_code: string;
+  bu_name: string;
   serial: string;
   item_id: string;
   brand_name: string | null;
@@ -220,7 +221,7 @@ export interface SerialRow {
 }
 
 const SERIAL_COLUMNS =
-  "s.id, s.client_id, s.bu_id, bu.code AS bu_code, s.serial, s.item_id, b.name AS brand_name, i.model, s.test_date, s.sample, s.note, s.location_id, l.name AS location_name, s.recorded_location_id, s.status, s.custody, s.open_case_id, s.transit_from_location_id, s.transit_to_location_id, s.transit_on, lf.name AS transit_from_name, lt.name AS transit_to_name, c.number AS open_case_number, EXISTS(SELECT 1 FROM serial_proof_photos pp WHERE pp.serial_id = s.id) AS has_proof, (SELECT COUNT(*) FROM serial_proof_photos pf WHERE pf.serial_id = s.id AND pf.state = 'failed') AS proof_problem, s.created_at, s.created_by, s.updated_at, s.updated_by, s.deleted_at, s.deleted_by";
+  "s.id, s.client_id, s.bu_id, bu.code AS bu_code, bu.name AS bu_name, s.serial, s.item_id, b.name AS brand_name, i.model, s.test_date, s.sample, s.note, s.location_id, l.name AS location_name, s.recorded_location_id, s.status, s.custody, s.open_case_id, s.transit_from_location_id, s.transit_to_location_id, s.transit_on, lf.name AS transit_from_name, lt.name AS transit_to_name, c.number AS open_case_number, EXISTS(SELECT 1 FROM serial_proof_photos pp WHERE pp.serial_id = s.id) AS has_proof, (SELECT COUNT(*) FROM serial_proof_photos pf WHERE pf.serial_id = s.id AND pf.state = 'failed') AS proof_problem, s.created_at, s.created_by, s.updated_at, s.updated_by, s.deleted_at, s.deleted_by";
 
 const SERIAL_FROM =
   'FROM serials s JOIN business_units bu ON bu.id = s.bu_id LEFT JOIN items i ON i.id = s.item_id LEFT JOIN brands b ON b.id = i.brand_id LEFT JOIN locations l ON l.id = s.location_id LEFT JOIN locations lf ON lf.id = s.transit_from_location_id LEFT JOIN locations lt ON lt.id = s.transit_to_location_id LEFT JOIN serial_cases c ON c.id = s.open_case_id';
@@ -247,6 +248,7 @@ export async function loadSerialRowAny(db: Preparer, id: string): Promise<Serial
 export interface SerialBuHistoryRow {
   bu_id: string;
   bu_code: string;
+  bu_name: string;
   first_at: string;
   left_at: string;
 }
@@ -255,7 +257,7 @@ export interface SerialBuHistoryRow {
 export async function loadBuHistory(db: Preparer, serialId: string): Promise<SerialBuHistoryRow[]> {
   const rows = await db
     .prepare(
-      'SELECT h.bu_id, bu.code AS bu_code, h.first_at, h.left_at FROM serial_business_units h JOIN business_units bu ON bu.id = h.bu_id WHERE h.serial_id = ? ORDER BY h.first_at, h.bu_id',
+      'SELECT h.bu_id, bu.code AS bu_code, bu.name AS bu_name, h.first_at, h.left_at FROM serial_business_units h JOIN business_units bu ON bu.id = h.bu_id WHERE h.serial_id = ? ORDER BY h.first_at, h.bu_id',
     )
     .bind(serialId)
     .all<SerialBuHistoryRow>();

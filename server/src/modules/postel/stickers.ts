@@ -85,21 +85,32 @@ export async function pickPostelStickerName(
   }
 }
 
-/** Stiker baru bagi sebuah catatan: aktif, minimum awal = minimum bawaan jenis, tanpa gambar. */
+/** Isian awal stiker dari form stiker (Postel dibuat langsung dari katalog); kosong = bawaan. */
+export interface NewPostelStickerOverrides {
+  alias?: string;
+  fileId?: string;
+  minQty?: number;
+}
+
+/**
+ * Stiker baru bagi sebuah catatan: aktif, minimum awal = minimum bawaan jenis (kecuali `overrides.minQty`), tanpa alias
+ * dan gambar (kecuali `overrides`).
+ */
 export function newPostelStickerStmt(
   db: Preparer,
   type: StickerTypeRecord,
   name: string,
   actor: string,
   now: string,
+  overrides: NewPostelStickerOverrides = {},
 ): { stickerId: string; statement: DbStatement } {
   const sticker: StickerRecord = {
     id: newId(),
     typeId: type.id,
     name,
-    alias: '',
-    fileId: '',
-    minQty: type.defaultMinQty,
+    alias: overrides.alias ?? '',
+    fileId: overrides.fileId ?? '',
+    minQty: overrides.minQty ?? type.defaultMinQty,
     status: 'active',
     createdAt: now,
     updatedAt: now,

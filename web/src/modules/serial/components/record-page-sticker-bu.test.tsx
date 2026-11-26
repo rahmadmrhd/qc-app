@@ -48,7 +48,12 @@ beforeEach(() => {
     if (id === 'serials.itemOptions') {
       // Item i1 hanya terdaftar di BU1 (BU2 adalah BU lain: serial boleh dicatat ke BU bebas).
       const items = [
-        { id: 'i1', label: 'Cisco C9200', buIds: ['b1'], buOptions: [{ id: 'b1', code: 'BU1' }] },
+        {
+          id: 'i1',
+          label: 'Cisco C9200',
+          buIds: ['b1'],
+          buOptions: [{ id: 'b1', code: 'BU1', name: 'Business Unit 1' }],
+        },
       ];
       const ids = input.itemIds as string[] | undefined;
       return Promise.resolve({
@@ -104,7 +109,7 @@ function renderPage() {
 async function pickItemAndLocation() {
   await pickLink(screen, 'Item', 'Cisco C9200');
   await expectLinkValue(screen, 'Lokasi', 'Jakarta (JKT)');
-  await expectLinkValue(screen, 'Business Unit', 'BU1');
+  await expectLinkValue(screen, 'Business Unit', 'BU1 - Business Unit 1');
 }
 
 async function paste(text: string) {
@@ -125,21 +130,21 @@ test('Default: mengganti BU meminta ulang stiker untuk (item, BU baru) dan menge
   await userEvent.click(stickerB);
   expect(within(region).getByRole('checkbox', { name: 'Stiker B' })).not.toBeChecked();
 
-  await pickLink(screen, 'Business Unit', 'BU2');
+  await pickLink(screen, 'Business Unit', 'BU2 - Business Unit 2');
   expect(await within(region).findByRole('checkbox', { name: 'Segel BU2' })).toBeChecked();
   expect(askedFor('i1', 'b2')).toBe(true);
   expect(within(region).queryByRole('checkbox', { name: 'Stiker A' })).toBeNull();
   expect(within(region).queryByRole('checkbox', { name: 'Stiker B' })).toBeNull();
 
   // Kembali ke BU1: pilihan lama (Stiker B dilepas) tidak terbawa, semuanya tercentang lagi.
-  await pickLink(screen, 'Business Unit', 'BU1');
+  await pickLink(screen, 'Business Unit', 'BU1 - Business Unit 1');
   expect(await within(region).findByRole('checkbox', { name: 'Stiker B' })).toBeChecked();
 });
 
 test('Default: serial yang dicatat ke BU lain memotong stiker BU itu saat disimpan', async () => {
   renderPage();
   await pickItemAndLocation();
-  await pickLink(screen, 'Business Unit', 'BU2');
+  await pickLink(screen, 'Business Unit', 'BU2 - Business Unit 2');
   await screen.findByRole('checkbox', { name: 'Segel BU2' });
   await paste('A1');
   await userEvent.click(screen.getByRole('button', { name: /^Simpan/ }));
@@ -156,7 +161,7 @@ test('Ubah baris: mengganti BU meminta ulang stiker (item, BU baru) dan mereset 
   await userEvent.click(await within(dialog).findByRole('checkbox', { name: 'Stiker B' }));
   expect(within(dialog).getByRole('checkbox', { name: 'Stiker B' })).not.toBeChecked();
 
-  await pickLink(screen, 'Business Unit baris', 'BU2');
+  await pickLink(screen, 'Business Unit baris', 'BU2 - Business Unit 2');
   expect(await within(dialog).findByRole('checkbox', { name: 'Segel BU2' })).toBeChecked();
   expect(within(dialog).queryByRole('checkbox', { name: 'Stiker A' })).toBeNull();
   expect(askedFor('i1', 'b2')).toBe(true);
@@ -180,7 +185,7 @@ test('Ubah massal: BU baris diganti, pilihan stiker eksplisit BU lama dibuang da
 
   await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih baris A1' }));
   await userEvent.click(screen.getByRole('button', { name: 'Edit' }));
-  await pickLink(screen, 'Business Unit (ubah massal)', 'BU2');
+  await pickLink(screen, 'Business Unit (ubah massal)', 'BU2 - Business Unit 2');
   await userEvent.click(screen.getByRole('button', { name: 'Terapkan ke 1 baris' }));
   // Pilihan lama tidak terbawa ke BU baru.
   expect(screen.queryByText(/^Stiker A ×/)).toBeNull();

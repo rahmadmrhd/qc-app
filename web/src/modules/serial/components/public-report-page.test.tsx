@@ -98,7 +98,7 @@ test('menampilkan nomor LP, hasil, detail unit, masa berlaku, dan linimasa tanpa
   const unit = screen.getByRole('region', { name: 'Unit' });
   expect(within(unit).getByText('ABC123')).toBeInTheDocument();
   expect(within(unit).getByText('Cisco C9200')).toBeInTheDocument();
-  expect(within(unit).getByText('BU1 · Satu')).toBeInTheDocument();
+  expect(within(unit).getByText('BU1 - Satu')).toBeInTheDocument();
   expect(within(unit).getByText('Surabaya')).toBeInTheDocument();
   const list = screen.getByRole('list', { name: 'Linimasa' });
   // Hanya riwayat saat ini (seq 9) yang tampil sejak awal; riwayat sebelumnya dilipat jadi satu kelompok.

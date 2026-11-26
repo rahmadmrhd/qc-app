@@ -9,6 +9,7 @@ import { appError } from '@server/core/errors';
 import { liveWhere } from '@server/core/soft-delete';
 import { FILTER_LIST_MAX } from '@server/core/validate';
 import { loadUserContext, type UserContext } from '@server/modules/access/context';
+import { formatBuLabel } from '@shared/business-units';
 import type {
   DashboardGroupId,
   DashboardOptionKind,
@@ -189,11 +190,11 @@ const marks = (values: readonly unknown[]) => values.map(() => '?').join(', ');
 async function buOptions(env: Env, ids: readonly string[]): Promise<PublicFilterOption[]> {
   if (ids.length === 0) return [];
   const rows = await env.DB.prepare(
-    `SELECT b.id, b.name FROM business_units b WHERE ${liveWhere('b')} AND b.id IN (${marks(ids)}) ORDER BY b.name, b.id`,
+    `SELECT b.id, b.code, b.name FROM business_units b WHERE ${liveWhere('b')} AND b.id IN (${marks(ids)}) ORDER BY b.code, b.name, b.id`,
   )
     .bind(...ids)
-    .all<{ id: string; name: string }>();
-  return rows.results.map((row) => ({ value: row.id, label: row.name }));
+    .all<{ id: string; code: string; name: string }>();
+  return rows.results.map((row) => ({ value: row.id, label: formatBuLabel(row) }));
 }
 
 async function locationOptions(env: Env, ids: readonly string[]): Promise<PublicFilterOption[]> {

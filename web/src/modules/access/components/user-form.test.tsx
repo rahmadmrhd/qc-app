@@ -254,7 +254,7 @@ test('mengirim buAssignments: Semua BU menjadi null dan BU tertentu tetap id-nya
   await pickLink(screen, 'BU penugasan 1', 'Semua BU');
   await pickLink(screen, 'Role penugasan BU 1', 'QC Staff');
   await userEvent.click(screen.getByRole('button', { name: 'Tambah penugasan BU' }));
-  await pickLink(screen, 'BU penugasan 2', 'Retail (RTL)');
+  await pickLink(screen, 'BU penugasan 2', 'RTL - Retail');
   await pickLink(screen, 'Role penugasan BU 2', 'QC Staff');
   await submit();
   await vi.waitFor(() =>
@@ -295,7 +295,7 @@ test('BU yang sudah dipakai atau nonaktif tidak ditawarkan pada penugasan BU lai
   await userEvent.click(screen.getByRole('button', { name: 'Tambah penugasan BU' }));
   const options = await linkOptionNames(screen, 'BU penugasan 2');
   expect(options).not.toContain('Semua BU');
-  expect(options).toContain('Retail (RTL)');
+  expect(options).toContain('RTL - Retail');
   expect(options.join(' ')).not.toContain('Lama');
 });
 
@@ -306,7 +306,7 @@ test('penugasan BU nonaktif yang sudah ada tampil dengan label nonaktif dan ikut
   });
   await openTab('Penugasan BU');
   expect(screen.getByRole('combobox', { name: 'BU penugasan 1' })).toHaveValue(
-    'Lama (OLD) — nonaktif',
+    'OLD - Lama — nonaktif',
   );
   await submit();
   await vi.waitFor(() =>

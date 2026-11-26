@@ -289,7 +289,7 @@ test('mode default: tanpa sumber link dan ekspor; nama, BU, dan penempatan nama 
   expect(onSubmit).not.toHaveBeenCalled();
   await openTab('Isi label');
   await userEvent.type(screen.getByLabelText('Nama konfigurasi default'), 'Standar');
-  await pickLink(screen, 'Business Unit', 'Spectrum');
+  await pickLink(screen, 'Business Unit', 'SPC - Spectrum');
   await pickSelect(screen, 'Penempatan nama Manual Book', 'Subtitle');
   await openTab('Logo dan bingkai');
   await userEvent.click(screen.getByRole('radio', { name: 'Logo 1' }));

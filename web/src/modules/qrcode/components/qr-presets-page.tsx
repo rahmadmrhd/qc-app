@@ -1,3 +1,4 @@
+import { formatBuLabel } from '@shared/business-units';
 import type { BusinessUnitOptionDto, QrPresetDto } from '@shared/contract';
 import type { ReactNode } from 'react';
 import { type DataColumn, DataTable, LinkCell, type RowAction } from '@/components/data-table';
@@ -78,12 +79,12 @@ export function QrPresetsPage({
           <LinkCell
             to="/access/business-units/$businessUnitId"
             params={{ businessUnitId: unit.id }}
-            title={unit.name}
+            title={formatBuLabel(unit)}
           >
-            {unit.name}
+            {formatBuLabel(unit)}
           </LinkCell>
         ) : (
-          unit.name
+          formatBuLabel(unit)
         );
       },
     },

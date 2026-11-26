@@ -88,7 +88,7 @@ describe('collectLegacyIds / replaceLegacyIds (murni)', () => {
   const NON_ID_CONTRACT_KEYS = new Set(
     (
       'action, actions, activeExpiresOn, activeNumber, actor, actorName, after, alias, aliases, at, auth, author, before, ' +
-      'body, brand, buCode, buCodes, buLabel, by, caption, capturedAt, changedFields, changelog, checksum, closedBy, ' +
+      'body, brand, buCode, buCodes, buLabel, buName, by, caption, capturedAt, changedFields, changelog, checksum, closedBy, ' +
       'closedByTeam, closedOn, code, completedAt, completedBy, createdAt, createdBy, cursor, customerName, description, ' +
       'detail, documentName, email, endpoint, error, etag, expectedUpdatedAt, expiresAt, expiresOn, exportedAt, exportedBy, ' +
       'failedAt, field, filename, firmware, firstAt, footer, from, guideName, inactiveCustomerNames, itemLabel, label, ' +

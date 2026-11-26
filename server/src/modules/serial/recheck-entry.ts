@@ -21,7 +21,7 @@ import {
   type SerialStatus,
   serialProblem,
 } from '@shared/serials';
-import { canWriteBu, writableBuIds } from './access';
+import { canWriteBu, readableBuIds, writableBuIds } from './access';
 import { stickerRaise } from './act';
 import { involvedBuIds, moveBuStatements } from './bu-history';
 import { loadStampItemInfo, planProofAttach } from './proof/attach';
@@ -330,6 +330,7 @@ interface ExistingRow {
   item_id: string;
   bu_id: string;
   bu_code: string;
+  bu_name: string;
   status: string;
   open_case_id: string;
   brand_name: string | null;
@@ -355,7 +356,7 @@ export async function lookupSerialsMany(
   if (serials.length === 0) return { found: [] };
   const marks = serials.map(() => '?').join(', ');
   const rows = await env.DB.prepare(
-    `SELECT s.id, s.serial, s.item_id, s.bu_id, bu.code AS bu_code, s.status, s.open_case_id, b.name AS brand_name, i.model, i.proof_required, i.proof_min FROM serials s JOIN business_units bu ON bu.id = s.bu_id LEFT JOIN items i ON i.id = s.item_id LEFT JOIN brands b ON b.id = i.brand_id WHERE ${liveWhere('s')} AND s.serial IN (${marks}) ORDER BY ${SERIAL_PICK_ORDER_SQL}`,
+    `SELECT s.id, s.serial, s.item_id, s.bu_id, bu.code AS bu_code, bu.name AS bu_name, s.status, s.open_case_id, b.name AS brand_name, i.model, i.proof_required, i.proof_min FROM serials s JOIN business_units bu ON bu.id = s.bu_id LEFT JOIN items i ON i.id = s.item_id LEFT JOIN brands b ON b.id = i.brand_id WHERE ${liveWhere('s')} AND s.serial IN (${marks}) ORDER BY ${SERIAL_PICK_ORDER_SQL}`,
   )
     .bind(...serials)
     .all<ExistingRow>();
@@ -378,6 +379,8 @@ export async function lookupSerialsMany(
   }
   // BU nonaktif tidak dapat menjadi tujuan (server menolaknya); BU saat ini tetap boleh walau nonaktif.
   const writableAll = writableBuIds(user);
+  // Pengungkapan lintas BU tetap minimal (keputusan pemilik 2026-11-25): nama BU hanya untuk BU yang terbaca pengguna.
+  const readable = new Set(readableBuIds(user));
   const activeWritable = new Set(
     writableAll.length === 0
       ? []
@@ -401,6 +404,7 @@ export async function lookupSerialsMany(
       itemLabel: `${entry.brand_name ?? ''} ${(entry.model ?? '').trim()}`.trim(),
       buId,
       buCode: entry.bu_code.trim(),
+      ...(readable.has(buId) ? { buName: entry.bu_name.trim() } : {}),
       status: (SERIAL_STATUS_SET.includes(status) ? status : 'good') as SerialStatus,
       hasOpenCase: entry.open_case_id.trim() !== '',
       proofRequired: required,

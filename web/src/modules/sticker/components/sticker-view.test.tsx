@@ -171,7 +171,7 @@ test('judul memakai alias; badge status dan Menipis; tab Detail memuat identitas
     'href',
     '/sticker/types/tp-bu',
   );
-  expect(screen.getByRole('link', { name: 'RTL' })).toHaveAttribute(
+  expect(screen.getByRole('link', { name: 'RTL - Retail' })).toHaveAttribute(
     'href',
     '/access/business-units/bu-a',
   );
@@ -181,8 +181,8 @@ test('judul memakai alias; badge status dan Menipis; tab Detail memuat identitas
 
 test('tanpa hak membuka BU: kode BU menjadi lencana, bukan tautan', async () => {
   await renderView({ canOpenBusinessUnit: false });
-  expect(screen.queryByRole('link', { name: 'RTL' })).toBeNull();
-  expect(screen.getByText('RTL')).toHaveAttribute('title', 'Retail');
+  expect(screen.queryByRole('link', { name: 'RTL - Retail' })).toBeNull();
+  expect(screen.getByText('RTL - Retail')).toHaveAttribute('title', 'Retail');
 });
 
 test('tanpa panel stok: hanya tab Detail (tab Stok dan Riwayat tidak ada)', async () => {
@@ -380,4 +380,33 @@ test('jenis terhapus: tautan ke View jenis hanya bagi pengelola; non-pengelola m
   cleanup();
   await renderView({ sticker: { ...sticker, typeDeleted: true }, canManage: true });
   expect(screen.getByRole('link', { name: 'QC Hijau' })).toBeInTheDocument();
+});
+
+test('stiker Postel menampilkan tautan Buka Postel hanya bila ada id dan izin', async () => {
+  const postel = { ...sticker, postelId: 'p1' };
+  await renderView({ sticker: postel, openPostelHref: (id) => `/postel/${id}` });
+  const link = screen.getByRole('link', { name: 'Buka Postel' });
+  expect(link.getAttribute('href')).toBe('/postel/p1');
+  cleanup();
+  await renderView({ sticker: postel, openPostelHref: () => null });
+  expect(screen.queryByRole('link', { name: 'Buka Postel' })).toBeNull();
+  cleanup();
+  await renderView({ sticker: postel });
+  expect(screen.queryByRole('link', { name: 'Buka Postel' })).toBeNull();
+});
+
+test('stiker Manual Book menampilkan tautan Buka Manual Book; stiker biasa tidak', async () => {
+  await renderView({
+    sticker: { ...sticker, manualBookDesignId: 'q1' },
+    openManualBookHref: (id) => `/qrcode/${id}`,
+  });
+  expect(screen.getByRole('link', { name: 'Buka Manual Book' }).getAttribute('href')).toBe(
+    '/qrcode/q1',
+  );
+  cleanup();
+  await renderView({
+    openPostelHref: (id) => `/postel/${id}`,
+    openManualBookHref: (id) => `/qrcode/${id}`,
+  });
+  expect(screen.queryByRole('link', { name: /^Buka (Postel|Manual Book)$/ })).toBeNull();
 });

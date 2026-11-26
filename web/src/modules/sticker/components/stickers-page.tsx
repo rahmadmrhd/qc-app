@@ -1,4 +1,5 @@
 import type { ListStatusFilter } from '@shared/batch';
+import { formatBuLabel } from '@shared/business-units';
 import type {
   BusinessUnitOptionDto,
   StickerDto,
@@ -92,9 +93,14 @@ export interface StickersPageProps {
   onSave: (input: StickerSaveInput) => Promise<StickerSaveResult>;
   /** Diteruskan ke form stiker: tambah jenis/BU dan tautan buka BU, hanya bila user berhak (lihat `lib/link-access`). */
   onCreateType?: StickerFormDialogProps['onCreateType'];
+  /** Postel dan Manual Book dibuat langsung dari form stiker baru (tab sejajar); hanya bila user berhak. */
+  onSavePostel?: StickerFormDialogProps['onSavePostel'];
+  onSaveManualBook?: StickerFormDialogProps['onSaveManualBook'];
   onCreateBusinessUnit?: StickerFormDialogProps['onCreateBusinessUnit'];
   openBusinessUnitHref?: StickerFormDialogProps['openBusinessUnitHref'];
   openStickerTypeHref?: StickerFormDialogProps['openStickerTypeHref'];
+  /** Lokasi tempat pengguna boleh mencatat stok masuk; mengisi bagian "Stok awal" di form stiker baru. */
+  stockLocations?: StickerFormDialogProps['stockLocations'];
   onToggleStatus: (sticker: StickerDto) => void;
   mutations: StickerMutations;
   /** Membuka halaman stok opname. */
@@ -174,10 +180,13 @@ export function StickersPage({
   onFilterChange,
   pendingStatusId,
   onSave,
+  onSavePostel,
+  onSaveManualBook,
   onCreateType,
   onCreateBusinessUnit,
   openBusinessUnitHref,
   openStickerTypeHref,
+  stockLocations,
   onToggleStatus,
   mutations,
   onStartOpname,
@@ -429,11 +438,11 @@ export function StickersPage({
                         params={{ businessUnitId: buId }}
                         title={bu.name}
                       >
-                        {bu.code}
+                        {formatBuLabel(bu)}
                       </LinkCell>
                     ) : (
                       <Badge key={buId} variant="outline" color="primary" title={bu.name}>
-                        {bu.code}
+                        {formatBuLabel(bu)}
                       </Badge>
                     );
                   })}
@@ -669,7 +678,7 @@ export function StickersPage({
   return (
     <>
       <ListPage
-        title="Stiker"
+        title="Katalog & Stok"
         count={countLabel}
         actions={headerActions}
         createAction={
@@ -801,10 +810,14 @@ export function StickersPage({
         types={types}
         businessUnits={businessUnits}
         onSave={onSave}
+        onSavePostel={onSavePostel}
+        onSaveManualBook={onSaveManualBook}
         onCreateType={onCreateType}
         onCreateBusinessUnit={onCreateBusinessUnit}
         openBusinessUnitHref={openBusinessUnitHref}
         openStickerTypeHref={openStickerTypeHref}
+        stockLocations={stockLocations}
+        canSetTypeDefaultMin={canManage}
       />
       <ConfirmDeleteDialog
         open={deleteTarget !== undefined}

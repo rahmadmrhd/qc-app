@@ -1,3 +1,4 @@
+import { formatBuLabel } from '@shared/business-units';
 import { useQuery } from '@tanstack/react-query';
 import { useMemo } from 'react';
 import { businessUnitsQueryOptions, locationsQueryOptions, rolesQueryOptions } from '../queries';
@@ -45,14 +46,18 @@ function resolver(
 export function makeAssignmentLabels(input: {
   roles: readonly { id: string; name: string }[];
   locations: readonly { id: string; name: string }[];
-  businessUnits: readonly { id: string; name: string }[];
+  businessUnits: readonly { id: string; name: string; code?: string }[];
   deleted?: DeletedNames | undefined;
 }): AssignmentLabels {
   const deleted = input.deleted ?? EMPTY_DELETED_NAMES;
   return {
     role: resolver(input.roles, deleted.roles, 'Role'),
     location: resolver(input.locations, deleted.locations, 'Lokasi'),
-    businessUnit: resolver(input.businessUnits, deleted.businessUnits, 'BU'),
+    businessUnit: resolver(
+      input.businessUnits.map((bu) => ({ id: bu.id, name: formatBuLabel(bu) })),
+      deleted.businessUnits,
+      'BU',
+    ),
   };
 }
 
@@ -68,7 +73,9 @@ export function useDeletedNames(canManage: boolean): DeletedNames {
     () => ({
       roles: new Map((roles.data ?? []).map((entry) => [entry.id, entry.name])),
       locations: new Map((locations.data ?? []).map((entry) => [entry.id, entry.name])),
-      businessUnits: new Map((businessUnits.data ?? []).map((entry) => [entry.id, entry.name])),
+      businessUnits: new Map(
+        (businessUnits.data ?? []).map((entry) => [entry.id, formatBuLabel(entry)]),
+      ),
     }),
     [roles.data, locations.data, businessUnits.data],
   );

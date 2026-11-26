@@ -1,3 +1,4 @@
+import { formatBuLabel } from '@shared/business-units';
 import type { SerialCaseRowDto } from '@shared/contract';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { type DataColumn, DataTable, LinkCell } from '@/components/data-table';
@@ -52,7 +53,7 @@ export function CaseListPage({ search, onSearchChange, onReport }: CaseListPageP
   ]);
   const buOptions: LinkOption[] = (me.businessUnits ?? [])
     .filter((bu) => !bu.deleted && readable.has(bu.id))
-    .map((bu) => ({ id: bu.id, label: `${bu.code} · ${bu.name}` }));
+    .map((bu) => ({ id: bu.id, label: formatBuLabel(bu) }));
   const buLabel = (id: string) =>
     buOptions.find((option) => option.id === id)?.label ?? 'BU tidak dikenal';
   const [text, setText] = useUrlSyncedText(search.q ?? '', (value) =>
@@ -84,7 +85,11 @@ export function CaseListPage({ search, onSearchChange, onReport }: CaseListPageP
       cell: (entry) => <span className="font-mono">{entry.serial}</span>,
     },
     { id: 'item', header: 'Item', cell: (entry) => entry.itemLabel },
-    { id: 'bu', header: 'BU', cell: (entry) => entry.buCode },
+    {
+      id: 'bu',
+      header: 'BU',
+      cell: (entry) => formatBuLabel({ code: entry.buCode, name: entry.buName }),
+    },
     {
       id: 'status',
       header: 'Status',

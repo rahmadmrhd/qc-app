@@ -1,3 +1,4 @@
+import { formatBuLabel } from '@shared/business-units';
 import type { BusinessUnitOptionDto, ClonePresetInput, QrPresetDto } from '@shared/contract';
 import { QR_LIMITS } from '@shared/qrcode';
 import { useState } from 'react';
@@ -82,7 +83,10 @@ export function ClonePresetDialog({
             label="Business Unit tujuan"
             placeholder="Pilih Business Unit…"
             value={buId === '' ? null : buId}
-            labelOf={(id) => businessUnits.find((unit) => unit.id === id)?.name}
+            labelOf={(id) => {
+              const unit = businessUnits.find((entry) => entry.id === id);
+              return unit ? formatBuLabel(unit) : undefined;
+            }}
             options={options}
             onSearchChange={setTerm}
             searchDebounceMs={0}

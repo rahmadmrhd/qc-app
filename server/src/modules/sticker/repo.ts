@@ -146,13 +146,16 @@ export function insertStickerTypeStmt(db: Preparer, type: StickerTypeRecord): Db
 
 export function updateStickerTypeStmt(
   db: Preparer,
-  type: Pick<StickerTypeRecord, 'id' | 'name' | 'rule' | 'updatedAt' | 'updatedBy'>,
+  type: Pick<
+    StickerTypeRecord,
+    'id' | 'name' | 'rule' | 'defaultMinQty' | 'updatedAt' | 'updatedBy'
+  >,
 ): DbStatement {
   return db
     .prepare(
-      'UPDATE sticker_types SET name = ?, rule = ?, updated_at = ?, updated_by = ? WHERE id = ?',
+      'UPDATE sticker_types SET name = ?, rule = ?, default_min_qty = ?, updated_at = ?, updated_by = ? WHERE id = ?',
     )
-    .bind(type.name, type.rule, type.updatedAt, type.updatedBy, type.id);
+    .bind(type.name, type.rule, type.defaultMinQty, type.updatedAt, type.updatedBy, type.id);
 }
 
 export function setStickerTypeStatusStmt(

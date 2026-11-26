@@ -2,6 +2,7 @@ import { readMailLists } from '@server/core/mail-lists';
 import type { ObjectReader } from '@server/core/validate';
 import { readObject } from '@server/core/validate';
 import { PAGE_MAX_LIMIT, parseAuditCursor } from '@server/modules/access/validate';
+import { readFileId, readOpeningStocks, readQtyField } from '@server/modules/sticker/validate';
 import type {
   GetPostelFileInput,
   GetPostelInput,
@@ -13,6 +14,7 @@ import type {
   SavePostelInput,
   SavePostelNumberInput,
   SavePostelSettingsInput,
+  SavePostelStickerInput,
   UploadPostelFileInput,
 } from '@shared/contract';
 import {
@@ -30,6 +32,7 @@ import {
   POSTEL_LIMITS,
 } from '@shared/postel';
 import { isHttpUrl } from '@shared/qrcode';
+import { STICKER_LIMITS } from '@shared/stickers';
 import { POSTEL_ITEM_OPTIONS_MAX_LIMIT } from './items';
 
 const MAX_ID_LENGTH = 100;
@@ -103,12 +106,41 @@ function readNumbers(value: unknown): SavePostelNumberInput[] | string {
   return rows;
 }
 
+/** Pengaturan stiker yang lahir bersama catatan baru (alias, minimum, gambar, stok awal); semua opsional. */
+function readPostelSticker(
+  value: unknown,
+  reader: ObjectReader,
+): SavePostelStickerInput | undefined {
+  if (value === undefined || value === null) return undefined;
+  const nested = readObject(value);
+  const alias = nested.str('alias', { max: STICKER_LIMITS.aliasMax });
+  const rawMin = nested.raw('minQty');
+  const minQty =
+    rawMin === undefined || rawMin === null
+      ? undefined
+      : readQtyField(rawMin, reader, 'minQty', 'Batas minimum');
+  const fileId = readFileId(nested.raw('fileId'), reader);
+  const openingStocks = readOpeningStocks(nested.raw('openingStocks'), reader);
+  nested.done();
+  return {
+    ...(alias === '' ? {} : { alias }),
+    ...(minQty === undefined ? {} : { minQty }),
+    ...(fileId === null ? {} : { fileId }),
+    ...(openingStocks === undefined || openingStocks.length === 0 ? {} : { openingStocks }),
+  };
+}
+
 export function validateSavePostel(raw: unknown): SavePostelInput {
   const reader = readObject(raw);
   const id = reader.optionalId('id');
   const expectedUpdatedAt = reader.optionalId('expectedUpdatedAt');
   // Mengubah wajib membawa versi yang dimuat: tanpa itu, perubahan orang lain bisa tertimpa diam-diam.
   if (id && !expectedUpdatedAt) reader.fail('expectedUpdatedAt', 'Wajib diisi saat mengubah');
+  const sticker = readPostelSticker(reader.raw('sticker'), reader);
+  // Stiker lahir bersama catatan: pengaturannya hanya berlaku saat membuat (mengubah stiker lewat katalog).
+  if (id && sticker) {
+    reader.fail('sticker', 'Pengaturan stiker hanya dapat diisi saat membuat Postel');
+  }
   const note = reader.str('note', { max: POSTEL_LIMITS.noteMax });
   const itemIdsRaw = reader.raw('itemIds');
   if (
@@ -136,6 +168,7 @@ export function validateSavePostel(raw: unknown): SavePostelInput {
   return {
     ...(id ? { id } : {}),
     ...(expectedUpdatedAt ? { expectedUpdatedAt } : {}),
+    ...(sticker ? { sticker } : {}),
     note,
     itemIds: [...new Set(itemIdsRaw as string[])],
     numbers: numbers as SavePostelNumberInput[],

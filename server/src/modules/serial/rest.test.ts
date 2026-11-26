@@ -28,8 +28,8 @@ const call = async (email: string, id: string, input: unknown): Promise<CallOut>
 
 beforeEach(async () => {
   env = await createTestEnv();
-  await seedBusinessUnit(env, { id: 'bu-a', code: 'A' });
-  await seedBusinessUnit(env, { id: 'bu-b', code: 'B' });
+  await seedBusinessUnit(env, { id: 'bu-a', code: 'A', name: 'A' });
+  await seedBusinessUnit(env, { id: 'bu-b', code: 'B', name: 'B' });
   await seedRole(env, { id: 'r-edit', name: 'Serial edit', permissions: { serial: 'edit' } });
   await seedRole(env, { id: 'r-view', name: 'Serial view', permissions: { serial: 'view' } });
   await seedUser(env, {
@@ -89,12 +89,12 @@ describe('serials.itemOptions', () => {
       id: 'i-a1',
       label: 'Merk Alfa',
       buIds: ['bu-a'],
-      buOptions: [{ id: 'bu-a', code: 'A' }],
+      buOptions: [{ id: 'bu-a', code: 'A', name: 'A' }],
       proofRequired: false,
       proofMin: 1,
     });
     // i-a2 juga ada di BU B, tetapi pencatat hanya boleh menulis di A.
-    expect(data.items[1].buOptions).toEqual([{ id: 'bu-a', code: 'A' }]);
+    expect(data.items[1].buOptions).toEqual([{ id: 'bu-a', code: 'A', name: 'A' }]);
     expect(data.nextCursor).toBeNull();
   });
 
@@ -115,8 +115,8 @@ describe('serials.itemOptions', () => {
     const data = (await call(BOTH, 'serials.itemOptions', {})).data as Json;
     expect(data.items.map((i: Json) => i.id)).toEqual(['i-a1', 'i-a2', 'i-b']);
     expect(data.items[1].buOptions).toEqual([
-      { id: 'bu-a', code: 'A' },
-      { id: 'bu-b', code: 'B' },
+      { id: 'bu-a', code: 'A', name: 'A' },
+      { id: 'bu-b', code: 'B', name: 'B' },
     ]);
   });
 
@@ -148,11 +148,11 @@ describe('serials.itemOptions', () => {
       id: 'i-a1',
       label: 'Merk Alfa',
       buIds: ['bu-a'],
-      buOptions: [{ id: 'bu-a', code: 'A' }],
+      buOptions: [{ id: 'bu-a', code: 'A', name: 'A' }],
       proofRequired: false,
       proofMin: 1,
     });
-    expect(exact.items[1].buOptions).toEqual([{ id: 'bu-a', code: 'A' }]);
+    expect(exact.items[1].buOptions).toEqual([{ id: 'bu-a', code: 'A', name: 'A' }]);
     expect(exact.nextCursor).toBeNull();
     // i-b hanya di BU B (di luar hak tulis pencatat), i-off nonaktif, 'hilang' tak ada: diam-diam tidak dikembalikan.
     const hidden = (
@@ -207,7 +207,7 @@ describe('serials.itemOptions', () => {
     const viewer = (await call(VIEWER, 'serials.itemOptions', {})).data as Json;
     expect(viewer.items.map((i: Json) => i.id)).toEqual(['i-a1', 'i-a2']);
     // i-a2 juga di BU B, tetapi pembaca hanya berhak di BU A.
-    expect(viewer.items[1].buOptions).toEqual([{ id: 'bu-a', code: 'A' }]);
+    expect(viewer.items[1].buOptions).toEqual([{ id: 'bu-a', code: 'A', name: 'A' }]);
     expect(viewer.items[1].buIds).toEqual(['bu-a']);
     const byIds = (await call(VIEWER, 'serials.itemOptions', { itemIds: ['i-a1', 'i-b', 'i-off'] }))
       .data as Json;
@@ -218,7 +218,7 @@ describe('serials.itemOptions', () => {
   test('pembaca serialservice view di BU B melihat item BU B saja', async () => {
     const service = (await call(SERVICE, 'serials.itemOptions', {})).data as Json;
     expect(service.items.map((i: Json) => i.id)).toEqual(['i-a2', 'i-b']);
-    expect(service.items[0].buOptions).toEqual([{ id: 'bu-b', code: 'B' }]);
+    expect(service.items[0].buOptions).toEqual([{ id: 'bu-b', code: 'B', name: 'B' }]);
     const outside = (await call(SERVICE, 'serials.itemOptions', { itemIds: ['i-a1'] }))
       .data as Json;
     expect(outside.items).toEqual([]);

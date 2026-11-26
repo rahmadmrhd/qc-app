@@ -1,3 +1,4 @@
+import { formatBuLabel } from '@shared/business-units';
 import type { BusinessUnitOptionDto, QrDocumentDto, QrPresetDto } from '@shared/contract';
 import { manualBookNameFromTypes } from '@shared/manual-book';
 import {
@@ -103,14 +104,11 @@ export interface QrFormUiState {
   overflow: boolean;
 }
 
-export interface QrDesignFormProps {
-  /** Id elemen `<form>`: tombol Simpan berada di luar form (bar halaman / footer dialog) dan memakai `form={formId}`. */
-  formId: string;
-  /** Dilaporkan tiap keadaan di atas berubah; pembungkus memakainya untuk tombol Simpan (`submitDisabled`). */
-  onUiState?: (state: QrFormUiState) => void;
-  /** Tab aktif terkendali; tanpa ini tab dikelola sendiri. */
-  activeTab?: QrFormTab;
-  onActiveTabChange?: (tab: QrFormTab) => void;
+/** Opsi hook tab QR (dipakai form QR dan form Stiker yang menyisipkan tab Manual Book sebagai tab sejajar). */
+export interface QrDesignFormTabsOptions {
+  /** Tab aktif terkendali (id tab sejajar milik pemanggil); tanpa ini tab dikelola sendiri. */
+  activeTab?: string | undefined;
+  onActiveTabChange?: ((tab: string) => void) | undefined;
   defaultValues: QrFormInput;
   /** PDF sumber yang sudah terpasang (saat ubah/duplikat). */
   initialDocument?: QrDocumentDto | null;
@@ -145,6 +143,13 @@ export interface QrDesignFormProps {
   submitError?: string | null;
   fieldErrors?: Readonly<Record<string, string | undefined>>;
   onSubmit: (values: QrFormOutput, options: QrSubmitOptions) => void | Promise<void>;
+}
+
+export interface QrDesignFormProps extends QrDesignFormTabsOptions {
+  /** Id elemen `<form>`: tombol Simpan berada di luar form (bar halaman / footer dialog) dan memakai `form={formId}`. */
+  formId: string;
+  /** Dilaporkan tiap keadaan di atas berubah; pembungkus memakainya untuk tombol Simpan (`submitDisabled`). */
+  onUiState?: (state: QrFormUiState) => void;
 }
 
 export interface QrSubmitOptions {
@@ -200,9 +205,12 @@ function Section({
   );
 }
 
-export function QrDesignForm({
-  formId,
-  onUiState,
+/**
+ * Logika form QR: item, preset, tab Detail/Isi label/Logo/Ukuran, pratinjau, dan penyimpanan. Tanpa `<form>` sendiri:
+ * pemanggil merender `tabs` (lewat `QrDesignForm`, atau sebagai tab sejajar di form lain) beserta `alerts`, `preview`,
+ * dan `outside` (dialog yang harus di luar `<form>`), lalu memanggil `submit`.
+ */
+export function useQrDesignFormTabs({
   activeTab,
   onActiveTabChange,
   defaultValues,
@@ -219,10 +227,9 @@ export function QrDesignForm({
   openPresetHref,
   businessUnits = [],
   takenBuIds,
-  submitError,
   fieldErrors,
   onSubmit,
-}: QrDesignFormProps) {
+}: QrDesignFormTabsOptions) {
   const uploadPdf = useUploadQrPdf();
   const cloneQrPdf = useCloneQrPdf();
   const [document, setDocument] = useState<QrDocumentDto | null>(initialDocument);
@@ -699,7 +706,10 @@ export function QrDesignForm({
                   label="Business Unit"
                   placeholder="Pilih Business Unit…"
                   value={field.state.value === '' ? null : field.state.value}
-                  labelOf={(id) => businessUnits.find((unit) => unit.id === id)?.name}
+                  labelOf={(id) => {
+                    const unit = businessUnits.find((entry) => entry.id === id);
+                    return unit ? formatBuLabel(unit) : undefined;
+                  }}
                   options={businessUnitOptions(businessUnits, buTerm, takenBuIds)}
                   onSearchChange={setBuTerm}
                   searchDebounceMs={0}
@@ -1048,11 +1058,11 @@ export function QrDesignForm({
   );
 
   // Tab aktif: terkendali bila pembungkus memberi `activeTab`, selain itu lokal.
-  const [localTab, setLocalTab] = useState<QrFormTab>(
+  const [localTab, setLocalTab] = useState<string>(
     isDefaults ? 'label' : (visibleTabs[0] ?? 'detail'),
   );
   const tab = activeTab ?? localTab;
-  const selectTab = (next: QrFormTab) => {
+  const selectTab = (next: string) => {
     setLocalTab(next);
     onActiveTabChange?.(next);
   };
@@ -1091,11 +1101,6 @@ export function QrDesignForm({
   // Keadaan untuk tombol di luar form (bar halaman / footer dialog).
   const blocked = !ready || logoBusy || pdfBusy || legacyCloning;
   const overflow = labelStatus?.overflow === true;
-  // biome-ignore lint/correctness/useExhaustiveDependencies: dilaporkan hanya saat salah satu nilainya berubah
-  useEffect(() => {
-    onUiState?.({ submitting, blocked, overflow });
-  }, [submitting, blocked, overflow]);
-
   const tabs: FormTab[] = visibleTabs.map((id) => ({
     id,
     label: TAB_LABEL[id],
@@ -1103,53 +1108,26 @@ export function QrDesignForm({
     content: tabContent[id],
   }));
 
-  return (
+  const alerts = <LabelStatusAlerts status={labelStatus} />;
+  const preview = ready ? (
+    <form.Subscribe selector={(state) => state.values}>
+      {(values) => (
+        <PreviewPane
+          values={
+            isDefaults && values.namePlacement !== ''
+              ? { ...values, [values.namePlacement]: 'Nama Manual Book' }
+              : values
+          }
+          document={document}
+          sheetOpen={sheetOpen}
+          onSheetOpenChange={setSheetOpen}
+          onStatus={setLabelStatus}
+        />
+      )}
+    </form.Subscribe>
+  ) : null;
+  const outside = (
     <>
-      <form
-        id={formId}
-        noValidate
-        className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto]"
-        onSubmit={(event) => {
-          event.preventDefault();
-          // Dialog turunan (Tambah item/preset) dirender lewat portal React: submitnya tak boleh naik ke form ini.
-          event.stopPropagation();
-          // Tujuan setelah simpan dibaca dari tombol pengirim; tombol Simpan biasa tak membawa penandanya.
-          const submitter = (event.nativeEvent as SubmitEvent).submitter;
-          exportAfterRef.current = submitter?.getAttribute('data-export') === 'true';
-          void form.handleSubmit();
-        }}
-      >
-        <div className="lg:col-span-2">
-          <LabelStatusAlerts status={labelStatus} />
-        </div>
-        <div className="min-w-0 space-y-4">
-          <FormTabs tabs={tabs} value={tab} onValueChange={(id) => selectTab(id as QrFormTab)} />
-          {submitError ? (
-            <p role="alert" className="text-sm text-destructive-text">
-              {submitError}
-            </p>
-          ) : null}
-        </div>
-        {ready ? (
-          <aside data-tour="qr-preview" className="space-y-3 lg:sticky lg:top-36 lg:self-start">
-            <form.Subscribe selector={(state) => state.values}>
-              {(values) => (
-                <PreviewPane
-                  values={
-                    isDefaults && values.namePlacement !== ''
-                      ? { ...values, [values.namePlacement]: 'Nama Manual Book' }
-                      : values
-                  }
-                  document={document}
-                  sheetOpen={sheetOpen}
-                  onSheetOpenChange={setSheetOpen}
-                  onStatus={setLabelStatus}
-                />
-              )}
-            </form.Subscribe>
-          </aside>
-        ) : null}
-      </form>
       <ExportChangeWarning
         open={pendingSave !== null}
         stickerVersion={edit?.stickerVersion ?? 0}
@@ -1188,6 +1166,75 @@ export function QrDesignForm({
           }
         />
       ) : null}
+    </>
+  );
+
+  return {
+    tabs,
+    tab,
+    selectTab,
+    alerts,
+    preview,
+    outside,
+    submitting,
+    blocked,
+    overflow,
+    ready,
+    /** Menjalankan validasi dan `onSubmit`; `thenExport` = tujuan setelah simpan (tombol "Simpan dan ekspor"). */
+    submit: (thenExport = false) => {
+      exportAfterRef.current = thenExport;
+      return form.handleSubmit();
+    },
+  };
+}
+
+/**
+ * Form tambah/ubah konfigurasi QR: `<form id={formId}>` dengan tab, pratinjau di samping, dan dialog turunan di luar
+ * form. Tombol Simpan berada di luar form (bar halaman / footer dialog).
+ */
+export function QrDesignForm({
+  formId,
+  onUiState,
+  submitError,
+  ...options
+}: QrDesignFormProps & { submitError?: string | null | undefined }) {
+  const { tabs, tab, selectTab, alerts, preview, outside, submitting, blocked, overflow, submit } =
+    useQrDesignFormTabs(options);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: dilaporkan hanya saat salah satu nilainya berubah
+  useEffect(() => {
+    onUiState?.({ submitting, blocked, overflow });
+  }, [submitting, blocked, overflow]);
+  return (
+    <>
+      <form
+        id={formId}
+        noValidate
+        className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto]"
+        onSubmit={(event) => {
+          event.preventDefault();
+          // Dialog turunan (Tambah item/preset) dirender lewat portal React: submitnya tak boleh naik ke form ini.
+          event.stopPropagation();
+          // Tujuan setelah simpan dibaca dari tombol pengirim; tombol Simpan biasa tak membawa penandanya.
+          const submitter = (event.nativeEvent as SubmitEvent).submitter;
+          void submit(submitter?.getAttribute('data-export') === 'true');
+        }}
+      >
+        <div className="lg:col-span-2">{alerts}</div>
+        <div className="min-w-0 space-y-4">
+          <FormTabs tabs={tabs} value={tab} onValueChange={selectTab} />
+          {submitError ? (
+            <p role="alert" className="text-sm text-destructive-text">
+              {submitError}
+            </p>
+          ) : null}
+        </div>
+        {preview ? (
+          <aside data-tour="qr-preview" className="space-y-3 lg:sticky lg:top-36 lg:self-start">
+            {preview}
+          </aside>
+        ) : null}
+      </form>
+      {outside}
     </>
   );
 }

@@ -41,7 +41,9 @@ function publicList(id: WidgetId, data: ListData): PublicListData {
 export function toPublicDto(id: WidgetId, data: WidgetData): PublicWidgetData {
   switch (data.kind) {
     case 'number':
-      return { kind: 'number', value: data.value };
+      return data.note === undefined
+        ? { kind: 'number', value: data.value }
+        : { kind: 'number', value: data.value, note: data.note };
     case 'list':
       return publicList(id, data);
     case 'parts':
@@ -136,9 +138,12 @@ export type EmailWidgetData = NumberData | PartsData | SeriesData | ListData;
 export function toEmailDto(id: WidgetId, data: WidgetData): EmailWidgetData {
   switch (data.kind) {
     case 'number':
-      return data.previous === undefined
-        ? { kind: 'number', value: data.value }
-        : { kind: 'number', value: data.value, previous: data.previous };
+      return {
+        kind: 'number',
+        value: data.value,
+        ...(data.previous === undefined ? {} : { previous: data.previous }),
+        ...(data.note === undefined ? {} : { note: data.note }),
+      };
     case 'list': {
       const list = publicList(id, data);
       return {

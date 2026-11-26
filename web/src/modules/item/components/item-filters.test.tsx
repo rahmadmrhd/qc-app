@@ -250,10 +250,10 @@ test('chip Business Unit: memilih memanggil onChange dengan id BU', async () => 
   const { onChange } = setup({}, { brands: BRANDS, businessUnits: BUS });
   await openChip('Business Unit');
   expect(await linkOptionNames(screen, 'Filter business unit')).toEqual([
-    'Retail (RTL)',
-    'Wholesale (WHL)',
+    'RTL - Retail',
+    'WHL - Wholesale',
   ]);
-  await pickLink(screen, 'Filter business unit', 'Wholesale (WHL)');
+  await pickLink(screen, 'Filter business unit', 'WHL - Wholesale');
   expect(onChange).not.toHaveBeenCalled();
   await closeFilterChip();
   expect(onChange).toHaveBeenCalledTimes(1);
@@ -266,7 +266,7 @@ test('chip terisi menampilkan nama, hapus mengosongkan; id tak dikenal tetap ter
     { brands: BRANDS, businessUnits: BUS },
   );
   expect(screen.getByRole('button', { name: 'Merk: Ubiquiti' })).toBeInTheDocument();
-  expect(screen.getByRole('button', { name: 'Business Unit: Retail (RTL)' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Business Unit: RTL - Retail' })).toBeInTheDocument();
   await userEvent.click(screen.getByRole('button', { name: 'Hapus filter Merk' }));
   expect(onChange).toHaveBeenCalledWith({ brandIds: [] });
   cleanup();
@@ -309,6 +309,6 @@ test('chip Merk jamak: pilihan kedua menambah daftar; tampilan "A, B" lalu "A +N
   cleanup();
   setup({ buIds: ['bu-a', 'bu-b', 'bu-c'] }, { brands: BRANDS, businessUnits: BUS });
   expect(
-    screen.getByRole('button', { name: 'Business Unit: Retail (RTL) +2' }),
+    screen.getByRole('button', { name: 'Business Unit: RTL - Retail +2' }),
   ).toBeInTheDocument();
 });

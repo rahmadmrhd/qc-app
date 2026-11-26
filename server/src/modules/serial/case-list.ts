@@ -50,6 +50,7 @@ interface CaseListRow {
   status: string;
   custody: string;
   bu_code: string;
+  bu_name: string;
   brand_name: string | null;
   model: string | null;
   status_changed_on: string | null;
@@ -85,7 +86,7 @@ export function caseSummary(message: string): string {
  * tak pernah berbeda bentuk.
  */
 function caseRowsSql(tail: string): string {
-  return `SELECT c.id, c.number, c.serial_id, c.bu_id, c.opened_on, c.closed_on, c.outcome, c.created_at, c.created_by, s.serial, s.status, s.custody, bu.code AS bu_code, b.name AS brand_name, i.model, (SELECT e.occurred_on FROM serial_events e WHERE e.serial_id = c.serial_id AND e.changes_json LIKE '%"field":"status"%' ORDER BY e.seq DESC LIMIT 1) AS status_changed_on, (SELECT e.message FROM serial_events e WHERE e.serial_id = c.serial_id AND e.case_id = c.id AND e.type = 'report_failure' ORDER BY e.seq LIMIT 1) AS report_message, l.name AS location_name, ${LAST_ACTIVITY_SQL} AS last_activity FROM serial_cases c JOIN serials s ON s.id = c.serial_id LEFT JOIN locations l ON l.id = s.location_id JOIN business_units bu ON bu.id = c.bu_id LEFT JOIN items i ON i.id = s.item_id LEFT JOIN brands b ON b.id = i.brand_id WHERE ${liveWhere('s')} AND ${tail}`;
+  return `SELECT c.id, c.number, c.serial_id, c.bu_id, c.opened_on, c.closed_on, c.outcome, c.created_at, c.created_by, s.serial, s.status, s.custody, bu.code AS bu_code, bu.name AS bu_name, b.name AS brand_name, i.model, (SELECT e.occurred_on FROM serial_events e WHERE e.serial_id = c.serial_id AND e.changes_json LIKE '%"field":"status"%' ORDER BY e.seq DESC LIMIT 1) AS status_changed_on, (SELECT e.message FROM serial_events e WHERE e.serial_id = c.serial_id AND e.case_id = c.id AND e.type = 'report_failure' ORDER BY e.seq LIMIT 1) AS report_message, l.name AS location_name, ${LAST_ACTIVITY_SQL} AS last_activity FROM serial_cases c JOIN serials s ON s.id = c.serial_id LEFT JOIN locations l ON l.id = s.location_id JOIN business_units bu ON bu.id = c.bu_id LEFT JOIN items i ON i.id = s.item_id LEFT JOIN brands b ON b.id = i.brand_id WHERE ${liveWhere('s')} AND ${tail}`;
 }
 
 function toCaseRowDto(row: CaseListRow, today: string): SerialCaseRowDto {
@@ -101,6 +102,7 @@ function toCaseRowDto(row: CaseListRow, today: string): SerialCaseRowDto {
     serial: row.serial,
     buId: row.bu_id.trim(),
     buCode: row.bu_code.trim(),
+    buName: row.bu_name.trim(),
     itemLabel: `${row.brand_name ?? ''} ${(row.model ?? '').trim()}`.trim(),
     status: (STATUS_SET.includes(status) ? status : 'good') as SerialStatus,
     custody: (CUSTODY_SET.includes(custody) ? custody : 'qc') as SerialCustody,

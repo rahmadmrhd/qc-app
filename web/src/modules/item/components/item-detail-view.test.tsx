@@ -99,7 +99,7 @@ test('judul "merk tipe", badge status, dan tab Detail aktif memuat identitas', a
   expect(screen.getByText('Bracket ×2')).toBeInTheDocument();
   expect(screen.getByRole('heading', { name: 'Spesifikasi' })).toBeInTheDocument();
   expect(screen.getByText('Frekuensi: 5 GHz')).toBeInTheDocument();
-  expect(screen.getByText('RTL')).toHaveAttribute('title', 'Retail');
+  expect(screen.getByText('RTL - Retail')).toHaveAttribute('title', 'Retail');
 });
 
 test('berpindah tab menampilkan isinya dan memanggil onTabChange', async () => {
@@ -127,14 +127,14 @@ test('Merk dan BU berupa tautan bila diberi akses, selain itu teks/lencana', asy
     openBusinessUnitHref: (id) => `/access/business-units/${id}`,
   });
   expect(screen.getByRole('link', { name: 'Ubiquiti' })).toHaveAttribute('href', '/item/brands/b1');
-  expect(screen.getByRole('link', { name: 'RTL' })).toHaveAttribute(
+  expect(screen.getByRole('link', { name: 'RTL - Retail' })).toHaveAttribute(
     'href',
     '/access/business-units/bu-a',
   );
   unmount();
   await renderView();
   expect(screen.queryByRole('link', { name: 'Ubiquiti' })).toBeNull();
-  expect(screen.getByText('RTL')).toHaveAttribute('title', 'Retail');
+  expect(screen.getByText('RTL - Retail')).toHaveAttribute('title', 'Retail');
 });
 
 test('merk terhapus diberi penanda Terhapus pada baris Merk', async () => {

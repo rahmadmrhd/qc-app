@@ -568,6 +568,12 @@ export interface SaveStickerTypeInput {
   name: string;
   /** Tak dapat diubah bila jenis sudah punya stiker. */
   rule: StickerRule;
+  /**
+   * Minimum stok bawaan stiker baru pada jenis ini (0 = tanpa peringatan); opsional (aditif, keputusan pemilik
+   * 2026-11-25). Tak dikirim = tak diubah (jenis baru: 0). Mengubah nilainya butuh `sticker: manage` (sama dengan
+   * Konfigurasi Stiker, kolom yang sama); selain itu `FORBIDDEN`.
+   */
+  defaultMinQty?: number;
 }
 
 export interface SetStickerTypeStatusInput {
@@ -601,6 +607,10 @@ export interface StickerDto {
   deleted?: SoftDeleteInfo;
   /** Ada (true) hanya bila jenis stiker ini terhapus; stiker tetap ada dan tampil dengan nama jenisnya. */
   typeDeleted?: boolean;
+  /** Hanya stiker jenis Postel: id catatan Postel yang masih hidup (tautan "Buka Postel"); tanpa nama, tanpa data lain. */
+  postelId?: string;
+  /** Hanya stiker jenis Manual Book: id konfigurasi QR yang masih hidup (tautan "Buka Manual Book"). */
+  manualBookDesignId?: string;
 }
 
 export interface ListStickersInput {
@@ -624,9 +634,27 @@ export interface SaveStickerInput {
   name: string;
   alias: string;
   fileId: string | null;
-  minQty: number;
+  /**
+   * Wajib saat mengubah stiker. Saat membuat: tak dikirim = memakai minimum bawaan jenisnya (`defaultMinQty`).
+   */
+  minQty?: number;
   /** Jenis berrule `bu`: minimal satu; jenis berrule `none`: harus kosong. */
   businessUnitIds: string[];
+  /**
+   * Stok awal per lokasi, hanya saat membuat stiker (tak boleh bersama `id`). Server mencatat satu entri stok masuk
+   * "Stok awal" per baris dalam batch yang sama dengan pembuatan stiker; butuh `stickerstock: edit` pada SETIAP
+   * lokasi (satu lokasi tanpa hak = seluruh permintaan ditolak). Satu lokasi paling banyak satu baris (keputusan
+   * pemilik 2026-11-25, diperluas ke banyak lokasi 2026-11-26).
+   */
+  openingStocks?: OpeningStockInput[];
+}
+
+export interface OpeningStockInput {
+  locationId: string;
+  /** Bilangan bulat 1 sampai `STICKER_LIMITS.qtyMax`. */
+  quantity: number;
+  /** Kunci idempoten per baris (UUID huruf kecil): kiriman ulang oleh pelaku yang sama mengembalikan stiker yang sudah dibuat. */
+  clientId: string;
 }
 
 /** Pengaturan email ringkasan harian stok stiker menipis (Konfigurasi Stiker). */
@@ -665,8 +693,8 @@ export interface SaveStickerSettingsInput {
   /** `updatedAt` yang dilihat penyimpan ('' bila belum pernah disimpan); usang = galat usang (412 lewat If-Match). */
   expectedUpdatedAt: string;
   alert: StickerAlertSettings;
-  /** Hanya jenis yang disebut yang diubah. */
-  defaults: Array<{ typeId: string; defaultMinQty: number }>;
+  /** Hanya jenis yang disebut yang diubah. Opsional: web tak lagi mengirimnya (minimum bawaan diatur di form Jenis). */
+  defaults?: Array<{ typeId: string; defaultMinQty: number }>;
 }
 
 export interface SetStickerStatusInput {
@@ -1375,10 +1403,25 @@ export interface SavePostelNumberInput {
   link: string;
 }
 /** PUT utuh: nomor, item (yang terlihat), dan lampiran diganti sesuai larik. */
+/**
+ * Pengaturan stiker katalog yang lahir bersama catatan Postel (hanya saat membuat; keputusan pemilik 2026-11-25: Postel
+ * dibuat langsung dari form stiker). Tak dikirim = stiker bawaan (tanpa alias/gambar, minimum bawaan jenis, tanpa stok).
+ */
+export interface SavePostelStickerInput {
+  alias?: string;
+  /** Batas minimum stok; tak dikirim = minimum bawaan jenis Postel. */
+  minQty?: number;
+  fileId?: string | null;
+  /** Stok awal per lokasi (izin `stickerstock: edit` pada tiap lokasi diperiksa server). */
+  openingStocks?: OpeningStockInput[];
+}
+
 export interface SavePostelInput {
   id?: string;
   /** Wajib saat mengubah (If-Match); versi usang = konflik. */
   expectedUpdatedAt?: string;
+  /** Hanya saat membuat catatan baru (tanpa `id`); ditolak saat mengubah. */
+  sticker?: SavePostelStickerInput;
   note: string;
   itemIds: string[];
   numbers: SavePostelNumberInput[];
@@ -1942,6 +1985,8 @@ export interface SerialSummaryDto {
   id: string;
   buId: string;
   buCode: string;
+  /** Nama BU; bersama `buCode` membentuk label `<kode> - <nama>` (`formatBuLabel`). */
+  buName?: string;
   serial: string;
   itemId: string;
   itemLabel: string;
@@ -2248,6 +2293,8 @@ export interface SerialLookupMatchDto {
   id: string;
   buId: string;
   buCode: string;
+  /** Nama BU; bersama `buCode` membentuk label `<kode> - <nama>` (`formatBuLabel`). */
+  buName?: string;
   itemLabel: string;
   serial: string;
   status: SerialStatus;
@@ -2282,6 +2329,8 @@ export interface SerialExistingDto {
   itemLabel: string;
   buId: string;
   buCode: string;
+  /** Nama BU; bersama `buCode` membentuk label `<kode> - <nama>` (`formatBuLabel`). */
+  buName?: string;
   status: SerialStatus;
   hasOpenCase: boolean;
   /** Item serial ini wajib foto bukti QC pada cek ulang, dan jumlah minimumnya. */
@@ -2297,6 +2346,8 @@ export interface SerialLookupManyOutput {
 export interface SerialBuHistoryDto {
   buId: string;
   buCode: string;
+  /** Nama BU; bersama `buCode` membentuk label `<kode> - <nama>` (`formatBuLabel`). */
+  buName?: string;
   firstAt: string;
   leftAt: string;
 }
@@ -2330,6 +2381,8 @@ export interface SerialCaseRowDto {
   serial: string;
   buId: string;
   buCode: string;
+  /** Nama BU; bersama `buCode` membentuk label `<kode> - <nama>` (`formatBuLabel`). */
+  buName?: string;
   itemLabel: string;
   /** Status serial sekarang. */
   status: SerialStatus;
@@ -2373,7 +2426,7 @@ export interface SerialItemOptionDto {
   /** "Merk Model". */
   label: string;
   buIds: string[];
-  buOptions: { id: string; code: string }[];
+  buOptions: { id: string; code: string; name?: string }[];
   /** Item wajib foto bukti pada Catat Serial (spek 2026-11-18); `proofMin` selalu 1 bila tidak wajib. */
   proofRequired: boolean;
   /** Jumlah foto bukti minimum (1 sampai 5). */

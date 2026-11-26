@@ -225,7 +225,7 @@ export const NAV_GROUPS: NavGroup[] = [
         icon: Sticker,
         children: [
           {
-            label: 'Katalog',
+            label: 'Katalog & Stok',
             to: '/sticker',
             icon: Sticker,
             excludes: ['/sticker/types', '/sticker/library', '/sticker/settings'],

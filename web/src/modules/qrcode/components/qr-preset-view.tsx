@@ -1,3 +1,4 @@
+import { formatBuLabel } from '@shared/business-units';
 import type { BusinessUnitOptionDto, QrDesignDto, QrPresetDto } from '@shared/contract';
 import type { QrFrame } from '@shared/qrcode';
 import { LinkCell } from '@/components/data-table';
@@ -115,10 +116,10 @@ export function QrPresetView({
                       to="/access/business-units/$businessUnitId"
                       params={{ businessUnitId: unit.id }}
                     >
-                      {unit.name}
+                      {formatBuLabel(unit)}
                     </LinkCell>
                   ) : (
-                    unit.name
+                    formatBuLabel(unit)
                   )
                 ) : null,
             },

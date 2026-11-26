@@ -40,10 +40,8 @@ export interface PostelFormUiState {
   blocked: boolean;
 }
 
-export interface PostelFormProps {
-  /** Id elemen `<form>`; tombol Simpan di bar halaman men-submit lewat `form={formId}`. */
-  formId: string;
-  onUiState?: ((state: PostelFormUiState) => void) | undefined;
+/** Opsi hook tab Postel (dipakai form Postel dan form Stiker yang menyisipkan tab Postel sebagai tab sejajar). */
+export interface PostelFormTabsOptions {
   /** Catatan yang diubah; kosong = mode tambah. */
   postel?: PostelDto | undefined;
   /** Ambang "segera habis" dan tanggal WIB server (dasar lencana kondisi pada tabel nomor). */
@@ -55,23 +53,32 @@ export interface PostelFormProps {
   fieldErrors?: PostelFieldErrors | undefined;
   /** Boleh menambah item dari pemilih item (`itemLinkAccess(...).canCreate`). */
   canCreateItem?: boolean | undefined;
+  /** Tab aktif terkendali (id tab sejajar milik pemanggil); tanpa ini tab dikelola sendiri. */
+  activeTab?: string | undefined;
+  onActiveTabChange?: ((tab: string) => void) | undefined;
+}
+
+export interface PostelFormProps extends PostelFormTabsOptions {
+  /** Id elemen `<form>`; tombol Simpan di bar halaman men-submit lewat `form={formId}`. */
+  formId: string;
+  onUiState?: ((state: PostelFormUiState) => void) | undefined;
 }
 
 /**
- * Form tambah/ubah catatan Postel dalam tiga tab (kit `FormTabs`): Item, Nomor sertifikat, serta Catatan dan lampiran.
- * Komponen ini hanya merender `<form id={formId}>` berisi field; tombol Simpan ada di `FormPage` (di luar form).
- * Saat simpan gagal, tab bergalat pertama dibuka dan diberi titik merah.
+ * Logika form Postel dalam tiga tab: Item, Nomor sertifikat, serta Catatan dan lampiran. Saat simpan gagal, tab
+ * bergalat pertama dibuka dan diberi titik merah. Tanpa `<form>` sendiri: pemanggil merender `tabs` (sendiri lewat
+ * `PostelForm`, atau sebagai tab sejajar di form lain) dan memanggil `submit`.
  */
-export function PostelForm({
-  formId,
-  onUiState,
+export function usePostelFormTabs({
   postel,
   soonDays,
   today,
   onSubmit,
   fieldErrors,
   canCreateItem,
-}: PostelFormProps) {
+  activeTab,
+  onActiveTabChange,
+}: PostelFormTabsOptions) {
   const hiddenCount = postel?.hiddenItemCount ?? 0;
   const schema = useMemo(() => postelFormSchema(hiddenCount), [hiddenCount]);
   const ownedIds = useMemo(() => new Set(postel?.items.map((item) => item.id)), [postel]);
@@ -79,7 +86,12 @@ export function PostelForm({
   const [defaults] = useState(() => toPostelFormDefaults(postel));
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
-  const [tab, setTab] = useState<PostelFormTab>('item');
+  const [ownTab, setOwnTab] = useState<string>('item');
+  const tab = activeTab ?? ownTab;
+  const setTab = (next: string) => {
+    setOwnTab(next);
+    onActiveTabChange?.(next);
+  };
   // Galat server pada sebuah field hilang begitu user mengoreksi field itu (dan kembali saat ada galat baru).
   const [cleared, setCleared] = useState<ReadonlySet<string>>(new Set());
   // biome-ignore lint/correctness/useExhaustiveDependencies: reset setiap kali galat server yang baru datang
@@ -120,6 +132,7 @@ export function PostelForm({
     if (firstErrorTab) setTab(firstErrorTab);
   }, [attempts, submitting]);
   // Galat dari server: buka tab pertama yang memuatnya.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: hanya saat galat server yang baru datang
   useEffect(() => {
     const first = POSTEL_FORM_TABS.find((id) =>
       Object.keys(fieldErrors ?? {}).some(
@@ -128,12 +141,6 @@ export function PostelForm({
     );
     if (first) setTab(first);
   }, [fieldErrors]);
-
-  // Keadaan untuk tombol di luar form (bar halaman): unggahan lampiran menahan Simpan.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: dilaporkan hanya saat salah satu nilainya berubah
-  useEffect(() => {
-    onUiState?.({ submitting, blocked: uploading });
-  }, [submitting, uploading]);
 
   const content: Record<PostelFormTab, ReactNode> = {
     item: (
@@ -230,6 +237,30 @@ export function PostelForm({
     content: content[id],
   }));
 
+  return {
+    tabs,
+    tab,
+    setTab,
+    submitError,
+    submitting,
+    uploading,
+    /** Menjalankan validasi dan `onSubmit` (galat field menandai tab dan membuka tab bergalat pertama). */
+    submit: () => form.handleSubmit(),
+  };
+}
+
+/**
+ * Form tambah/ubah catatan Postel dalam tiga tab (kit `FormTabs`): Item, Nomor sertifikat, serta Catatan dan lampiran.
+ * Komponen ini hanya merender `<form id={formId}>` berisi field; tombol Simpan ada di `FormPage` (di luar form).
+ */
+export function PostelForm({ formId, onUiState, ...options }: PostelFormProps) {
+  const { tabs, tab, setTab, submitError, submitting, uploading, submit } =
+    usePostelFormTabs(options);
+  // Keadaan untuk tombol di luar form (bar halaman): unggahan lampiran menahan Simpan.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: dilaporkan hanya saat salah satu nilainya berubah
+  useEffect(() => {
+    onUiState?.({ submitting, blocked: uploading });
+  }, [submitting, uploading]);
   return (
     <form
       id={formId}
@@ -239,10 +270,10 @@ export function PostelForm({
         event.preventDefault();
         // Dialog turunan (Tambah item) dirender lewat portal React: submitnya tak boleh naik ke form ini.
         event.stopPropagation();
-        void form.handleSubmit();
+        void submit();
       }}
     >
-      <FormTabs tabs={tabs} value={tab} onValueChange={(id) => setTab(id as PostelFormTab)} />
+      <FormTabs tabs={tabs} value={tab} onValueChange={setTab} />
       {submitError ? (
         <p role="alert" className="text-sm text-destructive-text">
           {submitError}

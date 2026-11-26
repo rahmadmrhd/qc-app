@@ -161,16 +161,16 @@ export async function queryItemOptions(
     .all<OptionRow>();
   const page = rows.results.slice(0, effectiveLimit);
   const last = page[page.length - 1];
-  const links = new Map<string, { id: string; code: string }[]>();
+  const links = new Map<string, { id: string; code: string; name: string }[]>();
   if (page.length > 0) {
     const linkRows = await env.DB.prepare(
-      `SELECT l.item_id, l.bu_id, bu.code FROM item_business_units l JOIN business_units bu ON bu.id = l.bu_id WHERE l.item_id IN (${placeholders(page.length)}) AND l.bu_id IN (${placeholders(scope.length)}) ORDER BY bu.code, l.bu_id`,
+      `SELECT l.item_id, l.bu_id, bu.code, bu.name FROM item_business_units l JOIN business_units bu ON bu.id = l.bu_id WHERE l.item_id IN (${placeholders(page.length)}) AND l.bu_id IN (${placeholders(scope.length)}) ORDER BY bu.code, l.bu_id`,
     )
       .bind(...page.map((row) => row.id), ...scope)
-      .all<{ item_id: string; bu_id: string; code: string }>();
+      .all<{ item_id: string; bu_id: string; code: string; name: string }>();
     for (const row of linkRows.results) {
       const list = links.get(row.item_id.trim()) ?? [];
-      list.push({ id: row.bu_id.trim(), code: row.code.trim() });
+      list.push({ id: row.bu_id.trim(), code: row.code.trim(), name: row.name.trim() });
       links.set(row.item_id.trim(), list);
     }
   }
@@ -656,6 +656,7 @@ export function toSummary(row: SerialRow): SerialSummaryDto {
     id: row.id.trim(),
     buId: row.bu_id.trim(),
     buCode: row.bu_code.trim(),
+    buName: row.bu_name.trim(),
     serial: row.serial,
     itemId: row.item_id.trim(),
     itemLabel: `${row.brand_name ?? ''} ${(row.model ?? '').trim()}`.trim(),
@@ -691,12 +692,19 @@ function toBuHistory(row: SerialRow, history: SerialBuHistoryRow[]): SerialBuHis
   const entries = history.map((entry) => ({
     buId: entry.bu_id.trim(),
     buCode: entry.bu_code,
+    buName: entry.bu_name,
     firstAt: entry.first_at,
     leftAt: entry.left_at.trim(),
   }));
   const current = row.bu_id.trim();
   if (!entries.some((entry) => entry.buId === current)) {
-    entries.push({ buId: current, buCode: row.bu_code, firstAt: row.created_at, leftAt: '' });
+    entries.push({
+      buId: current,
+      buCode: row.bu_code,
+      buName: row.bu_name,
+      firstAt: row.created_at,
+      leftAt: '',
+    });
   }
   return entries;
 }

@@ -1,3 +1,4 @@
+import { formatBuLabel } from '@shared/business-units';
 import type { SerialDto, SerialSummaryDto } from '@shared/contract';
 import { resolveAction } from '@shared/serial-flow';
 import { useInfiniteQuery } from '@tanstack/react-query';
@@ -249,10 +250,10 @@ export function SerialListPage({ search, onSearchChange, onNew }: SerialListPage
             to="/access/business-units/$businessUnitId"
             params={{ businessUnitId: serial.buId }}
           >
-            {serial.buCode}
+            {formatBuLabel({ code: serial.buCode, name: serial.buName })}
           </LinkCell>
         ) : (
-          serial.buCode
+          formatBuLabel({ code: serial.buCode, name: serial.buName })
         ),
     },
     {

@@ -100,7 +100,7 @@ describe('dashboardShares.get', () => {
     expect(own.revokedBy).toBe('');
     expect(own.visitCount).toBe(0);
     expect(own.visits).toEqual([]);
-    expect(own.scope.buNames).toEqual(['BU Ex']);
+    expect(own.scope.buNames).toEqual(['X - BU Ex']);
     expect(own.scope.buDeleted).toEqual([false]);
     expect(own.scope.locationDeleted).toEqual([false]);
     expect(own.scope.locationNames).toEqual(['Lokasi A']);
@@ -222,7 +222,7 @@ describe('dashboardShares.get', () => {
       .bind(new Date(NOW).toISOString())
       .run();
     const detail = (await jsonOf(await getDetail(id))) as Json;
-    expect(detail.scope.buNames).toEqual(['BU Ex']);
+    expect(detail.scope.buNames).toEqual(['X - BU Ex']);
     expect(detail.scope.buDeleted).toEqual([true]);
     expect(detail.scope.locationNames).toEqual(['Lokasi A']);
     expect(detail.scope.locationDeleted).toEqual([true]);

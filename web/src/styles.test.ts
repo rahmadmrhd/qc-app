@@ -27,6 +27,10 @@ const TOKENS = [
   'destructive-foreground',
   'destructive-text',
   'secondary-text',
+  ...['primary', 'secondary', 'success', 'warning', 'info', 'destructive'].flatMap((c) => [
+    `${c}-disabled`,
+    `${c}-disabled-foreground`,
+  ]),
 ];
 
 describe('token warna semantik', () => {
@@ -45,7 +49,7 @@ describe('token warna semantik', () => {
   it('nilai terang sesuai spek', () => {
     expect(light).toContain('--success: #15803d;');
     expect(light).toContain('--warning-text: #92400e;');
-    expect(light).toContain('--secondary: #787882;');
+    expect(light).toContain('--secondary: #475569;');
     expect(light).toContain('--destructive-text: #b91c1c;');
   });
 

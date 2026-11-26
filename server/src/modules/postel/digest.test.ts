@@ -6,7 +6,7 @@ import { seedPostel } from '@server-test/postel-fixtures';
 import { restCall } from '@server-test/rest-call';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import { SETTING_POSTEL_ALERT } from './alert';
-import { checkPostelExpiryDigest } from './digest';
+import { buildPostelAlertMail, checkPostelExpiryDigest, type PostelAlertItem } from './digest';
 
 setDefaultTimeout(60_000);
 
@@ -470,5 +470,97 @@ describe('checkPostelExpiryDigest: dilewati tanpa mengubah state', () => {
     await postel(onDay(30));
     expect(await checkPostelExpiryDigest(env)).toBe('skipped');
     expect(sent).toHaveLength(0);
+  });
+});
+
+describe('buildPostelAlertMail (HTML)', () => {
+  const item = (
+    i: number,
+    daysLeft: number,
+    over: Partial<PostelAlertItem> = {},
+  ): PostelAlertItem => ({
+    id: `p${i}`,
+    name: `Model ${i}`,
+    number: `NO-${i}`,
+    expiresOn: '2026-12-01',
+    daysLeft,
+    ...over,
+  });
+  const FORBIDDEN = /<(script|img|link|iframe|object|embed|form)\b|javascript:/i;
+
+  test('dua bagian terpisah, urut sisa hari naik, lencana dengan teks, tautan dan tombol', () => {
+    const mail = buildPostelAlertMail({
+      origin: 'https://qc.test/',
+      items: [item(1, 20), item(2, -3), item(3, 5), item(4, -10)],
+    });
+    expect(mail.subject).toBe('Peringatan masa berlaku Postel: 4 sertifikat');
+    expect(mail.html).toContain('<html lang="id">');
+    const { html, text } = mail;
+    expect(html.indexOf('Sudah kedaluwarsa')).toBeLessThan(html.indexOf('Segera habis'));
+    expect(html).toContain('Kedaluwarsa 10 hari lalu');
+    expect(html).toContain('Sisa 5 hari');
+    expect(html).toContain('href="https://qc.test/postel/p3"');
+    expect(html).toContain('href="https://qc.test/postel"');
+    expect(html).toContain('Buka daftar Postel');
+    expect(html).not.toMatch(FORBIDDEN);
+    const order = ['NO-4', 'NO-2', 'NO-3', 'NO-1'].map((n) => text.indexOf(n));
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
+    expect(text).toContain('Sudah kedaluwarsa (2):');
+    expect(text).toContain('Segera habis (2):');
+    expect(text).toContain('sisa 5 hari');
+    expect(text).toContain('sudah kedaluwarsa');
+    expect(text).toContain('https://qc.test/postel/p1');
+  });
+
+  test('hanya satu jenis: bagian lain tidak muncul', () => {
+    const mail = buildPostelAlertMail({ origin: 'https://qc.test', items: [item(1, 4)] });
+    expect(mail.html).not.toContain('Sudah kedaluwarsa');
+    expect(mail.text).not.toContain('Sudah kedaluwarsa');
+  });
+
+  test('nilai berbahaya dibersihkan; nama sangat panjang dipotong; nama kosong memakai nomor', () => {
+    const mail = buildPostelAlertMail({
+      origin: 'https://qc.test',
+      items: [
+        item(1, 3, { name: '<script>x</script>‮\u0007', number: 'SN\nBcc: a@b.co' }),
+        item(2, 4, { name: 'A'.repeat(500) }),
+        item(3, 5, { name: '', number: 'NOMOR-SAJA' }),
+      ],
+    });
+    expect(mail.html).not.toContain('<script>');
+    expect(mail.html).not.toContain('‮');
+    expect(mail.html).not.toContain('\u0007');
+    expect(mail.html).toContain('&lt;script&gt;');
+    expect(mail.html).not.toContain('A'.repeat(200));
+    expect(mail.html).toContain('…');
+    expect(mail.text).not.toMatch(/\nBcc:/);
+    expect(mail.text).toContain('- NOMOR-SAJA');
+  });
+
+  test('batas 50 baris per bagian + "dan N lainnya"; ukuran <= 90 KB', () => {
+    // Dua bagian dibangun terpisah agar tiap kasus jauh di bawah 90 KB (100 baris sekaligus mendekati batas, dan di
+    // sana fitEmail sengaja menurunkan batas baris).
+    const expired = buildPostelAlertMail({
+      origin: 'https://qc.test',
+      items: [
+        ...Array.from({ length: 70 }, (_, i) => item(i, -1 - i)),
+        ...Array.from({ length: 10 }, (_, i) => item(2000 + i, i)),
+      ],
+    });
+    expect(expired.html).toContain('dan 20 lainnya');
+    expect(expired.text).toContain('dan 20 lainnya');
+    const soon = buildPostelAlertMail({
+      origin: 'https://qc.test',
+      items: Array.from({ length: 300 }, (_, i) => item(1000 + i, i)),
+    });
+    expect(soon.html).toContain('dan 250 lainnya');
+    expect(soon.text).toContain('dan 250 lainnya');
+    for (const built of [expired, soon]) {
+      expect(Buffer.byteLength(built.html, 'utf8')).toBeLessThanOrEqual(90 * 1024);
+    }
+    const mail = soon;
+    const styles = [...mail.html.matchAll(/<style>([\s\S]*?)<\/style>/g)];
+    expect(styles).toHaveLength(1);
+    expect(styles[0]?.[1]).toStartWith('@media');
   });
 });
