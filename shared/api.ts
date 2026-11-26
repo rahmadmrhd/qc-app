@@ -477,6 +477,11 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
     path: '/serials/item-options',
     query: { query: 'string', cursor: 'string', limit: 'number', itemIds: 'list' },
   },
+  'serials.creatorOptions': {
+    verb: 'GET',
+    path: '/serials/creator-options',
+    query: { query: 'string', ids: 'list', cursor: 'string', limit: 'number' },
+  },
   'serials.stickerOptions': {
     verb: 'GET',
     path: '/serials/sticker-options',
@@ -508,6 +513,7 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
       from: 'string',
       to: 'string',
       createdBy: 'string',
+      createdBys: 'list',
       deleted: 'boolean',
       cursor: 'string',
       limit: 'number',

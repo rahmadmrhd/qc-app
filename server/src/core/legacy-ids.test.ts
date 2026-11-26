@@ -89,7 +89,7 @@ describe('collectLegacyIds / replaceLegacyIds (murni)', () => {
     (
       'action, actions, activeExpiresOn, activeNumber, actor, actorName, after, alias, aliases, at, auth, author, before, ' +
       'body, brand, buCode, buCodes, buLabel, buName, by, caption, capturedAt, changedFields, changelog, checksum, closedBy, ' +
-      'closedByTeam, closedOn, code, completedAt, completedBy, createdAt, createdBy, cursor, customerName, description, ' +
+      'closedByTeam, closedOn, code, completedAt, completedBy, createdAt, createdBy, createdBys, cursor, customerName, description, ' +
       'detail, documentName, email, endpoint, error, etag, expectedUpdatedAt, expiresAt, expiresOn, exportedAt, exportedBy, ' +
       'failedAt, field, filename, firmware, firstAt, footer, from, guideName, inactiveCustomerNames, itemLabel, label, ' +
       'leftAt, link, locationLabel, locationName, logoUpdatedAt, manualBookName, message, mime, model, models, name, ' +

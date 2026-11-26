@@ -6,6 +6,7 @@ import type {
   ApplyStickersBatchInput,
   GetSerialCaseInput,
   GetSerialInput,
+  ListSerialCreatorOptionsInput,
   ListSerialItemOptionsInput,
   SaveSerialBatchInput,
   SaveSerialServiceSettingsInput,
@@ -91,6 +92,40 @@ export function validateListSerialItemOptions(raw: unknown): ListSerialItemOptio
     ...(typeof limit === 'number' ? { limit } : {}),
     ...(typeof cursor === 'string' ? { cursor } : {}),
     ...(query !== '' ? { query } : {}),
+  };
+}
+
+export const SERIAL_CREATOR_DEFAULT_LIMIT = 50;
+export const SERIAL_CREATOR_MAX_LIMIT = 100;
+/** Pencarian pencatat dimulai dari sekian karakter (menjaga kueri tak memindai tabel besar). */
+export const SERIAL_CREATOR_QUERY_MIN = 2;
+
+/** Pilihan pencatat: `query` (min. 2 karakter bila diisi), `ids` (maks. 20 email), `cursor` (email), `limit` 1-100. */
+export function validateListSerialCreatorOptions(raw: unknown): ListSerialCreatorOptionsInput {
+  const reader = readObject(raw ?? {});
+  const query = reader.str('query', { max: 100 }).trim();
+  if (query !== '' && query.length < SERIAL_CREATOR_QUERY_MIN) {
+    reader.fail('query', `Pencarian minimal ${SERIAL_CREATOR_QUERY_MIN} karakter`);
+  }
+  const ids = readFilterList(reader, 'ids', { maxLength: 255 });
+  const cursor = reader.str('cursor', { max: 255 });
+  const limit = reader.raw('limit');
+  if (
+    limit !== undefined &&
+    limit !== null &&
+    (typeof limit !== 'number' ||
+      !Number.isInteger(limit) ||
+      limit < 1 ||
+      limit > SERIAL_CREATOR_MAX_LIMIT)
+  ) {
+    reader.fail('limit', `Batas halaman harus 1-${SERIAL_CREATOR_MAX_LIMIT}`);
+  }
+  reader.done();
+  return {
+    ...(query !== '' ? { query } : {}),
+    ...(ids ? { ids: [...new Set(ids)] } : {}),
+    ...(cursor !== '' ? { cursor } : {}),
+    ...(typeof limit === 'number' ? { limit } : {}),
   };
 }
 
@@ -301,6 +336,7 @@ export function validateSerialList(raw: unknown): SerialListInput {
   const locationIds = readFilterList(reader, 'locationIds');
   const statuses = readFilterList(reader, 'statuses', { allowed: LIST_STATUS });
   const custodies = readFilterList(reader, 'custodies', { allowed: LIST_CUSTODY });
+  const createdBys = readFilterList(reader, 'createdBys', { maxLength: 255 });
   const from = reader.str('from', { max: 10 });
   if (from !== '' && !isIsoDate(from)) reader.fail('from', 'Tanggal tidak valid');
   const to = reader.str('to', { max: 10 });
@@ -354,6 +390,7 @@ export function validateSerialList(raw: unknown): SerialListInput {
     ...(from !== '' ? { from } : {}),
     ...(to !== '' ? { to } : {}),
     ...(createdBy !== '' ? { createdBy } : {}),
+    ...(createdBys ? { createdBys } : {}),
     ...(deleted === true ? { deleted: true } : {}),
     ...(cursor !== '' ? { cursor } : {}),
     ...(typeof limit === 'number' ? { limit } : {}),

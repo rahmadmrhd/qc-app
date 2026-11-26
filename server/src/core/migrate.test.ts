@@ -356,6 +356,7 @@ describe('skema baseline', () => {
       { name: '0036_buang_indeks_serials_created_id.sql' },
       { name: '0037_dashboard_share_expiry_index.sql' },
       { name: '0038_dashboard_report_cc_bcc.sql' },
+      { name: '0039_serial_created_by_index.sql' },
     ]);
   });
 
@@ -558,8 +559,10 @@ describe('skema baseline', () => {
         'serial_proof_photos.serial_proof_photos_state',
         'serial_stickers.serial_stickers_sticker',
         'serials.serials_bu_created',
+        'serials.serials_bu_deleted_created_by',
         'serials.serials_bu_serial',
         'serials.serials_client_id',
+        'serials.serials_created_by',
         'serials.serials_custody',
         'serials.serials_item',
         'serials.serials_live_created',

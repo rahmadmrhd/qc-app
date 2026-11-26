@@ -169,6 +169,16 @@ beforeEach(() => {
         nextCursor: null,
       });
     }
+    if (id === 'serials.creatorOptions') {
+      return Promise.resolve({
+        items: [
+          { email: 'budi@x.com', name: 'Budi' },
+          { email: 'a@gmail.com', name: 'A' },
+          { email: 'tanpa@x.com', name: 'tanpa@x.com' },
+        ],
+        nextCursor: null,
+      });
+    }
     return Promise.reject(new Error(`api tak dikenal: ${id}`));
   });
 });
@@ -608,19 +618,79 @@ test('filter BU hanya menawarkan BU yang terbaca (serial atau serialservice) dan
   expect(await screen.findByText('Termasuk serial yang pernah di BU ini.')).toBeInTheDocument();
 });
 
-test('sakelar "Dicatat oleh saya" mengisi createdBy dengan email akun', async () => {
+test('filter Pencatat: Saya jadi saran pertama, pilihan banyak diterapkan saat chip menutup', async () => {
   await renderPage();
   await screen.findByText('ABC123');
-  expect(lastListInput()).not.toHaveProperty('createdBy');
+  expect(lastListInput()).not.toHaveProperty('createdBys');
   await openChip('Pencatat');
-  await userEvent.click(screen.getByRole('checkbox', { name: 'Dicatat oleh saya' }));
+  const names = await linkOptionNames(screen, 'Filter pencatat');
+  expect(names[0]).toBe('Saya');
+  // Akun sendiri dari server tidak ditampilkan ganda; entri tanpa nama tampil dengan email.
+  expect(names).toEqual(['Saya', 'Budi (budi@x.com)', 'tanpa@x.com']);
+  await userEvent.click(await screen.findByRole('option', { name: 'Saya' }));
+  await userEvent.click(await screen.findByRole('option', { name: 'Budi (budi@x.com)' }));
+  expect(lastListInput()).not.toHaveProperty('createdBys');
+  await closeFilterChip();
+  await waitFor(() =>
+    expect(lastListInput()).toMatchObject({ createdBys: ['a@gmail.com', 'budi@x.com'] }),
+  );
   expect(lastListInput()).not.toHaveProperty('createdBy');
-  await closeFilterChip();
-  await waitFor(() => expect(lastListInput()).toMatchObject({ createdBy: 'a@gmail.com' }));
+  expect(screen.getByRole('button', { name: /^Pencatat: Saya/ })).toBeInTheDocument();
+});
+
+test('filter Pencatat: pencarian server dimulai dari 2 karakter', async () => {
+  await renderPage();
+  await screen.findByText('ABC123');
   await openChip('Pencatat');
-  await userEvent.click(screen.getByRole('checkbox', { name: 'Dicatat oleh saya' }));
-  await closeFilterChip();
-  await waitFor(() => expect(lastListInput()).not.toHaveProperty('createdBy'));
+  await userEvent.type(screen.getByRole('combobox', { name: 'Filter pencatat' }), 'b');
+  await new Promise((resolve) => setTimeout(resolve, 400));
+  expect(
+    apiMock.mock.calls.some(
+      (call) => call[0] === 'serials.creatorOptions' && 'query' in (call[1] as object),
+    ),
+  ).toBe(false);
+  await userEvent.type(screen.getByRole('combobox', { name: 'Filter pencatat' }), 'u');
+  await waitFor(() =>
+    expect(
+      apiMock.mock.calls.some(
+        (call) =>
+          call[0] === 'serials.creatorOptions' && (call[1] as { query?: string }).query === 'bu',
+      ),
+    ).toBe(true),
+  );
+});
+
+const creatorOptionCalls = () =>
+  apiMock.mock.calls.filter(
+    (call) => call[0] === 'serials.creatorOptions' && !('ids' in (call[1] as object)),
+  );
+
+test('opsi Pencatat tidak dimuat selagi chip tertutup; dibuka memanggilnya sekali', async () => {
+  await renderPage();
+  await screen.findByText('ABC123');
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  expect(apiMock.mock.calls.some((call) => call[0] === 'serials.creatorOptions')).toBe(false);
+  await openChip('Pencatat');
+  await linkOptionNames(screen, 'Filter pencatat');
+  expect(creatorOptionCalls()).toHaveLength(1);
+  // Satu karakter tidak dikirim: kunci cache sama dengan daftar awal, jadi tidak ada permintaan baru.
+  await userEvent.type(screen.getByRole('combobox', { name: 'Filter pencatat' }), 'b');
+  await new Promise((resolve) => setTimeout(resolve, 400));
+  expect(creatorOptionCalls()).toHaveLength(1);
+});
+
+test('param lama mine dibaca sebagai Saya; createdBys dari URL menang', async () => {
+  await renderPage({ mine: true });
+  await screen.findByText('ABC123');
+  await waitFor(() => expect(lastListInput()).toMatchObject({ createdBys: ['a@gmail.com'] }));
+  expect(screen.getByRole('button', { name: /^Pencatat: Saya/ })).toBeInTheDocument();
+});
+
+test('createdBys dari URL: nama nilai terpilih dimuat menurut email', async () => {
+  await renderPage({ createdBys: ['budi@x.com'] });
+  await screen.findByText('ABC123');
+  expect(lastListInput()).toMatchObject({ createdBys: ['budi@x.com'] });
+  expect(await screen.findByRole('button', { name: /^Pencatat: Budi/ })).toBeInTheDocument();
 });
 
 test('filter BU dari URL yang tidak dikenal tidak menampilkan id mentah', async () => {

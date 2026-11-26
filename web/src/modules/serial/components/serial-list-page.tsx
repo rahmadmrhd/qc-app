@@ -359,7 +359,7 @@ export function SerialListPage({ search, onSearchChange, onNew }: SerialListPage
     filter.locationIds !== undefined ||
     filter.buIds !== undefined ||
     filter.custodies !== undefined ||
-    filter.createdBy !== undefined ||
+    filter.createdBys !== undefined ||
     filter.statuses !== undefined ||
     filter.from !== undefined ||
     filter.to !== undefined ||
@@ -493,6 +493,7 @@ const CLEAR_FILTERS: Partial<SerialSearch> = {
   buIds: undefined,
   custodies: undefined,
   statuses: undefined,
+  createdBys: undefined,
   // Param tunggal lama (tautan) ikut dibuang.
   item: undefined,
   itemLabel: undefined,
