@@ -6,6 +6,9 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { FileDialog, type FileDialogProps } from './file-dialog';
 import type { FileLibrarySource, FileSource, LibraryItem } from './types';
 
+const toastError = vi.hoisted(() => vi.fn());
+vi.mock('sonner', () => ({ toast: { error: toastError, success: vi.fn() } }));
+
 const IMAGES = ['image/jpeg', 'image/png', 'image/webp'];
 const png = (name: string, size = 100) =>
   new File([new Uint8Array(size)], name, { type: 'image/png' });
@@ -298,4 +301,100 @@ test('menghapus entri dari antrean mengurangi hitungan; dialog tertutup membersi
     ),
   );
   expect(screen.getByRole('button', { name: 'Lampirkan (0)' })).toBeInTheDocument();
+});
+
+test('Shift+klik di pustaka memilih rentang dan berhenti di batas maxFiles dengan toast', async () => {
+  toastError.mockClear();
+  const source = librarySource();
+  vi.mocked(source.list).mockResolvedValue({
+    items: ['1', '2', '3', '4', '5', '6'].map((id) => libraryItem(id)),
+    nextCursor: null,
+  });
+  setup({ source, maxFiles: 3 });
+  await userEvent.click(screen.getByRole('tab', { name: /Pustaka/ }));
+  await userEvent.click(await screen.findByRole('checkbox', { name: 'Pilih Item 1' }));
+  const user = userEvent.setup();
+  await user.keyboard('{Shift>}');
+  await user.click(screen.getByRole('checkbox', { name: 'Pilih Item 6' }));
+  await user.keyboard('{/Shift}');
+  for (const id of ['1', '2', '3']) {
+    expect(screen.getByRole('checkbox', { name: `Pilih Item ${id}` })).toBeChecked();
+  }
+  for (const id of ['4', '5', '6']) {
+    expect(screen.getByRole('checkbox', { name: `Pilih Item ${id}` })).not.toBeChecked();
+  }
+  expect(toastError).toHaveBeenCalledWith('Maksimal 3 berkas');
+  expect(screen.getByRole('button', { name: 'Lampirkan (3)' })).toBeInTheDocument();
+});
+
+test('rentang mundur yang terpotong maxFiles mempertahankan item terdekat dari jangkar', async () => {
+  toastError.mockClear();
+  const source = librarySource();
+  vi.mocked(source.list).mockResolvedValue({
+    items: ['1', '2', '3', '4', '5', '6'].map((id) => libraryItem(id)),
+    nextCursor: null,
+  });
+  setup({ source, maxFiles: 3 });
+  await userEvent.click(screen.getByRole('tab', { name: /Pustaka/ }));
+  await userEvent.click(await screen.findByRole('checkbox', { name: 'Pilih Item 6' }));
+  const user = userEvent.setup();
+  await user.keyboard('{Shift>}');
+  await user.click(screen.getByRole('checkbox', { name: 'Pilih Item 1' }));
+  await user.keyboard('{/Shift}');
+  for (const id of ['6', '5', '4']) {
+    expect(screen.getByRole('checkbox', { name: `Pilih Item ${id}` })).toBeChecked();
+  }
+  for (const id of ['1', '2', '3']) {
+    expect(screen.getByRole('checkbox', { name: `Pilih Item ${id}` })).not.toBeChecked();
+  }
+  expect(toastError).toHaveBeenCalledWith('Maksimal 3 berkas');
+});
+
+test('rentang terpotong maxFiles: jangkar baru = id terakhir yang terpilih', async () => {
+  toastError.mockClear();
+  const source = librarySource();
+  vi.mocked(source.list).mockResolvedValue({
+    items: ['1', '2', '3', '4', '5', '6'].map((id) => libraryItem(id)),
+    nextCursor: null,
+  });
+  setup({ source, maxFiles: 3 });
+  await userEvent.click(screen.getByRole('tab', { name: /Pustaka/ }));
+  await userEvent.click(await screen.findByRole('checkbox', { name: 'Pilih Item 1' }));
+  const user = userEvent.setup();
+  await user.keyboard('{Shift>}');
+  await user.click(screen.getByRole('checkbox', { name: 'Pilih Item 6' }));
+  expect(toastError).toHaveBeenCalledTimes(1);
+  // Jangkar sekarang 3: rentang 3..2 sudah terpilih semua (tanpa toast); dari jangkar 6 ia akan terpotong lagi.
+  await user.click(screen.getByRole('checkbox', { name: 'Pilih Item 2' }));
+  await user.keyboard('{/Shift}');
+  expect(toastError).toHaveBeenCalledTimes(1);
+  for (const id of ['1', '2', '3']) {
+    expect(screen.getByRole('checkbox', { name: `Pilih Item ${id}` })).toBeChecked();
+  }
+  for (const id of ['4', '5', '6']) {
+    expect(screen.getByRole('checkbox', { name: `Pilih Item ${id}` })).not.toBeChecked();
+  }
+});
+
+test('klik item yang ditolak kapasitas penuh tidak memindahkan jangkar', async () => {
+  const source = librarySource();
+  vi.mocked(source.list).mockResolvedValue({
+    items: ['1', '2', '3', '4', '5', '6', '7', '8'].map((id) => libraryItem(id)),
+    nextCursor: null,
+  });
+  setup({ source, maxFiles: 3 });
+  await userEvent.click(screen.getByRole('tab', { name: /Pustaka/ }));
+  for (const id of ['1', '2', '3']) {
+    await userEvent.click(await screen.findByRole('checkbox', { name: `Pilih Item ${id}` }));
+  }
+  // Kapasitas penuh: item 7 ditolak, jangkar tetap 3.
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih Item 7' }));
+  expect(screen.getByRole('checkbox', { name: 'Pilih Item 7' })).not.toBeChecked();
+  toastError.mockClear();
+  const user = userEvent.setup();
+  await user.keyboard('{Shift>}');
+  await user.click(screen.getByRole('checkbox', { name: 'Pilih Item 2' }));
+  await user.keyboard('{/Shift}');
+  // Dari jangkar 3 rentang 3..2 sudah terpilih semua; dari jangkar 7 ia akan terpotong dan memunculkan toast.
+  expect(toastError).not.toHaveBeenCalled();
 });

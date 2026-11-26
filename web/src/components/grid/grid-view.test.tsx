@@ -1,7 +1,8 @@
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { expect, test, vi } from 'vitest';
+import { afterEach, expect, test, vi } from 'vitest';
 import { useRowSelection } from '@/components/data-table/use-row-selection';
+import { longPress } from '@/test/long-press';
 import { GridView } from './grid-view';
 
 interface Pic {
@@ -123,4 +124,136 @@ test('isSelectable: kartu yang tak dapat dipilih tanpa checkbox', () => {
   render(<Mixed />);
   expect(screen.queryByRole('checkbox', { name: 'Pilih Satu' })).toBeNull();
   expect(screen.getAllByRole('checkbox').length).toBe(PICS.length - 1);
+});
+
+function mockDesktop() {
+  Object.defineProperty(window, 'matchMedia', {
+    configurable: true,
+    value: () => ({
+      matches: true,
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+    }),
+  });
+}
+
+afterEach(() => {
+  Reflect.deleteProperty(window, 'matchMedia');
+});
+
+const FIVE: Pic[] = ['1', '2', '3', '4', '5'].map((id) => ({ id, name: `K${id}` }));
+
+async function shiftClick(element: HTMLElement) {
+  // Satu instans: keadaan tombol Shift tidak dibagi antar panggilan `userEvent` langsung.
+  const user = userEvent.setup();
+  await user.keyboard('{Shift>}');
+  await user.click(element);
+  await user.keyboard('{/Shift}');
+}
+
+test('Shift+klik memilih rentang kartu dari jangkar', async () => {
+  function Range() {
+    const selection = useRowSelection('x');
+    return (
+      <GridView {...baseProps} items={FIVE} selection={selection} selectLabel={(pic) => pic.name} />
+    );
+  }
+  mockDesktop();
+  render(<Range />);
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih K1' }));
+  await shiftClick(screen.getByRole('checkbox', { name: 'Pilih K3' }));
+  expect(screen.getByRole('checkbox', { name: 'Pilih K1' })).toBeChecked();
+  expect(screen.getByRole('checkbox', { name: 'Pilih K2' })).toBeChecked();
+  expect(screen.getByRole('checkbox', { name: 'Pilih K3' })).toBeChecked();
+  expect(screen.getByRole('checkbox', { name: 'Pilih K4' })).not.toBeChecked();
+});
+
+test('rentang melewati kartu yang tak dapat dipilih', async () => {
+  function Range() {
+    const selection = useRowSelection('x');
+    return (
+      <GridView
+        {...baseProps}
+        items={FIVE}
+        selection={selection}
+        selectLabel={(pic) => pic.name}
+        isSelectable={(pic) => pic.id !== '2'}
+      />
+    );
+  }
+  mockDesktop();
+  render(<Range />);
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih K1' }));
+  await shiftClick(screen.getByRole('checkbox', { name: 'Pilih K4' }));
+  expect(screen.getByRole('checkbox', { name: 'Pilih K1' })).toBeChecked();
+  expect(screen.getByRole('checkbox', { name: 'Pilih K3' })).toBeChecked();
+  expect(screen.getByRole('checkbox', { name: 'Pilih K4' })).toBeChecked();
+  expect(screen.queryByRole('checkbox', { name: 'Pilih K2' })).toBeNull();
+  expect(screen.getByRole('checkbox', { name: 'Pilih K5' })).not.toBeChecked();
+});
+
+function mockPhone() {
+  Object.defineProperty(window, 'matchMedia', {
+    configurable: true,
+    value: () => ({
+      matches: false,
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+    }),
+  });
+}
+
+function stubPoint(ids: string[]) {
+  const items = ids.map((id) => document.querySelector<HTMLElement>(`[data-select-id="${id}"]`));
+  document.elementFromPoint = (_x: number, y: number) => items[Math.round(y / 100) - 1] ?? null;
+}
+
+function DragGrid({ isSelectable }: { isSelectable?: (pic: Pic) => boolean }) {
+  const selection = useRowSelection('x');
+  return (
+    <>
+      <GridView
+        {...baseProps}
+        items={FIVE}
+        selection={selection}
+        selectLabel={(pic) => pic.name}
+        isSelectable={isSelectable}
+      />
+      <output data-testid="out">{[...selection.selected].sort().join(',')}</output>
+    </>
+  );
+}
+
+async function enterSelectMode() {
+  const first = document.querySelector<HTMLElement>('[data-select-id="1"]') as HTMLElement;
+  await longPress(first);
+}
+
+test('ponsel: seret dari lajur kotak centang memilih rentang kartu', async () => {
+  mockPhone();
+  render(<DragGrid />);
+  stubPoint(['1', '2', '3', '4', '5']);
+  await enterSelectMode();
+  expect(screen.getByTestId('out')).toHaveTextContent('1');
+  const lane = document.querySelector<HTMLElement>(
+    '[data-select-id="2"] [data-select-lane]',
+  ) as HTMLElement;
+  fireEvent.pointerDown(lane, { clientX: 10, clientY: 200, button: 0, pointerType: 'touch' });
+  fireEvent.pointerMove(lane, { clientX: 10, clientY: 400 });
+  fireEvent.pointerUp(lane);
+  expect(screen.getByTestId('out')).toHaveTextContent('1,2,3,4');
+});
+
+test('ponsel: seret melewati kartu yang tak dapat dipilih', async () => {
+  mockPhone();
+  render(<DragGrid isSelectable={(pic) => pic.id !== '3'} />);
+  stubPoint(['1', '2', '3', '4', '5']);
+  await enterSelectMode();
+  const lane = document.querySelector<HTMLElement>(
+    '[data-select-id="2"] [data-select-lane]',
+  ) as HTMLElement;
+  fireEvent.pointerDown(lane, { clientX: 10, clientY: 200, button: 0, pointerType: 'touch' });
+  fireEvent.pointerMove(lane, { clientX: 10, clientY: 400 });
+  fireEvent.pointerUp(lane);
+  expect(screen.getByTestId('out')).toHaveTextContent('1,2,4');
 });
