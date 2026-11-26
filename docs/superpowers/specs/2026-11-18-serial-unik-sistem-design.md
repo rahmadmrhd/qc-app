@@ -118,3 +118,5 @@ Tiap baris (satu per serial ternormalisasi): server mencari serial **secara glob
 7. **Serial sama di BU dan lokasi yang sama juga menjadi cek ulang** (tidak ada `duplicate` lagi untuk serial yang sudah ada). Alasan: seragam dengan "catat ulang"; pengaman kirim ganda ada pada pengenal kejadian; pencatat dapat tidak mencentang stiker bila tidak ingin memotong stok.
 8. **Pemakaian field baris pada cek ulang** (§5.1): `testDate` hanya menjadi tanggal kejadian; lokasi unit ikut pindah ke lokasi baris; `note` menjadi pesan kejadian; `sample` diabaikan.
 9. **Jalur cek ulang tidak menerapkan syarat item aktif/terlihat** (item catatan adalah acuan).
+
+10. **Nama BU pada `serials.lookupMany`** (keputusan pemilik 2026-11-25, menjawab temuan review atas label BU `<kode> - <nama>`): `buCode` selalu dikirim, tetapi `buName` hanya bila BU saat ini serial itu terbaca pengguna (`readableBuIds`); untuk BU yang tak terbaca cukup kodenya, dan web menampilkan kode saja lewat `formatBuLabel`. Alasan: pengungkapan lintas BU tetap minimal (butir kebocoran disengaja di atas tidak diperluas). Menggantikan perilaku sementara yang selalu mengirim nama. Disetujui pemilik produk.

@@ -50,9 +50,9 @@ vi.mock('@/lib/api', async (importOriginal) => ({
 import { ItemCreateHost } from '@/modules/item/components/item-create-host';
 import { defaultBuForItem, EMPTY_ITEM_BU, ItemBuField, type ItemBuValue } from './item-bu-field';
 
-const BU1 = { id: 'b1', code: 'BU1' };
-const BU2 = { id: 'b2', code: 'BU2' };
-const BU9 = { id: 'b9', code: 'BU9' };
+const BU1 = { id: 'b1', code: 'BU1', name: 'Business Unit 1' };
+const BU2 = { id: 'b2', code: 'BU2', name: 'Business Unit 2' };
+const BU9 = { id: 'b9', code: 'BU9', name: 'BU 9' };
 
 /** i1 = satu BU tulis; i2 = dua BU tulis; i3 = BU yang bukan hak tulis pengguna; i4 = satu BU tulis dan satu bukan. */
 const ITEMS = [
@@ -117,18 +117,22 @@ test('field BU selalu tampil, juga sebelum item dipilih, dengan semua BU tulis',
   renderField();
   expect(buField()).toBeEnabled();
   expect(buField()).toHaveValue('');
-  expect(await linkOptionNames(screen, 'Business Unit')).toEqual(['BU1', 'BU2', 'BU3']);
+  expect(await linkOptionNames(screen, 'Business Unit')).toEqual([
+    'BU1 - Business Unit 1',
+    'BU2 - Business Unit 2',
+    'BU3 - Business Unit 3',
+  ]);
   expect(screen.queryByText(/^Business Unit:/)).not.toBeInTheDocument();
 });
 
 test('item dengan tepat satu BU tulis: BU terisi otomatis dan tetap dapat diganti ke BU mana pun', async () => {
   renderField();
   await pickLink(screen, 'Item', 'Cisco C9200');
-  await waitFor(() => expect(buField()).toHaveValue('BU1'));
+  await waitFor(() => expect(buField()).toHaveValue('BU1 - Business Unit 1'));
   // Tidak lagi terbatas pada BU item: BU3 bukan BU item tetapi boleh dipilih.
-  await pickLink(screen, 'Business Unit', 'BU3');
-  expect(buField()).toHaveValue('BU3');
-  expect(latest).toMatchObject({ itemId: 'i1', buId: 'b3', buLabel: 'BU3' });
+  await pickLink(screen, 'Business Unit', 'BU3 - Business Unit 3');
+  expect(buField()).toHaveValue('BU3 - Business Unit 3');
+  expect(latest).toMatchObject({ itemId: 'i1', buId: 'b3', buLabel: 'BU3 - Business Unit 3' });
 });
 
 test('item dengan beberapa BU tulis: BU kosong sampai dipilih; pilihan sebelumnya dipertahankan bila salah satu BU item', async () => {
@@ -141,11 +145,11 @@ test('item dengan beberapa BU tulis: BU kosong sampai dipilih; pilihan sebelumny
   // BU dipilih lebih dulu (BU2), lalu item dua-BU dipilih: BU2 dipertahankan.
   renderField({ ...EMPTY_ITEM_BU, buId: 'b2', buLabel: 'BU2' });
   await pickLink(screen, 'Item', 'Dua BU');
-  expect(buField()).toHaveValue('BU2');
+  expect(buField()).toHaveValue('BU2 - Business Unit 2');
 });
 
 test('item beberapa BU dan BU sebelumnya bukan salah satunya: dikosongkan sampai dipilih', async () => {
-  renderField({ ...EMPTY_ITEM_BU, buId: 'b3', buLabel: 'BU3' });
+  renderField({ ...EMPTY_ITEM_BU, buId: 'b3', buLabel: 'BU3 - Business Unit 3' });
   await pickLink(screen, 'Item', 'Dua BU');
   expect(buField()).toHaveValue('');
 });
@@ -157,20 +161,20 @@ test('hanya BU item yang termasuk daftar BU tulis yang menjadi bawaan; item tanp
   await userEvent.keyboard('{Escape}');
   await pickLink(screen, 'Item', 'Campuran');
   // BU9 bukan BU tulis: tinggal BU1, jadi terisi otomatis.
-  await waitFor(() => expect(buField()).toHaveValue('BU1'));
+  await waitFor(() => expect(buField()).toHaveValue('BU1 - Business Unit 1'));
   view.unmount();
 
-  renderField({ ...EMPTY_ITEM_BU, buId: 'b2', buLabel: 'BU2' });
+  renderField({ ...EMPTY_ITEM_BU, buId: 'b2', buLabel: 'BU2 - Business Unit 2' });
   await linkOptionNames(screen, 'Business Unit');
   await userEvent.keyboard('{Escape}');
   await pickLink(screen, 'Item', 'BU asing');
-  expect(buField()).toHaveValue('BU2');
+  expect(buField()).toHaveValue('BU2 - Business Unit 2');
 });
 
 test('mengosongkan item tidak mengosongkan BU; mengosongkan BU tidak mengosongkan item', async () => {
   renderField();
   await pickLink(screen, 'Item', 'Cisco C9200');
-  await waitFor(() => expect(buField()).toHaveValue('BU1'));
+  await waitFor(() => expect(buField()).toHaveValue('BU1 - Business Unit 1'));
   await userEvent.click(screen.getByRole('button', { name: 'Kosongkan Item' }));
   expect(latest).toMatchObject({ itemId: '', buId: 'b1' });
   await pickLink(screen, 'Item', 'Cisco C9200');
@@ -182,7 +186,10 @@ test('daftar BU tulis gagal dimuat: pilihan BU sementara = BU item yang dipilih'
   buList = () => Promise.reject(new Error('gagal'));
   renderField();
   await pickLink(screen, 'Item', 'Dua BU');
-  expect(await linkOptionNames(screen, 'Business Unit')).toEqual(['BU1', 'BU2']);
+  expect(await linkOptionNames(screen, 'Business Unit')).toEqual([
+    'BU1 - Business Unit 1',
+    'BU2 - Business Unit 2',
+  ]);
 });
 
 test('tidak ada elemen select bawaan', async () => {
@@ -233,7 +240,7 @@ test('dengan irisan: baris Tambah item memberi dialog hanya BU irisan; item baru
   await userEvent.click(stub);
   await waitFor(() => expect(latest).toMatchObject({ itemId: 'new', itemLabel: 'Baru X1' }));
   // BU yang tak berhak (b9) tak ikut; tersisa satu BU irisan = terisi otomatis.
-  await waitFor(() => expect(buField()).toHaveValue('BU1'));
+  await waitFor(() => expect(buField()).toHaveValue('BU1 - BU 1'));
   await userEvent.click(screen.getByRole('combobox', { name: 'Item' }));
   expect(await linkOptionNames(screen, 'Item')).toContain('Baru X1');
 });

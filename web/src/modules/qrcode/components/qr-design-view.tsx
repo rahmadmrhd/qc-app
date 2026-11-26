@@ -1,3 +1,4 @@
+import { formatBuLabel } from '@shared/business-units';
 import type { QrDesignDto, QrFileKind } from '@shared/contract';
 import { LinkCell } from '@/components/data-table';
 import { PageContent } from '@/components/page/page-container';
@@ -158,7 +159,7 @@ export function QrDesignView({
             {
               label: 'Business Unit',
               value: presetBusinessUnit
-                ? `Mengikuti preset: ${presetBusinessUnit.name} (${presetBusinessUnit.code})`
+                ? `Mengikuti preset: ${formatBuLabel(presetBusinessUnit)}`
                 : null,
               hidden: presetBusinessUnit === undefined,
             },

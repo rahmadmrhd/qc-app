@@ -110,6 +110,7 @@ function readExisting(value: unknown): StagingExisting | undefined {
     itemLabel,
     buId,
     buCode,
+    ...(typeof value.buName === 'string' ? { buName: value.buName } : {}),
     status,
     hasOpenCase,
     recheckBuIds: [...recheckBuIds],

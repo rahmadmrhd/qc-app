@@ -206,6 +206,7 @@ export function toSerialSummary(serial: SerialDto): SerialSummaryDto {
     id: serial.id,
     buId: serial.buId,
     buCode: serial.buCode,
+    ...(serial.buName === undefined ? {} : { buName: serial.buName }),
     serial: serial.serial,
     itemId: serial.itemId,
     itemLabel: serial.itemLabel,

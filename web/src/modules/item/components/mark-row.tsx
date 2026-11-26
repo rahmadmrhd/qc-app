@@ -5,7 +5,7 @@ import { useId, useState } from 'react';
 import { LinkField, type LinkOption } from '@/components/link-field';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { isInactiveTarget, markLabel } from '../lib/sticker-instructions';
+import { isInactiveTarget, markLabel, typeTargetLabel } from '../lib/sticker-instructions';
 
 /** Jumlah saran maksimum pada daftar pilihan; sisanya dicari dengan mengetik. */
 const OPTION_LIMIT = 50;
@@ -19,9 +19,11 @@ export interface MarkRowProps {
   typeOptions: readonly StickerTypeDto[];
   onChange: (mark: ItemStickerMarkDto) => void;
   onRemove: () => void;
-  /** Baris Tambah pada daftar saran hanya muncul bila disediakan (user berizin menambah stiker/jenis). */
+  /**
+   * Baris Tambah pada daftar saran hanya muncul bila disediakan (user berizin menambah stiker). Satu-satunya pintu:
+   * membuka dialog tambah stiker katalog, tempat jenis baru juga dapat dibuat.
+   */
   onCreateSticker?: () => void;
-  onCreateType?: () => void;
   /** Baris ini penanda yang sedang dipilih (disorot). */
   selected?: boolean;
   /** Fokus masuk ke baris: pilih penandanya (sinkron dengan kanvas). */
@@ -31,47 +33,68 @@ export interface MarkRowProps {
   disabled?: boolean;
 }
 
-function stickerLabelOptions(
+const STICKER_PREFIX = 's:';
+const TYPE_PREFIX = 't:';
+
+/** Satu daftar sasaran: Jenis (hanya yang beraturan) dulu, lalu Stiker (katalog eksplisit). */
+function targetOptions(
   stickers: readonly StickerDto[],
   types: readonly StickerTypeDto[],
   term: string,
 ) {
   const key = normalizeKey(term);
+  const typeMatches = types.filter(
+    (type) =>
+      type.status === 'active' &&
+      type.rule !== 'none' &&
+      (key === '' || normalizeKey(type.name).includes(key)),
+  );
   // Stiker jenis sistem (Manual Book, Postel) tidak dipilih manual: diterjemahkan otomatis lewat jenisnya.
   const systemTypeIds = new Set(types.filter((type) => type.systemKind !== '').map((t) => t.id));
-  const matches = stickers.filter(
+  const stickerMatches = stickers.filter(
     (sticker) =>
       sticker.status === 'active' &&
       !systemTypeIds.has(sticker.typeId) &&
       (key === '' ||
         normalizeKey(`${sticker.name} ${sticker.alias} ${sticker.typeName}`).includes(key)),
   );
-  const options: LinkOption[] = matches.slice(0, OPTION_LIMIT).map((sticker) => {
-    const description = [sticker.alias, sticker.typeName].filter((part) => part !== '').join(' · ');
-    return {
-      id: sticker.id,
-      label: sticker.name,
-      ...(description !== '' ? { description } : {}),
-    };
-  });
-  return { options, hasMore: matches.length > OPTION_LIMIT };
+  const all: LinkOption[] = [
+    ...typeMatches.map((type) => ({
+      id: `${TYPE_PREFIX}${type.id}`,
+      label: typeTargetLabel(type),
+    })),
+    ...stickerMatches.map((sticker) => {
+      const description = [sticker.alias, sticker.typeName]
+        .filter((part) => part !== '')
+        .join(' · ');
+      return {
+        id: `${STICKER_PREFIX}${sticker.id}`,
+        label: sticker.name,
+        ...(description !== '' ? { description } : {}),
+      };
+    }),
+  ];
+  return { options: all.slice(0, OPTION_LIMIT), hasMore: all.length > OPTION_LIMIT };
 }
 
-function typeLabelOptions(types: readonly StickerTypeDto[], term: string) {
-  const key = normalizeKey(term);
-  const matches = types.filter(
-    (type) => type.status === 'active' && (key === '' || normalizeKey(type.name).includes(key)),
-  );
-  const options: LinkOption[] = matches
-    .slice(0, OPTION_LIMIT)
-    .map((type) => ({ id: type.id, label: type.name }));
-  return { options, hasMore: matches.length > OPTION_LIMIT };
+function targetValue(target: ItemStickerMarkDto['target']): string | null {
+  if (target.kind === 'sticker') {
+    return target.stickerId === '' ? null : `${STICKER_PREFIX}${target.stickerId}`;
+  }
+  return target.typeId === '' ? null : `${TYPE_PREFIX}${target.typeId}`;
+}
+
+function parseTargetValue(value: string | null): ItemStickerMarkDto['target'] {
+  if (value?.startsWith(TYPE_PREFIX)) return { kind: 'type', typeId: value.slice(2) };
+  if (value?.startsWith(STICKER_PREFIX)) return { kind: 'sticker', stickerId: value.slice(2) };
+  return { kind: 'sticker', stickerId: '' };
 }
 
 /**
- * Baris penanda di bawah foto: jalur utama (papan ketik, layar kecil) untuk memilih sasaran (stiker tertentu atau jenis
- * stiker, keduanya LinkField), mengisi catatan, dan menghapus penanda. Pilihan baru hanya stiker/jenis aktif; sasaran
- * tersimpan yang kemudian nonaktif tetap tampil dengan tanda "— nonaktif".
+ * Baris penanda di bawah foto: jalur utama (papan ketik, layar kecil) untuk memilih sasaran lewat SATU LinkField
+ * (Jenis dulu, lanjut Stiker), mengisi catatan, dan menghapus penanda. Pilihan baru hanya stiker/jenis aktif (jenis
+ * tanpa aturan tidak ditawarkan); sasaran tersimpan yang kemudian nonaktif atau berjenis tanpa aturan tetap tampil
+ * (nonaktif dengan tanda "— nonaktif").
  */
 export function MarkRow({
   index,
@@ -81,7 +104,6 @@ export function MarkRow({
   onChange,
   onRemove,
   onCreateSticker,
-  onCreateType,
   selected,
   onSelect,
   error,
@@ -89,21 +111,11 @@ export function MarkRow({
 }: MarkRowProps) {
   const id = useId();
   const number = index + 1;
-  const [stickerTerm, setStickerTerm] = useState('');
-  const [typeTerm, setTypeTerm] = useState('');
+  const [term, setTerm] = useState('');
   const { target } = mark;
 
-  function setMode(kind: 'sticker' | 'type') {
-    if (target.kind === kind) return;
-    onChange({
-      ...mark,
-      target: kind === 'sticker' ? { kind, stickerId: '' } : { kind, typeId: '' },
-    });
-  }
-
   const inactiveTarget = isInactiveTarget(target, stickerOptions, typeOptions);
-  const sticker = stickerLabelOptions(stickerOptions, typeOptions, stickerTerm);
-  const type = typeLabelOptions(typeOptions, typeTerm);
+  const choices = targetOptions(stickerOptions, typeOptions, term);
 
   return (
     <fieldset
@@ -120,32 +132,6 @@ export function MarkRow({
         >
           {number}
         </span>
-        <div
-          role="radiogroup"
-          aria-label={`Sasaran penanda ${number}`}
-          className="flex flex-wrap gap-x-3 gap-y-1 text-sm"
-        >
-          <label className="flex items-center gap-1.5">
-            <input
-              type="radio"
-              name={`${id}-mode`}
-              checked={target.kind === 'sticker'}
-              disabled={disabled}
-              onChange={() => setMode('sticker')}
-            />
-            Stiker tertentu
-          </label>
-          <label className="flex items-center gap-1.5">
-            <input
-              type="radio"
-              name={`${id}-mode`}
-              checked={target.kind === 'type'}
-              disabled={disabled}
-              onChange={() => setMode('type')}
-            />
-            Jenis
-          </label>
-        </div>
         <Button
           type="button"
           variant="ghost"
@@ -159,43 +145,20 @@ export function MarkRow({
           <Trash2 />
         </Button>
       </div>
-      {target.kind === 'sticker' ? (
-        <LinkField
-          id={`${id}-sticker`}
-          label="Stiker"
-          placeholder="Cari stiker"
-          value={target.stickerId === '' ? null : target.stickerId}
-          labelOf={(stickerId) =>
-            markLabel({ kind: 'sticker', stickerId }, stickerOptions, typeOptions)
-          }
-          options={sticker.options}
-          hasMore={sticker.hasMore}
-          searchDebounceMs={0}
-          onSearchChange={setStickerTerm}
-          {...(onCreateSticker ? { onCreate: onCreateSticker } : {})}
-          disabled={disabled}
-          onChange={(stickerId) =>
-            onChange({ ...mark, target: { kind: 'sticker', stickerId: stickerId ?? '' } })
-          }
-        />
-      ) : (
-        <LinkField
-          id={`${id}-type`}
-          label="Jenis"
-          placeholder="Cari jenis stiker"
-          value={target.typeId === '' ? null : target.typeId}
-          labelOf={(typeId) => markLabel({ kind: 'type', typeId }, stickerOptions, typeOptions)}
-          options={type.options}
-          hasMore={type.hasMore}
-          searchDebounceMs={0}
-          onSearchChange={setTypeTerm}
-          {...(onCreateType ? { onCreate: onCreateType } : {})}
-          disabled={disabled}
-          onChange={(typeId) =>
-            onChange({ ...mark, target: { kind: 'type', typeId: typeId ?? '' } })
-          }
-        />
-      )}
+      <LinkField
+        id={`${id}-target`}
+        label="Jenis atau stiker"
+        placeholder="Cari jenis atau stiker"
+        value={targetValue(target)}
+        labelOf={(value) => markLabel(parseTargetValue(value), stickerOptions, typeOptions)}
+        options={choices.options}
+        hasMore={choices.hasMore}
+        searchDebounceMs={0}
+        onSearchChange={setTerm}
+        {...(onCreateSticker ? { onCreate: onCreateSticker, createLabel: 'Stiker' } : {})}
+        disabled={disabled}
+        onChange={(value) => onChange({ ...mark, target: parseTargetValue(value) })}
+      />
       <Input
         aria-label={`Catatan penanda ${number}`}
         aria-invalid={error && /catatan/i.test(error) ? true : undefined}

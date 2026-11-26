@@ -172,7 +172,7 @@ test('mengirim brandId, businessUnitIds, dan nilai lengkap lainnya', async () =>
 test('memilih merk berBU-bawaan mengisi chip BU; BU bawaan di luar hak disaring', async () => {
   renderForm();
   await pickBrand('Ubiquiti');
-  expect(screen.getByRole('button', { name: 'Hapus Retail (RTL)' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Hapus RTL - Retail' })).toBeInTheDocument();
   expect(screen.queryByRole('button', { name: /Hapus Xtra/ })).not.toBeInTheDocument();
 });
 
@@ -180,22 +180,22 @@ test('mengganti merk (BU belum diubah manual) mengganti isian BU bawaan', async 
   renderForm();
   await pickBrand('Ubiquiti');
   await pickBrand('Mikrotik');
-  expect(screen.getByRole('button', { name: 'Hapus Wholesale (WHL)' })).toBeInTheDocument();
-  expect(screen.queryByRole('button', { name: 'Hapus Retail (RTL)' })).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Hapus WHL - Wholesale' })).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Hapus RTL - Retail' })).not.toBeInTheDocument();
 });
 
 test('BU yang dipilih manual lebih dulu tidak ditimpa oleh BU bawaan merk', async () => {
   renderForm();
-  await pickBusinessUnit('Wholesale (WHL)');
+  await pickBusinessUnit('WHL - Wholesale');
   await pickBrand('Ubiquiti');
-  expect(screen.getByRole('button', { name: 'Hapus Wholesale (WHL)' })).toBeInTheDocument();
-  expect(screen.queryByRole('button', { name: 'Hapus Retail (RTL)' })).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Hapus WHL - Wholesale' })).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Hapus RTL - Retail' })).not.toBeInTheDocument();
 });
 
 test('chip BU dapat dilepas, dan setelah dilepas manual merk tidak mengisi ulang', async () => {
   renderForm();
   await pickBrand('Ubiquiti');
-  await userEvent.click(screen.getByRole('button', { name: 'Hapus Retail (RTL)' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Hapus RTL - Retail' }));
   await pickBrand('Mikrotik');
   expect(screen.queryByRole('button', { name: /^Hapus / })).not.toBeInTheDocument();
 });
@@ -204,7 +204,7 @@ test('pilihan BU hanya BU aktif yang boleh diisi user, tanpa yang sudah terpilih
   renderForm();
   await userEvent.click(screen.getByRole('combobox', { name: 'BU' }));
   const names = (await screen.findAllByRole('option')).map((option) => option.textContent);
-  expect(names).toEqual(['Retail (RTL)', 'Wholesale (WHL)']);
+  expect(names).toEqual(['RTL - Retail', 'WHL - Wholesale']);
 });
 
 test('mode ubah: merk nonaktif tetap berlabel, BU nonaktif tampil sebagai chip yang dapat dilepas, mengganti merk tidak menimpa BU', async () => {
@@ -217,15 +217,15 @@ test('mode ubah: merk nonaktif tetap berlabel, BU nonaktif tampil sebagai chip y
     },
   });
   expect(screen.getByRole('combobox', { name: 'Merk' })).toHaveValue('Lama — nonaktif');
-  expect(screen.getByRole('button', { name: 'Hapus Lama (OLD) — nonaktif' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Hapus OLD - Lama — nonaktif' })).toBeInTheDocument();
   await pickBrand('Mikrotik');
-  expect(screen.getByRole('button', { name: 'Hapus Retail (RTL)' })).toBeInTheDocument();
-  expect(screen.queryByRole('button', { name: 'Hapus Wholesale (WHL)' })).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Hapus RTL - Retail' })).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Hapus WHL - Wholesale' })).not.toBeInTheDocument();
   // BU nonaktif yang dilepas tidak muncul lagi sebagai pilihan tambah.
-  await userEvent.click(screen.getByRole('button', { name: 'Hapus Lama (OLD) — nonaktif' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Hapus OLD - Lama — nonaktif' }));
   await userEvent.click(screen.getByRole('combobox', { name: 'BU' }));
   const names = (await screen.findAllByRole('option')).map((option) => option.textContent);
-  expect(names).toEqual(['Wholesale (WHL)']);
+  expect(names).toEqual(['WHL - Wholesale']);
 });
 
 test('merk nonaktif tidak ditawarkan pada item baru; pada item ber-merk nonaktif merk itu tetap ada di pilihan', async () => {
@@ -280,7 +280,7 @@ test('menambah merk lewat dialog: merk baru langsung terpilih tanpa mengirim for
   );
   await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
   expect(screen.getByRole('combobox', { name: 'Merk' })).toHaveValue('Baru');
-  expect(screen.getByRole('button', { name: 'Hapus Wholesale (WHL)' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Hapus WHL - Wholesale' })).toBeInTheDocument();
   expect(onSubmit).not.toHaveBeenCalled();
   expect(screen.queryByText('Pilih merk')).not.toBeInTheDocument();
 });
@@ -357,9 +357,11 @@ test('bagian Instruksi stiker memuat foto item, penanda, dan sasaran dari katalo
     'Belakang kardus',
   );
   expect(within(card).getByRole('combobox', { name: 'Label BU foto 1' })).toHaveValue(
-    'Retail (RTL)',
+    'RTL - Retail',
   );
-  expect(within(card).getByRole('combobox', { name: 'Stiker' })).toHaveValue('Stiker Postel');
+  expect(within(card).getByRole('combobox', { name: 'Jenis atau stiker' })).toHaveValue(
+    'Stiker Postel',
+  );
   expect(screen.queryByRole('button', { name: 'Tambah stiker' })).not.toBeInTheDocument();
 });
 
@@ -374,20 +376,53 @@ test('melepas BU item mengosongkan label BU foto yang memakainya', async () => {
   });
   await openTab('Instruksi Stiker');
   const label = screen.getByRole('combobox', { name: 'Label BU foto 1' });
-  expect(label).toHaveValue('Retail (RTL)');
+  expect(label).toHaveValue('RTL - Retail');
   await openTab('Detail');
-  await userEvent.click(screen.getByRole('button', { name: 'Hapus Retail (RTL)' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Hapus RTL - Retail' }));
   await openTab('Instruksi Stiker');
   await waitFor(() =>
     expect(screen.getByRole('combobox', { name: 'Label BU foto 1' })).toHaveValue(''),
   );
 });
 
-test('Tambah jenis dari penanda: dialog jenis, jenis baru langsung terpilih tanpa mengirim form item', async () => {
+const STICKER_MARK_DEFAULTS = {
+  ...toItemFormDefaults(),
+  businessUnitIds: ['bu-a'],
+  stickerPhotos: [
+    {
+      guideId: 'g1',
+      caption: '',
+      buId: null,
+      marks: [{ x: 500, y: 500, target: { kind: 'sticker', stickerId: '' }, note: '' }],
+    },
+  ],
+} satisfies ItemFormProps['defaultValues'];
+
+test('penanda: satu-satunya pintu Tambah membuka dialog tambah stiker; tak ada tombol Tambah jenis baru', async () => {
+  const onCreateSticker = vi.fn(async () => STICKERS[0] as StickerDto);
+  const { onSubmit } = renderForm({
+    defaultValues: STICKER_MARK_DEFAULTS,
+    stickers: STICKERS,
+    stickerTypes: STICKER_TYPES,
+    guides: GUIDES,
+    onCreateSticker,
+    onCreateStickerType: vi.fn(),
+  });
+  await openTab('Instruksi Stiker');
+  expect(screen.queryByRole('button', { name: 'Tambah jenis baru' })).not.toBeInTheDocument();
+  await userEvent.click(screen.getByRole('combobox', { name: 'Jenis atau stiker' }));
+  const addOptions = screen.getAllByRole('option', { name: /^Tambah/ });
+  expect(addOptions.map((o) => o.textContent)).toEqual(['Tambah Stiker']);
+  await userEvent.click(addOptions[0] as HTMLElement);
+  expect(await screen.findByRole('alertdialog', { name: 'Tambah stiker' })).toBeInTheDocument();
+  expect(onSubmit).not.toHaveBeenCalled();
+});
+
+test('dialog tambah stiker dari penanda memuat Tambah Jenis; jenis baru dibuat dari dalamnya tanpa mengirim form item', async () => {
   const created: StickerTypeDto = {
     id: 't9',
     name: 'Segel',
-    rule: 'none',
+    rule: 'bu',
     status: 'active',
     stickerCount: 0,
     systemKind: '',
@@ -396,34 +431,40 @@ test('Tambah jenis dari penanda: dialog jenis, jenis baru langsung terpilih tanp
   };
   const onCreateStickerType = vi.fn(async () => created);
   const { onSubmit } = renderForm({
-    defaultValues: {
-      ...toItemFormDefaults(),
-      businessUnitIds: ['bu-a'],
-      stickerPhotos: [
-        {
-          guideId: 'g1',
-          caption: '',
-          buId: null,
-          marks: [{ x: 500, y: 500, target: { kind: 'type', typeId: '' }, note: '' }],
-        },
-      ],
-    },
+    defaultValues: STICKER_MARK_DEFAULTS,
+    stickers: STICKERS,
     stickerTypes: STICKER_TYPES,
     guides: GUIDES,
+    onCreateSticker: vi.fn(),
     onCreateStickerType,
   });
   await openTab('Instruksi Stiker');
-  await userEvent.click(screen.getByRole('combobox', { name: 'Jenis' }));
+  await userEvent.click(screen.getByRole('combobox', { name: 'Jenis atau stiker' }));
+  await userEvent.click(screen.getByRole('option', { name: 'Tambah Stiker' }));
+  const stickerDialog = await screen.findByRole('alertdialog', { name: 'Tambah stiker' });
+  await userEvent.click(within(stickerDialog).getByRole('combobox', { name: /Jenis/ }));
   await userEvent.click(screen.getByRole('option', { name: 'Tambah Jenis' }));
-  const dialog = await screen.findByRole('alertdialog');
-  await userEvent.type(within(dialog).getByLabelText('Nama jenis'), 'Segel');
-  await userEvent.click(within(dialog).getByRole('button', { name: 'Simpan' }));
+  const typeDialog = await screen.findByRole('alertdialog', { name: 'Tambah jenis stiker' });
+  await userEvent.type(within(typeDialog).getByLabelText(/Nama jenis/), 'Segel');
+  await userEvent.click(within(typeDialog).getByRole('button', { name: 'Simpan' }));
   await waitFor(() =>
     expect(onCreateStickerType).toHaveBeenCalledWith({ name: 'Segel', rule: 'bu' }),
   );
-  await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
-  expect(screen.getByRole('combobox', { name: 'Jenis' })).toHaveValue('Jenis Segel');
   expect(onSubmit).not.toHaveBeenCalled();
+});
+
+test('tanpa hak membuat stiker, penanda tak punya baris Tambah walau bisa membuat jenis', async () => {
+  renderForm({
+    defaultValues: STICKER_MARK_DEFAULTS,
+    stickers: STICKERS,
+    stickerTypes: STICKER_TYPES,
+    guides: GUIDES,
+    onCreateStickerType: vi.fn(),
+  });
+  await openTab('Instruksi Stiker');
+  await userEvent.click(screen.getByRole('combobox', { name: 'Jenis atau stiker' }));
+  expect(screen.queryByRole('option', { name: /^Tambah/ })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Tambah jenis baru' })).not.toBeInTheDocument();
 });
 
 test('tanpa pembuat stiker/jenis, baris Tambah tidak ada pada penanda', async () => {
@@ -444,7 +485,7 @@ test('tanpa pembuat stiker/jenis, baris Tambah tidak ada pada penanda', async ()
     guides: GUIDES,
   });
   await openTab('Instruksi Stiker');
-  await userEvent.click(screen.getByRole('combobox', { name: 'Stiker' }));
+  await userEvent.click(screen.getByRole('combobox', { name: 'Jenis atau stiker' }));
   expect(screen.queryByRole('option', { name: 'Tambah Stiker' })).not.toBeInTheDocument();
 });
 
@@ -481,7 +522,7 @@ test('mode ubah memuat nilai awal', async () => {
     },
   });
   expect(screen.getByRole('combobox', { name: 'Merk' })).toHaveValue('Ubiquiti');
-  expect(screen.getByRole('button', { name: 'Hapus Retail (RTL)' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Hapus RTL - Retail' })).toBeInTheDocument();
   expect(screen.getByRole('checkbox', { name: 'Country lock (wajib)' })).toBeChecked();
   expect(screen.getByLabelText('Nama lain')).toHaveValue('AirFiber');
   expect(screen.getByText('2/10')).toBeInTheDocument();
@@ -528,7 +569,7 @@ test('mengetik di field Merk menyaring daftar; klik opsi memilih merk dan mengis
   );
   await userEvent.click(screen.getByRole('option', { name: 'Mikrotik' }));
   expect(screen.getByRole('combobox', { name: 'Merk' })).toHaveValue('Mikrotik');
-  expect(screen.getByRole('button', { name: 'Hapus Wholesale (WHL)' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Hapus WHL - Wholesale' })).toBeInTheDocument();
 });
 
 test('tanpa izin: baris Tambah BU dan tautan buka merk/BU tidak muncul', async () => {
@@ -550,7 +591,7 @@ test('dengan izin: tombol buka merk dan label chip BU mengarah ke halaman lihat 
     'href',
     '/item/brands/b1',
   );
-  expect(screen.getByRole('link', { name: 'Buka Retail (RTL)' })).toHaveAttribute(
+  expect(screen.getByRole('link', { name: 'Buka RTL - Retail' })).toHaveAttribute(
     'href',
     '/access/business-units/bu-a',
   );
@@ -579,7 +620,7 @@ test('Tambah BU lewat dialog: BU baru langsung terpilih tanpa mengirim form item
     expect(onCreateBusinessUnit).toHaveBeenCalledWith({ code: 'NEW', name: 'Baru' }),
   );
   await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
-  expect(screen.getByRole('button', { name: 'Hapus Baru (NEW)' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Hapus NEW - Baru' })).toBeInTheDocument();
   expect(onSubmit).not.toHaveBeenCalled();
 });
 

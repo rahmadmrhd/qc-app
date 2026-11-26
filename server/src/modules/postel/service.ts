@@ -12,11 +12,22 @@ import { findActiveFiles } from '@server/modules/files/repo';
 import { visibleBuIds } from '@server/modules/item/access';
 import { itemIdsVisibleIn } from '@server/modules/item/repo';
 import { guardChanged, runGuardedBatch } from '@server/modules/qrcode/repo';
+import {
+  assertOpeningStockAccess,
+  findOpeningStockReplay,
+  mayBeOpeningStockRace,
+  OPENING_STOCK_TAKEN_MESSAGE,
+  openingBreakdown,
+  openingStockStmts,
+  openingTotal,
+} from '@server/modules/sticker/opening-stock';
 import { ensurePostelType } from '@server/modules/sticker/postel';
+import { planStickerFile } from '@server/modules/sticker/service';
 import type {
   AuditCursorPageDto,
   ListPostelHistoryInput,
   ListPostelsInput,
+  OpeningStockInput,
   PostelAttachmentDto,
   PostelDto,
   PostelListDto,
@@ -81,6 +92,7 @@ export const POSTEL_CONFLICTS = {
     field: 'itemIds',
     message: 'Nama stiker Postel bentrok dengan catatan lain; simpan ulang',
   },
+  sticker_stock_entries_client_id: { field: 'openingStock', message: OPENING_STOCK_TAKEN_MESSAGE },
 };
 
 function staleError(): Error {
@@ -408,6 +420,26 @@ export async function runPostelBatch(
 }
 
 /**
+ * Replay stok awal untuk `postels.save`: catatan HIDUP pemilik stiker yang dibuat kiriman pertama. Entri milik stiker
+ * lain (bukan stiker catatan Postel) atau catatan yang sudah terhapus dijawab `CONFLICT` generik.
+ */
+async function replayOpeningPostel(
+  env: Env,
+  actor: UserContext,
+  opening: readonly OpeningStockInput[],
+): Promise<PostelDto | null> {
+  const stickerId = await findOpeningStockReplay(env, actor, opening);
+  if (stickerId === null) return null;
+  const replayed = await env.DB.prepare(
+    "SELECT id FROM postels WHERE sticker_id = ? AND deleted_at = ''",
+  )
+    .bind(stickerId)
+    .first<{ id: string }>();
+  if (!replayed) throw appError('CONFLICT', OPENING_STOCK_TAKEN_MESSAGE);
+  return loadPostelDto(env, actor, replayed.id);
+}
+
+/**
  * Menyimpan catatan Postel (PUT utuh): isi, nomor sertifikat, dan keanggotaan item. Item yang tak terlihat bagi
  * penyimpan (di luar BU-nya) tidak dapat dipilih atau dilepas dan tetap terpasang. Nomor Aktif (seq terbesar) hanya
  * hilang bila ada nomor baru; `seq` nomor baru = maks(seq tersimpan) + 1 berurutan.
@@ -418,6 +450,14 @@ export async function savePostel(
   actor: UserContext,
 ): Promise<PostelDto> {
   const existing = input.id ? await findPostelRecord(env.DB, input.id) : null;
+  const opening = input.id ? undefined : input.sticker?.openingStocks;
+  if (opening) {
+    // Stok awal stiker Postel baru (dari form stiker): izin stok per lokasi, lalu idempotensi kiriman ulang.
+    assertOpeningStockAccess(actor, opening);
+    const replayed = await replayOpeningPostel(env, actor, opening);
+    if (replayed) return replayed;
+  }
+  const openingDetail = opening ? await openingBreakdown(env, opening) : '';
   // Catatan terhapus tidak dapat disimpan (pulihkan dulu): dijawab seperti id tak dikenal.
   if (input.id && existing?.deletedAt !== '') {
     throw appError('NOT_FOUND', 'Postel tidak ditemukan');
@@ -591,9 +631,23 @@ export async function savePostel(
     { canRestore: canSeeDeletedPostel(actor) },
   );
   if (stickerId === '') {
-    const created = newPostelStickerStmt(env.DB, type, stickerName, actor.email, stickerNow);
+    const setup = input.sticker;
+    const created = newPostelStickerStmt(env.DB, type, stickerName, actor.email, stickerNow, {
+      ...(setup?.alias ? { alias: setup.alias } : {}),
+      ...(setup?.fileId ? { fileId: setup.fileId } : {}),
+      ...(setup?.minQty === undefined ? {} : { minQty: setup.minQty }),
+    });
     stickerId = created.stickerId;
     stickerStatements.push(created.statement);
+    // Isian stiker dari form stiker (hanya catatan baru): gambar contoh dan stok awal ikut batch yang sama.
+    if (setup?.fileId) {
+      stickerStatements.push(...(await planStickerFile(env, setup.fileId, stickerId, actor)));
+    }
+    if (opening) {
+      stickerStatements.push(
+        ...openingStockStmts(env.DB, stickerId, opening, actor.email, stickerNow),
+      );
+    }
   } else {
     stickerStatements.push(
       renameStickerStmt(env.DB, stickerId, stickerName, actor.email, stickerNow),
@@ -613,29 +667,48 @@ export async function savePostel(
   };
   const after = postelSnapshot(next, finalNumbers, finalItemCount, next.attachments.length);
   if (!existing) {
-    await runPostelBatch(
-      env,
-      [
-        ...stickerStatements,
-        insertPostelStmt(env.DB, next),
-        ...insertedNumbers.map((entry) => insertPostelNumberStmt(env.DB, entry)),
-        ...claimItemsForPostelStmts(env.DB, postelId, toAdd),
-        ...attach.statements,
-        writeAudit(env.DB, {
-          ts: updatedAt,
-          actor: actor.email,
-          action: 'postel.create',
-          target: postelTarget(postelId),
-          targetId: postelId,
-          before: null,
-          after,
-        }),
-      ],
-      postelId,
-      toAdd,
-      '',
-      attach.claimedIds,
-    );
+    try {
+      await runPostelBatch(
+        env,
+        [
+          ...stickerStatements,
+          insertPostelStmt(env.DB, next),
+          ...insertedNumbers.map((entry) => insertPostelNumberStmt(env.DB, entry)),
+          ...claimItemsForPostelStmts(env.DB, postelId, toAdd),
+          ...attach.statements,
+          writeAudit(env.DB, {
+            ts: updatedAt,
+            actor: actor.email,
+            action: 'postel.create',
+            target: postelTarget(postelId),
+            targetId: postelId,
+            before: null,
+            after: {
+              ...after,
+              ...(input.sticker?.alias ? { alias: input.sticker.alias } : {}),
+              ...(input.sticker?.minQty === undefined ? {} : { minQty: input.sticker.minQty }),
+              ...(opening
+                ? {
+                    openingStock: openingTotal(opening),
+                    openingStocks: openingDetail,
+                  }
+                : {}),
+            },
+          }),
+        ],
+        postelId,
+        toAdd,
+        '',
+        attach.claimedIds,
+      );
+    } catch (error) {
+      // Dua kiriman serentak ber-`clientId` sama: yang kalah mengulang pencarian replay (pelaku sama = hasil yang sama).
+      if (opening && mayBeOpeningStockRace(error, opening)) {
+        const replayed = await replayOpeningPostel(env, actor, opening);
+        if (replayed) return replayed;
+      }
+      throw error;
+    }
     return loadPostelDto(env, actor, postelId);
   }
   const before = postelSnapshot(

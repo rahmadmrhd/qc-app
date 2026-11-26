@@ -22,6 +22,7 @@ import {
   ensureSerialUniqueIndex,
 } from '@server/modules/serial/bu-history';
 import { createProofStore } from '@server/modules/serial/proof/store';
+import { ensureSystemStickerTypes } from '@server/modules/sticker/system-types';
 
 export interface ServerOptions {
   /** Hanya tes: pakai `Db` yang sudah ada (tidak ditutup oleh `stop`) alih-alih membuat pool dari `databaseUrl`. */
@@ -122,6 +123,8 @@ export function createServer(config: Config, options: ServerOptions = {}): QcSer
       // Hanya di jalur nyata (ada persiapan basis data): catatan Postel lama dibekali stiker per catatan. Galatnya
       // dicatat tanpa menggagalkan start (pengisi idempoten, diulang pada start berikutnya).
       if (options.prepare) {
+        // Jenis sistem Manual Book dan Postel dijamin ada sejak start (keputusan pemilik 2026-11-25); tak pernah melempar.
+        await ensureSystemStickerTypes(env);
         try {
           await backfillPostelStickers(env);
         } catch (error) {

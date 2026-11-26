@@ -108,15 +108,24 @@ test('jenis nonaktif: Aktifkan dan Hapus tersedia', async () => {
   expect(onDelete).toHaveBeenCalledTimes(1);
 });
 
-test('jenis sistem: lencana Sistem, keterangan dikelola aplikasi, tanpa aksi apa pun', async () => {
-  await renderView({
+test('jenis sistem: lencana Sistem, keterangan dikelola aplikasi, hanya Ubah (minimum bawaan) bagi pemegang kelola', async () => {
+  const { onEdit } = await renderView({
     type: { ...type, systemKind: 'manual_book', rule: 'group', status: 'inactive' },
   });
   expect(screen.getAllByText('Sistem').length).toBeGreaterThan(0);
   expect(screen.getByText(/Dikelola aplikasi/)).toBeInTheDocument();
-  expect(screen.queryByRole('button', { name: 'Ubah' })).toBeNull();
+  await userEvent.click(screen.getByRole('button', { name: 'Ubah' }));
+  expect(onEdit).toHaveBeenCalledTimes(1);
   expect(screen.queryByRole('button', { name: /Aktifkan|Nonaktifkan/ })).toBeNull();
   expect(screen.queryByRole('button', { name: 'Hapus' })).toBeNull();
+});
+
+test('jenis sistem tanpa izin kelola: tanpa Ubah', async () => {
+  await renderView({
+    canManage: false,
+    type: { ...type, systemKind: 'postel', rule: 'group' },
+  });
+  expect(screen.queryByRole('button', { name: 'Ubah' })).toBeNull();
 });
 
 test('tanpa izin: tanpa Ubah, Nonaktifkan, dan Hapus', async () => {

@@ -1,3 +1,4 @@
+import { formatBuLabel } from '@shared/business-units';
 import type { BusinessUnitOptionDto, QrPresetDto } from '@shared/contract';
 import { normalizeKey } from '@shared/items';
 import { QR_LIMITS } from '@shared/qrcode';
@@ -28,10 +29,10 @@ export function businessUnitOptions(
   const key = normalizeKey(term);
   return units
     .filter((unit) => unit.status === 'active')
-    .filter((unit) => key === '' || normalizeKey(unit.name).includes(key))
+    .filter((unit) => key === '' || normalizeKey(formatBuLabel(unit)).includes(key))
     .map((unit) => ({
       id: unit.id,
-      label: unit.name,
+      label: formatBuLabel(unit),
       ...(takenBuIds.has(unit.id)
         ? { disabled: true, description: 'Sudah punya konfigurasi default' }
         : {}),

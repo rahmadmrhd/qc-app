@@ -214,9 +214,9 @@ test('filter status dan BU menjadi parameter; Semua laporan tanpa status', async
   await pickSelect(screen, 'Filter status laporan', 'Semua laporan');
   await waitFor(() => expect(lastInput()).toEqual({}));
   await openChip('BU');
-  await pickLink(screen, 'Filter BU', 'BU2 · Dua');
+  await pickLink(screen, 'Filter BU', 'BU2 - Dua');
   // Mode banyak pilihan: pilihan kedua menambah draf; daftar baru diminta SEKALI saat chip menutup.
-  await pickLink(screen, 'Filter BU', 'BU1 · Satu');
+  await pickLink(screen, 'Filter BU', 'BU1 - Satu');
   expect(lastInput()).toEqual({});
   await closeFilterChip();
   await waitFor(() => expect(lastInput()).toEqual({ buIds: ['b2', 'b1'] }));

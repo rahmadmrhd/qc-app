@@ -70,6 +70,7 @@ export async function lookupSerials(
       id: summary.id,
       buId: summary.buId,
       buCode: summary.buCode,
+      buName: summary.buName,
       itemLabel: summary.itemLabel,
       serial: summary.serial,
       status: summary.status,

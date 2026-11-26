@@ -1,3 +1,4 @@
+import { formatBuLabel } from '@shared/business-units';
 import type { SerialActInput, SerialDto } from '@shared/contract';
 import { extractFileRefs } from '@shared/items';
 import { availableActions, resolveAction } from '@shared/serial-flow';
@@ -196,7 +197,10 @@ export function ActDialog({ serial, kind, onClose }: ActDialogProps) {
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [confirming, setConfirming] = useState(false);
   // BU tujuan cek ulang lolos: bawaan BU saat ini (kosong di kiriman = BU saat ini).
-  const [targetBu, setTargetBu] = useState({ buId: serial.buId, buLabel: serial.buCode });
+  const [targetBu, setTargetBu] = useState({
+    buId: serial.buId,
+    buLabel: formatBuLabel({ code: serial.buCode, name: serial.buName }),
+  });
 
   const serviceLocations = useQuery({
     ...serialServiceLocationsQueryOptions(),
@@ -250,9 +254,9 @@ export function ActDialog({ serial, kind, onClose }: ActDialogProps) {
           writableBuIds: bus ? bus.map((bu) => bu.id) : [serial.buId],
         }),
         bus,
-        [{ id: serial.buId, code: serial.buCode }],
+        [{ id: serial.buId, code: serial.buCode, name: serial.buName }],
       ),
-    [serial.buId, serial.buCode, serial.buHistory, bus],
+    [serial.buId, serial.buCode, serial.buName, serial.buHistory, bus],
   );
 
   // Tujuan Kirim ke servis: field hanya bila konfigurasi servis punya lebih dari satu lokasi aktif.
@@ -580,8 +584,10 @@ export function ActDialog({ serial, kind, onClose }: ActDialogProps) {
                     onChange={setTargetBu}
                   />
                   <p className="text-xs text-muted-foreground">
-                    Bawaannya BU saat ini ({serial.buCode}). Pilih BU lain untuk sekalian
-                    memindahkan serial ini; BU yang pernah ditinggalkan tidak bisa dipilih lagi.
+                    Bawaannya BU saat ini (
+                    {formatBuLabel({ code: serial.buCode, name: serial.buName })}). Pilih BU lain
+                    untuk sekalian memindahkan serial ini; BU yang pernah ditinggalkan tidak bisa
+                    dipilih lagi.
                   </p>
                 </div>
               ) : null}

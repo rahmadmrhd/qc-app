@@ -233,18 +233,42 @@ const systemType: StickerTypeDto = {
   updatedAt: '2026-11-09 10:00:00',
 };
 
-test('jenis sistem: aturan "Menurut kelompok item", badge Sistem, dan tanpa tombol Ubah', async () => {
+test('jenis sistem: aturan "Menurut kelompok item", badge Sistem, Ubah hanya bagi pemegang kelola', async () => {
   await renderPage({ types: [...types, systemType] });
   const row = screen.getByRole('row', { name: /Manual Book/ });
   expect(within(row).getByText('Menurut kelompok item')).toBeInTheDocument();
   expect(within(row).getByText('Sistem')).toBeInTheDocument();
-  expect(within(row).queryByRole('button', { name: 'Ubah Manual Book' })).toBeNull();
+  expect(within(row).getByRole('button', { name: 'Ubah Manual Book' })).toBeInTheDocument();
   // jenis sistem selalu aktif: tanpa Nonaktifkan/Aktifkan (keputusan pemilik 2026-11-11)
   expect(within(row).queryByRole('button', { name: /Nonaktifkan|Aktifkan/ })).toBeNull();
   // jenis biasa tidak diberi badge dan tetap dapat diubah
   expect(within(screen.getByRole('row', { name: /QC Hijau/ })).queryByText('Sistem')).toBeNull();
   expect(screen.getByRole('button', { name: 'Ubah QC Hijau' })).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Nonaktifkan QC Hijau' })).toBeInTheDocument();
+});
+
+test('jenis sistem: dialog Ubah mengunci nama dan aturan dan hanya mengirim minimum bawaan', async () => {
+  const { onSave } = await renderPage({ types: [...types, systemType] });
+  await userEvent.click(screen.getByRole('button', { name: 'Ubah Manual Book' }));
+  const dialog = await screen.findByRole('alertdialog');
+  expect(within(dialog).getByLabelText('Nama jenis')).toBeDisabled();
+  expect(within(dialog).queryByLabelText('Aturan')).toBeNull();
+  const min = within(dialog).getByLabelText('Minimum stok bawaan');
+  await userEvent.clear(min);
+  await userEvent.type(min, '60');
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Simpan' }));
+  expect(onSave).toHaveBeenCalledWith({
+    id: 't-mb',
+    expectedUpdatedAt: '2026-11-09 10:00:00',
+    name: 'Manual Book',
+    rule: 'group',
+    defaultMinQty: 60,
+  });
+});
+
+test('jenis sistem tanpa izin kelola: tanpa tombol Ubah', async () => {
+  await renderPage({ types: [...types, systemType], canManage: false });
+  expect(screen.queryByRole('button', { name: 'Ubah Manual Book' })).toBeNull();
 });
 
 test('form jenis hanya menawarkan aturan pengguna (tanpa Menurut kelompok item)', async () => {

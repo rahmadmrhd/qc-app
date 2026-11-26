@@ -74,80 +74,88 @@ function setup(props: Partial<MarkRowProps> = {}) {
 
 const optionNames = () => screen.getAllByRole('option').map((option) => option.textContent);
 
-test('baris bernomor memuat sasaran stiker, catatan, dan tombol hapus', () => {
+const target = () => screen.getByRole('combobox', { name: 'Jenis atau stiker' });
+
+test('baris bernomor memuat satu sasaran, catatan, dan tombol hapus (tanpa radio mode)', () => {
   setup();
   expect(screen.getByRole('group', { name: 'Baris penanda 1' })).toBeInTheDocument();
-  expect(screen.getByRole('radio', { name: 'Stiker tertentu' })).toBeChecked();
-  expect(screen.getByRole('radio', { name: 'Jenis' })).not.toBeChecked();
-  expect(screen.getByRole('combobox', { name: 'Stiker' })).toHaveValue('Stiker Postel');
+  expect(screen.queryByRole('radio')).not.toBeInTheDocument();
+  expect(target()).toHaveValue('Stiker Postel');
   expect(screen.getByRole('textbox', { name: 'Catatan penanda 1' })).toHaveValue('Pojok kiri');
   expect(screen.getByRole('button', { name: 'Hapus penanda 1' })).toBeInTheDocument();
 });
 
-test('mode jenis menampilkan LinkField jenis dengan label jenis terpilih', () => {
+test('sasaran jenis tersimpan tampil dengan label jenis dan keterangan aturan', () => {
   setup({ mark: { ...MARK, target: { kind: 'type', typeId: 't2' } } });
-  expect(screen.getByRole('radio', { name: 'Jenis' })).toBeChecked();
-  expect(screen.getByRole('combobox', { name: 'Jenis' })).toHaveValue('Jenis Manual');
-  expect(screen.queryByRole('combobox', { name: 'Stiker' })).not.toBeInTheDocument();
+  expect(target()).toHaveValue('Manual (Berdasarkan BU)');
 });
 
-test('mengganti mode membersihkan sasaran lama dan mempertahankan posisi serta catatan', async () => {
+test('daftar: Jenis beraturan dulu (label Berdasarkan BU/Item), lalu Stiker; jenis tanpa aturan tidak ada', async () => {
+  setup({
+    typeOptions: [
+      type({}),
+      type({ id: 't2', name: 'Manual', rule: 'group', systemKind: 'manual_book' }),
+      type({ id: 't4', name: 'Bebas', rule: 'none' }),
+      type({ id: 't3', name: 'Segel', status: 'inactive' }),
+    ],
+  });
+  await userEvent.click(target());
+  expect(optionNames()).toEqual([
+    'Postel (Berdasarkan BU)',
+    'Manual (Berdasarkan Item)',
+    'Stiker PostelPostel',
+  ]);
+});
+
+test('jenis tanpa aturan tersimpan (data lama) tetap tampil, tetapi tidak jadi pilihan baru', async () => {
+  setup({
+    typeOptions: [type({ id: 't4', name: 'Bebas', rule: 'none' })],
+    mark: { ...MARK, target: { kind: 'type', typeId: 't4' } },
+  });
+  expect(target()).toHaveValue('Bebas');
+  await userEvent.click(target());
+  expect(optionNames().some((name) => name?.includes('Bebas'))).toBe(false);
+});
+
+test('memilih jenis menghasilkan sasaran jenis; memilih stiker menghasilkan sasaran stiker', async () => {
   const { onChange } = setup();
-  await userEvent.click(screen.getByRole('radio', { name: 'Jenis' }));
-  expect(onChange).toHaveBeenCalledWith({ ...MARK, target: { kind: 'type', typeId: '' } });
+  await userEvent.click(target());
+  await userEvent.click(screen.getByRole('option', { name: 'Manual (Berdasarkan BU)' }));
+  expect(onChange).toHaveBeenCalledWith({ ...MARK, target: { kind: 'type', typeId: 't2' } });
 
   onChange.mockClear();
-  await userEvent.click(screen.getByRole('radio', { name: 'Stiker tertentu' }));
-  // sudah dalam mode stiker: tidak ada perubahan
-  expect(onChange).not.toHaveBeenCalled();
+  await userEvent.click(target());
+  await userEvent.click(screen.getByRole('option', { name: /Manual Book/ }));
+  expect(onChange).toHaveBeenCalledWith({ ...MARK, target: { kind: 'sticker', stickerId: 's2' } });
 });
 
-test('mode stiker dari jenis: sasaran jenis dibersihkan menjadi stiker kosong', async () => {
-  const { onChange } = setup({ mark: { ...MARK, target: { kind: 'type', typeId: 't2' } } });
-  await userEvent.click(screen.getByRole('radio', { name: 'Stiker tertentu' }));
+test('mengosongkan menghasilkan stiker kosong dengan posisi dan catatan tetap', async () => {
+  const { onChange } = setup({ mark: { ...MARK, target: { kind: 'type', typeId: 't1' } } });
+  await userEvent.click(screen.getByRole('button', { name: 'Kosongkan Jenis atau stiker' }));
   expect(onChange).toHaveBeenCalledWith({ ...MARK, target: { kind: 'sticker', stickerId: '' } });
 });
 
 test('stiker nonaktif yang tersimpan tampil dengan "— nonaktif" tetapi tidak jadi pilihan baru', async () => {
   setup({ mark: { ...MARK, target: { kind: 'sticker', stickerId: 's3' } } });
-  const input = screen.getByRole('combobox', { name: 'Stiker' });
-  expect(input).toHaveValue('Garansi Lama — nonaktif');
-  await userEvent.click(input);
+  expect(target()).toHaveValue('Garansi Lama — nonaktif');
+  await userEvent.click(target());
   expect(optionNames().some((name) => name?.includes('Garansi Lama'))).toBe(false);
 });
 
 test('jenis nonaktif yang tersimpan tampil dengan tanda dan tidak jadi pilihan baru', async () => {
   setup({ mark: { ...MARK, target: { kind: 'type', typeId: 't3' } } });
-  const input = screen.getByRole('combobox', { name: 'Jenis' });
-  expect(input).toHaveValue('Jenis Segel — nonaktif');
-  await userEvent.click(input);
+  expect(target()).toHaveValue('Segel (Berdasarkan BU) — nonaktif');
+  await userEvent.click(target());
   expect(optionNames().some((name) => name?.includes('Segel'))).toBe(false);
 });
 
-test('memilih stiker aktif dari daftar; pencarian menyaring menurut nama, alias, dan jenis', async () => {
-  const { onChange } = setup();
-  await userEvent.click(screen.getByRole('combobox', { name: 'Stiker' }));
-  expect(optionNames()).toEqual(['Stiker PostelPostel', 'Manual BookBuku panduan · Manual']);
-
-  await userEvent.type(screen.getByRole('combobox', { name: 'Stiker' }), 'panduan');
-  await vi.waitFor(() => expect(optionNames()).toEqual(['Manual BookBuku panduan · Manual']));
-  await userEvent.click(screen.getByRole('option', { name: /Manual Book/ }));
-  expect(onChange).toHaveBeenCalledWith({
-    ...MARK,
-    target: { kind: 'sticker', stickerId: 's2' },
-  });
-});
-
-test('memilih jenis aktif dari daftar; mengosongkan menghasilkan id kosong', async () => {
-  const { onChange } = setup({ mark: { ...MARK, target: { kind: 'type', typeId: 't1' } } });
-  await userEvent.click(screen.getByRole('combobox', { name: 'Jenis' }));
-  expect(optionNames()).toEqual(['Postel', 'Manual']);
-  await userEvent.click(screen.getByRole('option', { name: 'Manual' }));
-  expect(onChange).toHaveBeenCalledWith({ ...MARK, target: { kind: 'type', typeId: 't2' } });
-
-  onChange.mockClear();
-  await userEvent.click(screen.getByRole('button', { name: 'Kosongkan Jenis' }));
-  expect(onChange).toHaveBeenCalledWith({ ...MARK, target: { kind: 'type', typeId: '' } });
+test('pencarian menyaring jenis dan stiker sekaligus', async () => {
+  setup();
+  await userEvent.click(target());
+  await userEvent.type(target(), 'manual');
+  await vi.waitFor(() =>
+    expect(optionNames()).toEqual(['Manual (Berdasarkan BU)', 'Manual BookBuku panduan · Manual']),
+  );
 });
 
 test('catatan penanda diubah lewat input', () => {
@@ -164,33 +172,23 @@ test('hapus memanggil onRemove', async () => {
   expect(onRemove).toHaveBeenCalledTimes(1);
 });
 
-test('baris Tambah hanya muncul bila pembuat disediakan (stiker dan jenis terpisah)', async () => {
+test('baris Tambah memakai pembuat stiker dan tidak ada tombol Tambah jenis baru', async () => {
   const onCreateSticker = vi.fn();
   const { onChange } = setup({ onCreateSticker });
-  await userEvent.click(screen.getByRole('combobox', { name: 'Stiker' }));
+  expect(screen.queryByRole('button', { name: 'Tambah jenis baru' })).not.toBeInTheDocument();
+  await userEvent.click(target());
+  expect(screen.getAllByRole('option', { name: /^Tambah/ }).map((o) => o.textContent)).toEqual([
+    'Tambah Stiker',
+  ]);
   await userEvent.click(screen.getByRole('option', { name: 'Tambah Stiker' }));
   expect(onCreateSticker).toHaveBeenCalledTimes(1);
   expect(onChange).not.toHaveBeenCalled();
 });
 
-test('tanpa pembuat: tidak ada baris Tambah di stiker maupun jenis', async () => {
+test('tanpa pembuat stiker: tidak ada baris Tambah', async () => {
   setup();
-  await userEvent.click(screen.getByRole('combobox', { name: 'Stiker' }));
-  expect(screen.queryByRole('option', { name: 'Tambah Stiker' })).not.toBeInTheDocument();
-});
-
-test('baris Tambah pada mode jenis memakai pembuat jenis', async () => {
-  const onCreateType = vi.fn();
-  const onCreateSticker = vi.fn();
-  setup({
-    mark: { ...MARK, target: { kind: 'type', typeId: '' } },
-    onCreateType,
-    onCreateSticker,
-  });
-  await userEvent.click(screen.getByRole('combobox', { name: 'Jenis' }));
-  await userEvent.click(screen.getByRole('option', { name: 'Tambah Jenis' }));
-  expect(onCreateType).toHaveBeenCalledTimes(1);
-  expect(onCreateSticker).not.toHaveBeenCalled();
+  await userEvent.click(target());
+  expect(screen.queryByRole('option', { name: /Tambah/ })).not.toBeInTheDocument();
 });
 
 test('galat baris tampil dan menandai input; disorot saat dipilih', () => {
@@ -212,8 +210,7 @@ test('onSelect dipanggil saat fokus masuk ke baris', async () => {
 
 test('disabled mematikan semua kontrol', () => {
   setup({ disabled: true });
-  expect(screen.getByRole('radio', { name: 'Jenis' })).toBeDisabled();
-  expect(screen.getByRole('combobox', { name: 'Stiker' })).toBeDisabled();
+  expect(target()).toBeDisabled();
   expect(screen.getByRole('textbox', { name: 'Catatan penanda 1' })).toBeDisabled();
   expect(screen.getByRole('button', { name: 'Hapus penanda 1' })).toBeDisabled();
 });

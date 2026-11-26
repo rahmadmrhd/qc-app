@@ -531,6 +531,8 @@ export interface NumberData {
   kind: 'number';
   value: number;
   previous?: number;
+  /** Keterangan singkat di bawah angka (mis. "12 hari"); teks jadi dari server, tanpa data internal. */
+  note?: string;
 }
 export interface PartsData {
   kind: 'parts';

@@ -47,3 +47,14 @@ Periksa tiap klien di terang dan gelap bila ada (di ponsel: kartu angka bertumpu
 ## Catatan hasil
 
 Tulis hasil per klien (versi, terang/gelap, lolos atau tidak, tangkapan layar bila ada celah) di PR rilis. Celah tampilan yang hanya terjadi di satu klien lama (mis. Outlook desktop) dan tidak merusak isi dapat diterima oleh pemilik produk; catat keputusannya di spek bagian 13.
+
+## Tiga surel notifikasi (Serial rusak, ringkasan stok, peringatan Postel)
+
+Sejak 2026-11-26 (keputusan pemilik) ketiganya HTML ramah ponsel dengan teks polos sebagai cadangan, memakai pembantu bersama `server/src/core/email-layout.ts` (pembentuk murni `serialBrokenMail`, `buildStockDigestMail`, `buildPostelAlertMail`). Periksa di klien yang sama dengan daftar di atas:
+
+- [ ] Serial rusak: lencana Rusak, tabel kunci-nilai (BU berformat `<kode> - <nama>`), catatan per baris, tombol "Buka laporan" dan masa berlaku; tanpa stok dan tanpa alamat surel pelaku.
+- [ ] Ringkasan stok: bagian Habis dan Menipis, "Kurang N" untuk stok negatif, keterangan total semua lokasi, tautan ke stiker, maks. 50 baris per bagian + "dan N lainnya".
+- [ ] Postel: bagian "Sudah kedaluwarsa" dan "Segera habis" terpisah, lencana berteks, tombol "Buka daftar Postel".
+- [ ] Ponsel: tabel data jadi blok per baris, label kolom tampil di tiap sel, tombol selebar layar. Outlook desktop: label kolom ponsel TIDAK tampil ganda (`mso-hide:all`).
+- [ ] Mode gelap: surel ini hanya mendeklarasikan tema terang (`color-scheme: light`); catat bagaimana tiap klien membalik warnanya dan apakah lencana tetap terbaca (dukungan mode gelap aktif belum dibuat).
+- [ ] Surel tidak terpotong (batas 90 KB, `fitEmail` menurunkan batas baris bila perlu).

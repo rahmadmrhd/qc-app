@@ -9,7 +9,12 @@ import { ConfirmDeleteDialog } from '@/components/soft-delete/confirm-delete-dia
 import { useStackNavigation } from '@/hooks/use-stack-navigation';
 import { ApiError } from '@/lib/api/api-error';
 import { describeError } from '@/lib/api/describe-error';
-import { businessUnitLinkAccess, stickerTypeLinkAccess } from '@/lib/link-access';
+import {
+  businessUnitLinkAccess,
+  manualBookLinkAccess,
+  postelLinkAccess,
+  stickerTypeLinkAccess,
+} from '@/lib/link-access';
 import { businessUnitOptionsQueryOptions, useSaveBusinessUnit } from '@/modules/access/queries';
 import { can, locationsWith, requirePermission } from '@/modules/auth/permissions';
 import { useMe } from '@/modules/auth/use-me';
@@ -181,6 +186,8 @@ function StickerViewRoute() {
         canEdit={can(me, 'sticker', 'edit')}
         canManage={canManage}
         canOpenBusinessUnit={buLinks.openBusinessUnitHref !== undefined}
+        openPostelHref={postelLinkAccess(me).openPostelHref}
+        openManualBookHref={manualBookLinkAccess(me).openManualBookHref}
         statusPending={setStatus.isPending}
         restorePending={restoreStickers.isPending}
         tab={tab}

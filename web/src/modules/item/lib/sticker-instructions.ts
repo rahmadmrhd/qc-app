@@ -46,7 +46,7 @@ export function moveEntry<T>(list: readonly T[], from: number, to: number): T[] 
 const INACTIVE_SUFFIX = ' — nonaktif';
 
 /**
- * Label sasaran penanda untuk LinkField/daftar: nama stiker, atau "Jenis {nama}"; yang nonaktif diberi tanda
+ * Label sasaran penanda untuk LinkField/daftar: nama stiker, atau "<jenis> (Berdasarkan BU/Item)"; yang nonaktif diberi tanda
  * "— nonaktif" (penanda tersimpan tetap utuh walau stiker/jenisnya kemudian dinonaktifkan). Id kosong = teks kosong.
  */
 export function markLabel(
@@ -63,9 +63,15 @@ export function markLabel(
   if (target.typeId === '') return '';
   const found = types.find((type) => type.id === target.typeId);
   if (!found) return 'Jenis tidak ditemukan';
-  return found.status === 'inactive'
-    ? `Jenis ${found.name}${INACTIVE_SUFFIX}`
-    : `Jenis ${found.name}`;
+  const label = typeTargetLabel(found);
+  return found.status === 'inactive' ? `${label}${INACTIVE_SUFFIX}` : label;
+}
+
+/** Label jenis sebagai sasaran: "<nama> (Berdasarkan BU|Item)"; jenis tanpa aturan (data lama) hanya namanya. */
+export function typeTargetLabel(type: Pick<StickerTypeDto, 'name' | 'rule'>): string {
+  if (type.rule === 'bu') return `${type.name} (Berdasarkan BU)`;
+  if (type.rule === 'group') return `${type.name} (Berdasarkan Item)`;
+  return type.name;
 }
 
 /** Sasaran ada di katalog dan tidak aktif (nonaktif atau, untuk stiker, usang); kosong atau tak dikenal = false. */

@@ -93,7 +93,7 @@ describe('bentuk keluaran', () => {
     const dto = await view(await share());
     expect(dto?.title).toBe('Ringkasan');
     expect(dto?.sharedBy).toBe('sharer');
-    expect(dto?.scope.buNames).toEqual(['BU Ex', 'BU Ye']);
+    expect(dto?.scope.buNames).toEqual(['X - BU Ex', 'Y - BU Ye']);
     expect(dto?.options.bu.map((option) => option.value)).toEqual(['bu-x', 'bu-y']);
     expect(dto?.range).toEqual({ from: '2026-11-01', to: '2026-11-23' });
     expect(numberOf(dto, 'sn.status')).toBe(3);
@@ -211,7 +211,7 @@ describe('Review Focus 1: pembagi yang diturunkan haknya', () => {
       .run();
     const after = await view(row);
     expect(numberOf(after, 'sn.status')).toBe(2);
-    expect(after?.scope.buNames).toEqual(['BU Ex']);
+    expect(after?.scope.buNames).toEqual(['X - BU Ex']);
   });
 
   test('BU yang ditambahkan ke pembagi sesudah tautan dibuat tidak ikut', async () => {
@@ -461,12 +461,15 @@ describe('M2: BU dan lokasi terhapus (spek soft delete bagian 5)', () => {
   test('BU terhapus tetap bernama di kepala dengan penanda, tetapi tidak menjadi pilihan filter', async () => {
     const row = await share();
     expect((await view(row))?.scope).toMatchObject({
-      buNames: ['BU Ex', 'BU Ye'],
+      buNames: ['X - BU Ex', 'Y - BU Ye'],
       buDeleted: [false, false],
     });
     await softDelete('business_units', 'bu-y');
     const after = await view(row);
-    expect(after?.scope).toMatchObject({ buNames: ['BU Ex', 'BU Ye'], buDeleted: [false, true] });
+    expect(after?.scope).toMatchObject({
+      buNames: ['X - BU Ex', 'Y - BU Ye'],
+      buDeleted: [false, true],
+    });
     // Pilihan filter memperlakukan record terhapus seolah tak ada; hanya nama dan penanda, tanpa id mentah.
     expect(after?.options.bu.map((option) => option.value)).toEqual(['bu-x']);
     expect(JSON.stringify(after?.scope)).not.toMatch(/bu-/);

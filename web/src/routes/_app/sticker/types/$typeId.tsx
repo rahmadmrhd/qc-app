@@ -136,6 +136,7 @@ function StickerTypeViewRoute() {
             open={editing}
             onOpenChange={setEditing}
             type={type}
+            canSetDefaultMin={canManage}
             onSave={handleSave}
           />
           <ConfirmDeleteDialog

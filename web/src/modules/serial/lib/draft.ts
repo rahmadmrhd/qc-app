@@ -1,3 +1,4 @@
+import { formatBuLabel } from '@shared/business-units';
 import type { SerialExistingDto, SerialRowInput, SerialRowResult } from '@shared/contract';
 import type { QcsnRow } from '@shared/serial-file';
 import {
@@ -35,6 +36,8 @@ export interface StagingExisting {
   /** BU saat ini serial itu. */
   buId: string;
   buCode: string;
+  /** Nama BU (opsional: draf lama tidak memilikinya); bersama `buCode` membentuk label `<kode> - <nama>`. */
+  buName?: string | undefined;
   status: SerialStatus;
   hasOpenCase: boolean;
   /** BU yang boleh dipilih pengguna sebagai BU target cek ulang. */
@@ -247,6 +250,7 @@ export function toExisting(dto: SerialExistingDto): StagingExisting {
     itemLabel: dto.itemLabel,
     buId: dto.buId,
     buCode: dto.buCode,
+    ...(dto.buName === undefined ? {} : { buName: dto.buName }),
     status: dto.status,
     hasOpenCase: dto.hasOpenCase,
     recheckBuIds: [...dto.recheckBuIds],
@@ -288,6 +292,7 @@ function sameExisting(a: StagingExisting, b: StagingExisting): boolean {
     a.itemLabel === b.itemLabel &&
     a.buId === b.buId &&
     a.buCode === b.buCode &&
+    a.buName === b.buName &&
     a.status === b.status &&
     a.hasOpenCase === b.hasOpenCase &&
     a.proofMin === b.proofMin &&
@@ -316,7 +321,11 @@ function becomeRecheck(row: StagingRow, existing: StagingExisting): StagingRow {
     itemId: existing.itemId,
     itemLabel: existing.itemLabel,
     buId: keepsBu ? row.buId : defaultBu ? existing.buId : '',
-    buLabel: keepsBu ? row.buLabel : defaultBu ? existing.buCode : '',
+    buLabel: keepsBu
+      ? row.buLabel
+      : defaultBu
+        ? formatBuLabel({ code: existing.buCode, name: existing.buName })
+        : '',
     ...(existing.proofMin > 0 ? { proofMin: existing.proofMin } : {}),
     ...(refresh ? {} : { sample: false, stickers: [] }),
     ...(kept && kept.length > 0 ? { unresolved: kept } : {}),

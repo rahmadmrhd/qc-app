@@ -740,7 +740,7 @@ function RecordPageInner({
       const loadBus = async () => {
         try {
           const data = await queryClient.fetchQuery(serialBuOptionsQueryOptions());
-          return data.businessUnits.map((bu) => ({ id: bu.id, code: bu.code }));
+          return data.businessUnits.map((bu) => ({ id: bu.id, code: bu.code, name: bu.name }));
         } catch {
           return null;
         }

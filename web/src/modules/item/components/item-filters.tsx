@@ -1,3 +1,4 @@
+import { formatBuLabel } from '@shared/business-units';
 import type { BrandDto, StickerDto, StickerTypeDto } from '@shared/contract';
 import { LinkField, LinkMultiField, type LinkOption } from '@/components/link-field';
 import { FilterChip, multiFilterDisplay } from '@/components/page/filter-bar';
@@ -107,7 +108,7 @@ export function ItemFilters({
   }));
   const buOptions: LinkOption[] = (businessUnits ?? []).map((bu) => ({
     id: bu.id,
-    label: `${bu.name} (${bu.code})`,
+    label: formatBuLabel(bu),
   }));
   // Id dari URL yang tak ada di pilihan (mis. merk terhapus dari tautan View merk) tetap tampil sebagai tidak dikenal.
   const brandName = (id: string) => {

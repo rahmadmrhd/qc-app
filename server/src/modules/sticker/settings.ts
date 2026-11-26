@@ -124,7 +124,8 @@ export async function saveStickerSettings(
     throw staleError(STICKER_SETTINGS_STALE_MESSAGE);
   }
   const knownTypes = new Map(types.map((type) => [type.id, type]));
-  for (const row of input.defaults) {
+  const defaults = input.defaults ?? [];
+  for (const row of defaults) {
     if (!knownTypes.has(row.typeId)) {
       const message = 'Jenis stiker tidak ditemukan';
       throw appError('VALIDATION', message, { defaults: message });
@@ -133,7 +134,7 @@ export async function saveStickerSettings(
   const now = nowIso(env);
   const stored: StoredAlert = { ...input.alert, updatedAt: now };
   const value = JSON.stringify(stored);
-  const changedDefaults = input.defaults.filter(
+  const changedDefaults = defaults.filter(
     (row) => knownTypes.get(row.typeId)?.defaultMinQty !== row.defaultMinQty,
   );
   const statements: DbStatement[] =
@@ -154,10 +155,11 @@ export async function saveStickerSettings(
         ];
   for (const row of changedDefaults) {
     statements.push(
-      env.DB.prepare('UPDATE sticker_types SET default_min_qty = ? WHERE id = ?').bind(
-        row.defaultMinQty,
-        row.typeId,
-      ),
+      // `updated_at` ikut naik: form Jenis (yang juga memuat minimum bawaan) yang dibuka sebelumnya menjadi usang,
+      // bukan menimpa diam-diam perubahan dari halaman ini (satu kolom data, dua pintu; keputusan 2026-11-25).
+      env.DB.prepare(
+        'UPDATE sticker_types SET default_min_qty = ?, updated_at = ?, updated_by = ? WHERE id = ?',
+      ).bind(row.defaultMinQty, now, actor.email, row.typeId),
     );
   }
   statements.push(

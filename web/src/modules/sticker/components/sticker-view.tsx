@@ -1,3 +1,4 @@
+import { formatBuLabel } from '@shared/business-units';
 import type { BusinessUnitOptionDto, StickerDto, StickerTypeDto } from '@shared/contract';
 import { formatStockQty } from '@shared/stickers';
 import { Link } from '@tanstack/react-router';
@@ -42,6 +43,10 @@ export interface StickerViewProps {
   canManage?: boolean;
   /** Kode BU menaut ke halaman BU hanya bila pengguna berhak. */
   canOpenBusinessUnit?: boolean;
+  /** Tautan ke halaman lihat catatan Postel; `null` = tanpa izin atau aplikasi desktop (tanpa tautan). */
+  openPostelHref?: ((postelId: string) => string | null) | undefined;
+  /** Tautan ke halaman lihat konfigurasi QR Manual Book; `undefined` = tanpa izin atau aplikasi desktop. */
+  openManualBookHref?: ((designId: string) => string) | undefined;
   statusPending?: boolean;
   restorePending?: boolean;
   tab?: StickerTab | undefined;
@@ -78,6 +83,8 @@ export function StickerView({
   canEdit = false,
   canManage = false,
   canOpenBusinessUnit = true,
+  openPostelHref,
+  openManualBookHref,
   statusPending = false,
   restorePending = false,
   tab,
@@ -111,6 +118,18 @@ export function StickerView({
     sticker.status !== 'inactive' ||
     systemKind !== 'manual_book' ||
     sticker.latestManualBookVersion;
+  // Sumber hidup (id hanya terisi bila Postel/konfigurasi QR-nya belum terhapus; server yang menentukan).
+  const sourceLink = ((): { href: string; label: string } | null => {
+    if (sticker.postelId) {
+      const href = openPostelHref?.(sticker.postelId);
+      return href ? { href, label: 'Buka Postel' } : null;
+    }
+    if (sticker.manualBookDesignId) {
+      const href = openManualBookHref?.(sticker.manualBookDesignId);
+      return href ? { href, label: 'Buka Manual Book' } : null;
+    }
+    return null;
+  })();
   const stockRow = stock?.rows.find((row) => row.stickerId === sticker.id);
   const showStock = stock !== undefined && !deleted;
 
@@ -245,11 +264,11 @@ export function StickerView({
                           title={bu.name}
                           className={textLink}
                         >
-                          {bu.code}
+                          {formatBuLabel(bu)}
                         </Link>
                       ) : (
                         <Badge key={bu.id} variant="outline" color="primary" title={bu.name}>
-                          {bu.code}
+                          {formatBuLabel(bu)}
                         </Badge>
                       ),
                     )}
@@ -273,6 +292,15 @@ export function StickerView({
               ),
             },
             { label: 'Asal', value: SYSTEM_ORIGIN[systemKind], hidden: systemKind === '' },
+            {
+              label: 'Sumber',
+              value: sourceLink ? (
+                <Link to={sourceLink.href as never} className={textLink}>
+                  {sourceLink.label}
+                </Link>
+              ) : null,
+              hidden: sourceLink === null,
+            },
           ]}
         />
       </ViewSection>

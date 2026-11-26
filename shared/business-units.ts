@@ -9,6 +9,20 @@ export const BU_MODULES = ['item', 'serial', 'serialservice'] as const;
 export type BuModule = (typeof BU_MODULES)[number];
 export type BuPermissionMap = Record<BuModule, Level>;
 
+/**
+ * Label tampilan BU, SATU-SATUNYA pembentuknya (keputusan pemilik 2026-11-25): `<kode> - <nama>`. Bila salah satu
+ * kosong, yang ada saja ditampilkan (data lama atau DTO tanpa nama tak menghasilkan " - " menggantung).
+ */
+export function formatBuLabel(bu: {
+  code?: string | null | undefined;
+  name?: string | null | undefined;
+}): string {
+  const code = (bu.code ?? '').trim();
+  const name = (bu.name ?? '').trim();
+  if (code !== '' && name !== '') return `${code} - ${name}`;
+  return code !== '' ? code : name;
+}
+
 /** Kunci peta/snapshot untuk penugasan "Semua BU". */
 export const ALL_BU_KEY = '*';
 

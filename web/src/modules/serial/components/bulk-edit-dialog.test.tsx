@@ -74,9 +74,9 @@ test('BU dapat diubah sendiri (tanpa item) ke BU mana pun dan hanya membawa BU',
   expect(
     within(dialog).getByRole('combobox', { name: 'Business Unit (ubah massal)' }),
   ).toBeEnabled();
-  await pickLink(screen, 'Business Unit (ubah massal)', 'BU2');
+  await pickLink(screen, 'Business Unit (ubah massal)', 'BU2 - Business Unit 2');
   await userEvent.click(screen.getByRole('button', { name: 'Terapkan ke 3 baris' }));
-  expect(onApply).toHaveBeenCalledWith({ buId: 'b2', buLabel: 'BU2' });
+  expect(onApply).toHaveBeenCalledWith({ buId: 'b2', buLabel: 'BU2 - Business Unit 2' });
 });
 
 test('item dipilih lalu BU dikosongkan: Terapkan tertahan dan petunjuk BU muncul', async () => {

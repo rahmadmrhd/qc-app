@@ -7,6 +7,7 @@ import { getRoutes } from '@server/routes';
 import { seedBusinessUnit, seedRole, seedUser } from '@server-test/access-fixtures';
 import { bytesOfBase64 } from '@server-test/bytes';
 import { captureAppError, captureAppErrorAsync } from '@server-test/errors';
+import { seedPostel } from '@server-test/postel-fixtures';
 import { seedQrDesign } from '@server-test/qrcode-env';
 import { restCall } from '@server-test/rest-call';
 import { jsonOf, restClient } from '@server-test/rest-client';
@@ -15,6 +16,7 @@ import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import type { StickerDto, StickerTypeDto } from '@shared/contract';
 import type { StickerRule } from '@shared/stickers';
 import {
+  getStickerDto,
   listStickers,
   saveSticker,
   saveStickerType,
@@ -650,6 +652,58 @@ describe('penanda versi terbaru Manual Book pada StickerDto (latestManualBookVer
       admin,
     );
     expect(saved.latestManualBookVersion).toBe(true);
+  });
+});
+
+describe('tautan sumber stiker sistem (postelId, manualBookDesignId)', () => {
+  beforeEach(async () => {
+    await seedStickerType(env, {
+      id: 'mb',
+      name: 'Manual Book',
+      rule: 'group',
+      systemKind: 'manual_book',
+    });
+    await seedStickerType(env, { id: 'pt', name: 'Postel', rule: 'group', systemKind: 'postel' });
+    await seedQrDesign(env, { id: 'q1' });
+    await seedSticker(env, { id: 'mb-1', typeId: 'mb', name: 'MB v1', status: 'deprecated' });
+    await seedManualBookVersion(env, { stickerId: 'mb-1', designId: 'q1', version: 1 });
+    await seedSticker(env, { id: 'mb-2', typeId: 'mb', name: 'MB v2' });
+    await seedManualBookVersion(env, { stickerId: 'mb-2', designId: 'q1', version: 2 });
+    await seedSticker(env, { id: 'pt-1', typeId: 'pt', name: 'Postel - A' });
+    await seedPostel(env, {
+      id: 'p1',
+      stickerId: 'pt-1',
+      numbers: [{ number: 'N-1', expiresOn: '2027-01-01' }],
+    });
+  });
+
+  test('daftar dan get memuat id sumber hidup; stiker biasa tanpa tautan', async () => {
+    const plain = await saveSticker(env, input(), admin);
+    const list = await listStickers(env);
+    const of = (id: string) => list.find((sticker) => sticker.id === id);
+    expect(of('pt-1')?.postelId).toBe('p1');
+    expect(of('pt-1')?.manualBookDesignId).toBeUndefined();
+    expect(of('mb-2')?.manualBookDesignId).toBe('q1');
+    expect(of('mb-1')?.manualBookDesignId).toBe('q1');
+    expect(of('mb-2')?.postelId).toBeUndefined();
+    expect(of(plain.id)?.postelId).toBeUndefined();
+    expect(of(plain.id)?.manualBookDesignId).toBeUndefined();
+    expect((await getStickerDto(env, { id: 'pt-1' }, admin)).postelId).toBe('p1');
+    expect((await getStickerDto(env, { id: 'mb-2' }, admin)).manualBookDesignId).toBe('q1');
+    expect((await getStickerDto(env, { id: plain.id }, admin)).postelId).toBeUndefined();
+  });
+
+  test('catatan Postel atau konfigurasi QR yang terhapus tidak ditautkan', async () => {
+    const stamp = "UPDATE postels SET deleted_at = '2026-11-20T00:00:00.000Z' WHERE id = 'p1'";
+    await env.DB.prepare(stamp).run();
+    await env.DB.prepare(
+      "UPDATE qr_designs SET deleted_at = '2026-11-20T00:00:00.000Z' WHERE id = 'q1'",
+    ).run();
+    const list = await listStickers(env);
+    expect(list.find((sticker) => sticker.id === 'pt-1')?.postelId).toBeUndefined();
+    expect(list.find((sticker) => sticker.id === 'mb-2')?.manualBookDesignId).toBeUndefined();
+    expect((await getStickerDto(env, { id: 'pt-1' }, admin)).postelId).toBeUndefined();
+    expect((await getStickerDto(env, { id: 'mb-2' }, admin)).manualBookDesignId).toBeUndefined();
   });
 });
 

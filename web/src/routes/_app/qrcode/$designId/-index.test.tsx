@@ -291,7 +291,7 @@ test('tab Detail: BU konfigurasi tampil sebagai "Mengikuti preset" dari BU prese
     return fallback(id, input);
   });
   await mount();
-  expect(await screen.findByText('Mengikuti preset: Retail (RTL)')).toBeInTheDocument();
+  expect(await screen.findByText('Mengikuti preset: RTL - Retail')).toBeInTheDocument();
 });
 
 test('tab Detail: tanpa preset tidak ada baris Business Unit', async () => {

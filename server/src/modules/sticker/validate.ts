@@ -12,6 +12,7 @@ import type {
   ListStickerStockInput,
   ListStickersInput,
   ListStickerTypesInput,
+  OpeningStockInput,
   OpnameInput,
   OpnameRowInput,
   RecordStockBatchInput,
@@ -25,12 +26,7 @@ import type {
   StockHistoryInput,
 } from '@shared/contract';
 import type { StockCount } from '@shared/stickers';
-import {
-  isStockClientId,
-  piecesOfCount,
-  STICKER_LIMITS,
-  USER_STICKER_RULES,
-} from '@shared/stickers';
+import { isStockClientId, piecesOfCount, STICKER_LIMITS, STICKER_RULES } from '@shared/stickers';
 import { parseStockCursor } from './stock-repo';
 
 const STATUS_VALUES = ['active', 'inactive'] as const;
@@ -49,15 +45,22 @@ export function validateSaveStickerType(raw: unknown): SaveStickerTypeInput {
   const id = reader.optionalId('id');
   const expectedUpdatedAt = readExpectedUpdatedAt(reader, id);
   const name = reader.str('name', { required: true, max: STICKER_LIMITS.nameMax });
-  const rule = reader.oneOf('rule', USER_STICKER_RULES);
+  // `group` dikirim apa adanya bersama jenis sistem (nama dan aturan dikunci); service menolaknya untuk jenis biasa.
+  const rule = reader.oneOf('rule', STICKER_RULES);
+  const rawDefault = reader.raw('defaultMinQty');
+  const defaultMinQty =
+    rawDefault === undefined || rawDefault === null
+      ? undefined
+      : readQtyField(rawDefault, reader, 'defaultMinQty', 'Minimum stok bawaan');
   reader.done();
-  return id ? { id, expectedUpdatedAt, name, rule } : { name, rule };
+  const base = defaultMinQty === undefined ? { name, rule } : { name, rule, defaultMinQty };
+  return id ? { id, expectedUpdatedAt, ...base } : base;
 }
 
 /** Batas wajar jumlah BU per stiker (menjaga ukuran kueri; sama dengan BU bawaan merk). */
 const STICKER_BU_MAX = 50;
 
-function readFileId(value: unknown, reader: ObjectReader): string | null {
+export function readFileId(value: unknown, reader: ObjectReader): string | null {
   if (value === null || value === undefined || value === '') return null;
   if (typeof value !== 'string' || value.trim() === '' || value.trim().length > 100) {
     reader.fail('fileId', 'Gambar tidak valid');
@@ -66,17 +69,86 @@ function readFileId(value: unknown, reader: ObjectReader): string | null {
   return value.trim();
 }
 
-function readMinQty(value: unknown, reader: ObjectReader): number {
+export function readQtyField(
+  value: unknown,
+  reader: ObjectReader,
+  field: string,
+  label: string,
+): number {
   if (
     typeof value !== 'number' ||
     !Number.isInteger(value) ||
     value < 0 ||
     value > STICKER_LIMITS.qtyMax
   ) {
-    reader.fail('minQty', `Batas minimum harus bilangan bulat 0 sampai ${STICKER_LIMITS.qtyMax}`);
+    reader.fail(field, `${label} harus bilangan bulat 0 sampai ${STICKER_LIMITS.qtyMax}`);
     return 0;
   }
   return value;
+}
+
+/**
+ * Stok awal per lokasi (hanya saat membuat stiker): daftar baris, satu lokasi satu baris; tiap baris lokasi wajib,
+ * jumlah bulat 1 sampai `qtyMax`, `clientId` wajib (UUID huruf kecil). Daftar kosong = tak ada stok awal.
+ */
+export function readOpeningStocks(
+  value: unknown,
+  reader: ObjectReader,
+): OpeningStockInput[] | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (!Array.isArray(value)) {
+    reader.fail('openingStock', 'Stok awal harus berupa daftar lokasi');
+    return undefined;
+  }
+  if (value.length > STICKER_LIMITS.openingRows) {
+    reader.fail('openingStock', `Stok awal maksimal ${STICKER_LIMITS.openingRows} lokasi`);
+    return undefined;
+  }
+  const rows: OpeningStockInput[] = [];
+  const locations = new Set<string>();
+  const clients = new Set<string>();
+  for (const [index, entry] of value.entries()) {
+    const label = `Stok awal baris ${index + 1}`;
+    const nested = readObject(entry);
+    const rawLocation = nested.raw('locationId');
+    const quantity = nested.raw('quantity');
+    const clientId = nested.raw('clientId');
+    nested.done();
+    // Galat baris dilaporkan ke field `openingStock` (satu-satunya yang dipetakan form), bukan field bersarang.
+    const locationId = typeof rawLocation === 'string' ? rawLocation.trim() : '';
+    if (locationId === '' || locationId.length > 100) {
+      reader.fail('openingStock', `${label}: lokasi tidak valid`);
+      return undefined;
+    }
+    if (
+      typeof quantity !== 'number' ||
+      !Number.isInteger(quantity) ||
+      quantity < 1 ||
+      quantity > STICKER_LIMITS.qtyMax
+    ) {
+      reader.fail(
+        'openingStock',
+        `${label}: jumlah harus bilangan bulat 1 sampai ${STICKER_LIMITS.qtyMax}`,
+      );
+      return undefined;
+    }
+    if (typeof clientId !== 'string' || !isStockClientId(clientId)) {
+      reader.fail('openingStock', `${label}: clientId tidak valid`);
+      return undefined;
+    }
+    if (locations.has(locationId)) {
+      reader.fail('openingStock', `${label}: lokasi sudah dipakai baris lain`);
+      return undefined;
+    }
+    if (clients.has(clientId)) {
+      reader.fail('openingStock', `${label}: clientId ganda`);
+      return undefined;
+    }
+    locations.add(locationId);
+    clients.add(clientId);
+    rows.push({ locationId, quantity, clientId });
+  }
+  return rows;
 }
 
 /** Daftar id BU: dirapikan, kembar dibuang; boleh kosong (aturan jenis diperiksa servis). */
@@ -108,10 +180,29 @@ export function validateSaveSticker(raw: unknown): SaveStickerInput {
   const name = reader.str('name', { required: true, max: STICKER_LIMITS.nameMax });
   const alias = reader.str('alias', { max: STICKER_LIMITS.aliasMax });
   const fileId = readFileId(reader.raw('fileId'), reader);
-  const minQty = readMinQty(reader.raw('minQty'), reader);
+  const rawMinQty = reader.raw('minQty');
+  if (id !== undefined && (rawMinQty === undefined || rawMinQty === null)) {
+    reader.fail('minQty', 'Batas minimum wajib diisi saat mengubah');
+  }
+  const minQty =
+    rawMinQty === undefined || rawMinQty === null
+      ? undefined
+      : readQtyField(rawMinQty, reader, 'minQty', 'Batas minimum');
   const businessUnitIds = readBuIds(reader.raw('businessUnitIds'), reader);
+  const openingStocks = readOpeningStocks(reader.raw('openingStocks'), reader);
+  if (id !== undefined && openingStocks !== undefined && openingStocks.length > 0) {
+    reader.fail('openingStock', 'Stok awal hanya dapat diisi saat membuat stiker');
+  }
   reader.done();
-  const base = { typeId, name, alias, fileId, minQty, businessUnitIds };
+  const base = {
+    typeId,
+    name,
+    alias,
+    fileId,
+    businessUnitIds,
+    ...(minQty === undefined ? {} : { minQty }),
+    ...(openingStocks === undefined || openingStocks.length === 0 ? {} : { openingStocks }),
+  };
   return id ? { id, expectedUpdatedAt, ...base } : base;
 }
 
@@ -440,12 +531,17 @@ function readAlertSettings(
   };
 }
 
-function readDefaults(value: unknown, reader: ObjectReader): SaveStickerSettingsInput['defaults'] {
+function readDefaults(
+  value: unknown,
+  reader: ObjectReader,
+): NonNullable<SaveStickerSettingsInput['defaults']> {
+  // Tak dikirim = tak ada yang diubah (klien baru tak mengirimnya; kompatibel dengan klien lama).
+  if (value === undefined) return [];
   if (!Array.isArray(value) || value.length > SETTINGS_DEFAULTS_MAX) {
     reader.fail('defaults', 'Minimum bawaan harus berupa daftar (maks. 200 baris)');
     return [];
   }
-  const rows: SaveStickerSettingsInput['defaults'] = [];
+  const rows: NonNullable<SaveStickerSettingsInput['defaults']> = [];
   const seen = new Set<string>();
   for (const item of value) {
     const row = (typeof item === 'object' && item !== null ? item : {}) as Record<string, unknown>;

@@ -3,13 +3,23 @@ import { addSerials, type StagingRow } from './lib/draft';
 
 /** Bahan tes tampilan draft (tabel, kartu, dialog). Hanya dipakai berkas `*.test.tsx`. */
 export const TEST_ITEMS = [
-  { id: 'i1', label: 'Cisco C9200', buIds: ['b1'], buOptions: [{ id: 'b1', code: 'BU1' }] },
-  { id: 'i2', label: 'Aruba 2930', buIds: ['b1'], buOptions: [{ id: 'b1', code: 'BU1' }] },
+  {
+    id: 'i1',
+    label: 'Cisco C9200',
+    buIds: ['b1'],
+    buOptions: [{ id: 'b1', code: 'BU1', name: 'Business Unit 1' }],
+  },
+  {
+    id: 'i2',
+    label: 'Aruba 2930',
+    buIds: ['b1'],
+    buOptions: [{ id: 'b1', code: 'BU1', name: 'Business Unit 1' }],
+  },
   {
     id: 'i3',
     label: 'Strict Router',
     buIds: ['b1'],
-    buOptions: [{ id: 'b1', code: 'BU1' }],
+    buOptions: [{ id: 'b1', code: 'BU1', name: 'Business Unit 1' }],
     proofRequired: true,
     proofMin: 3,
   },

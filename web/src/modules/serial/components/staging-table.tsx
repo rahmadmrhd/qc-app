@@ -1,3 +1,4 @@
+import { formatBuLabel } from '@shared/business-units';
 import {
   isIsoDate,
   normalizeSerial,
@@ -174,14 +175,15 @@ export function RowBadges({ row }: { row: StagingRow }) {
       {existing ? (
         <span
           className="rounded-full border border-primary/50 bg-primary/10 px-1.5 py-px font-medium text-foreground"
-          title={`Serial sudah tercatat di ${existing.buCode}; entri ini menjadi cek ulang`}
+          title={`Serial sudah tercatat di ${formatBuLabel({ code: existing.buCode, name: existing.buName })}; entri ini menjadi cek ulang`}
         >
           Cek ulang
         </span>
       ) : null}
       {existing && moving ? (
         <span className="rounded-full border px-1.5 py-px text-foreground">
-          Pindah BU: {existing.buCode} → {row.buLabel}
+          Pindah BU: {formatBuLabel({ code: existing.buCode, name: existing.buName })} →{' '}
+          {row.buLabel}
         </span>
       ) : null}
       {row.sample ? (

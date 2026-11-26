@@ -187,6 +187,13 @@ describe('stickerSettings.save', () => {
     expect(out.data.types.find((t: { id: string }) => t.id === 't1').defaultMinQty).toBe(3);
   });
 
+  test('defaults tak dikirim = tak ada minimum bawaan yang berubah (klien baru)', async () => {
+    const before = await call('sm@gmail.com', 'stickerSettings.get', null);
+    const out = await save({ defaults: undefined });
+    expect(out.ok).toBe(true);
+    expect(out.data.types).toEqual(before.data.types);
+  });
+
   test('izin: sticker edit 403', async () => {
     expect((await save({}, 'se@gmail.com')).error.code).toBe('FORBIDDEN');
   });

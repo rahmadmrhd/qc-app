@@ -1,3 +1,4 @@
+import { formatBuLabel } from '@shared/business-units';
 import type { BrandDto, BusinessUnitOptionDto } from '@shared/contract';
 import type { ReactNode } from 'react';
 import { type DataColumn, DataTable, LinkCell, type RowAction } from '@/components/data-table';
@@ -88,11 +89,11 @@ export function BrandsManager({
                   params={{ businessUnitId: buId }}
                   title={bu.name}
                 >
-                  {bu.code}
+                  {formatBuLabel(bu)}
                 </LinkCell>
               ) : (
                 <Badge key={buId} variant="outline" color="primary" title={bu.name}>
-                  {bu.code}
+                  {formatBuLabel(bu)}
                 </Badge>
               );
             })}

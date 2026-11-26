@@ -1,3 +1,15 @@
+import {
+  capRows,
+  cleanText,
+  ctaButton,
+  dataTable,
+  EMAIL_ROW_LIMIT,
+  fitEmail,
+  moreNote,
+  paragraph,
+  renderEmailDocument,
+  sectionHeading,
+} from '@server/core/email-layout';
 import type { Env } from '@server/core/env';
 import { nowOf } from '@server/core/env';
 import { sendableMailLists } from '@server/core/mail-lists';
@@ -5,14 +17,7 @@ import { liveWhere } from '@server/core/soft-delete';
 import { wibHour } from '@server/modules/backup/names';
 import type { DigestOutcome } from '@server/modules/sticker/digest';
 import { mailListsCount } from '@shared/mail-lists';
-import {
-  alertDue,
-  daysUntil,
-  isPostelRecipient,
-  postelName,
-  stripControlChars,
-  wibDateIso,
-} from '@shared/postel';
+import { alertDue, daysUntil, isPostelRecipient, postelName, wibDateIso } from '@shared/postel';
 import { readPostelAlert } from './alert';
 import { listItemsOfPostels } from './items';
 import { listPostelNumbers, type PostelNumberRecord } from './repo';
@@ -75,8 +80,113 @@ async function releaseNumber(env: Env, due: DueNumber, today: string): Promise<v
     .run();
 }
 
+export interface PostelAlertItem {
+  id: string;
+  /** Nama Postel turunan (tipe item); kosong = pakai nomor sertifikat. */
+  name: string;
+  number: string;
+  expiresOn: string;
+  daysLeft: number;
+}
+
 function remainingText(daysLeft: number): string {
   return daysLeft < 0 ? 'sudah kedaluwarsa' : `sisa ${daysLeft} hari`;
+}
+
+function statusLabel(daysLeft: number): string {
+  if (daysLeft < 0) return `Kedaluwarsa ${-daysLeft} hari lalu`;
+  return daysLeft === 0 ? 'Habis hari ini' : `Sisa ${daysLeft} hari`;
+}
+
+/**
+ * Subjek, teks polos, dan HTML peringatan Postel (murni, tanpa DB). Dua bagian terpisah (sudah kedaluwarsa dan segera
+ * habis), masing-masing urut sisa hari menaik dan dibatasi `EMAIL_ROW_LIMIT` baris. Subjek tidak berubah dari surel
+ * teks lama. Tanpa nama atau jumlah item selain nama Postel turunan.
+ */
+export function buildPostelAlertMail(input: {
+  origin: string;
+  items: readonly PostelAlertItem[];
+}): {
+  subject: string;
+  text: string;
+  html: string;
+} {
+  const origin = input.origin.replace(/\/+$/, '');
+  const sorted = [...input.items].sort(
+    (a, b) => a.daysLeft - b.daysLeft || (a.number < b.number ? -1 : a.number > b.number ? 1 : 0),
+  );
+  const expired = sorted.filter((item) => item.daysLeft < 0);
+  const soon = sorted.filter((item) => item.daysLeft >= 0);
+  const subject = `Peringatan masa berlaku Postel: ${sorted.length} sertifikat`;
+  const nameOf = (item: PostelAlertItem) => {
+    const number = cleanText(item.number);
+    const name = cleanText(item.name, 120);
+    return { number, name: name === '' ? number : name };
+  };
+
+  const build = (limit: number) => {
+    const parts: string[] = [];
+    const body: string[] = [];
+    const listUrl = origin === '' ? '' : `${origin}/postel`;
+    const groups = [
+      { title: 'Sudah kedaluwarsa', tone: 'bad' as const, rows: expired },
+      { title: 'Segera habis', tone: 'warn' as const, rows: soon },
+    ];
+    for (const group of groups) {
+      if (group.rows.length === 0) continue;
+      const { shown, more } = capRows(group.rows, limit);
+      const blocks = shown.map((item) => {
+        const { number, name } = nameOf(item);
+        const lines = [
+          `- ${name}`,
+          `  Nomor sertifikat: ${number}`,
+          `  Berlaku sampai: ${cleanText(item.expiresOn)} (${remainingText(item.daysLeft)})`,
+        ];
+        if (origin !== '') lines.push(`  ${origin}/postel/${cleanText(item.id)}`);
+        return lines.join('\n');
+      });
+      parts.push(
+        `${group.title} (${group.rows.length}):\n\n${blocks.join('\n\n')}${more > 0 ? `\n\ndan ${more} lainnya` : ''}`,
+      );
+      body.push(
+        sectionHeading(group.title, group.tone, group.rows.length),
+        dataTable(
+          [
+            { label: 'Postel' },
+            { label: 'Nomor sertifikat', width: 150 },
+            { label: 'Berlaku sampai', width: 90 },
+            { label: 'Status', width: 140 },
+          ],
+          shown.map((item) => {
+            const { number, name } = nameOf(item);
+            return [
+              {
+                text: name,
+                href: origin === '' ? undefined : `${origin}/postel/${cleanText(item.id)}`,
+              },
+              number,
+              item.expiresOn,
+              { badge: statusLabel(item.daysLeft), tone: group.tone },
+            ];
+          }),
+        ),
+        moreNote(more),
+      );
+    }
+    body.unshift(
+      paragraph('Sertifikat Postel berikut perlu perhatian.', { muted: true, size: 13 }),
+    );
+    body.push(ctaButton(listUrl, 'Buka daftar Postel'));
+    const text = `Sertifikat Postel berikut perlu perhatian:\n\n${parts.join('\n\n')}\n`;
+    const html = renderEmailDocument({
+      title: 'Peringatan masa berlaku Postel',
+      preheader: subject,
+      body,
+    });
+    return { text, html };
+  };
+  const { text, html } = fitEmail(build);
+  return { subject, text, html };
 }
 
 export async function checkPostelExpiryDigest(env: Env): Promise<DigestOutcome> {
@@ -108,8 +218,16 @@ export async function checkPostelExpiryDigest(env: Env): Promise<DigestOutcome> 
   }
   if (candidates.length === 0) return 'skipped';
 
+  // Paling mendesak lebih dulu, dan paling banyak `EMAIL_ROW_LIMIT` nomor yang diklaim per surel: nomor yang tak
+  // muat tidak ditandai terkirim, jadi ikut putaran jam-an berikutnya (bukan hilang diam-diam di "dan N lainnya").
+  candidates.sort(
+    (a, b) =>
+      a.daysLeft - b.daysLeft ||
+      (a.record.number < b.record.number ? -1 : a.record.number > b.record.number ? 1 : 0),
+  );
   const won: DueNumber[] = [];
   for (const candidate of candidates) {
+    if (won.length >= EMAIL_ROW_LIMIT) break;
     if (await claimNumber(env, candidate, today)) won.push(candidate);
   }
   if (won.length === 0) return 'skipped';
@@ -138,28 +256,23 @@ export async function checkPostelExpiryDigest(env: Env): Promise<DigestOutcome> 
       env.DB,
       won.map((due) => due.record.postelId),
     );
-    const origin = env.APP_ORIGIN?.replace(/\/+$/, '') ?? '';
-    const blocks = won.map((due) => {
-      const { record } = due;
-      // Nomor dan nama disanitasi: baris tersimpan lama dapat memuat baris baru yang memecah badan surel.
-      const number = stripControlChars(record.number);
-      const name = stripControlChars(
-        postelName((itemsByPostel.get(record.postelId) ?? []).map((item) => item.model)),
-      );
-      const lines = [
-        `- ${name === '' ? number : name}`,
-        `  Nomor sertifikat: ${number}`,
-        `  Berlaku sampai: ${record.expiresOn} (${remainingText(due.daysLeft)})`,
-      ];
-      if (origin !== '') lines.push(`  ${origin}/postel/${record.postelId}`);
-      return lines.join('\n');
+    const mail = buildPostelAlertMail({
+      origin: env.APP_ORIGIN ?? '',
+      items: won.map((due) => ({
+        id: due.record.postelId,
+        name: postelName((itemsByPostel.get(due.record.postelId) ?? []).map((item) => item.model)),
+        number: due.record.number,
+        expiresOn: due.record.expiresOn,
+        daysLeft: due.daysLeft,
+      })),
     });
     await mailer.send({
       to: lists.recipients,
       cc: lists.cc,
       bcc: lists.bcc,
-      subject: `Peringatan masa berlaku Postel: ${won.length} sertifikat`,
-      text: `Sertifikat Postel berikut perlu perhatian:\n\n${blocks.join('\n\n')}\n`,
+      subject: mail.subject,
+      text: mail.text,
+      html: mail.html,
     });
   } catch (error) {
     await release(error);

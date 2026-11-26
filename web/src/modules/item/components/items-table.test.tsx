@@ -87,15 +87,15 @@ test('tanpa hak buka merk, nama merk tampil sebagai teks biasa', async () => {
 
 test('kode BU menaut ke halaman BU bila berhak', async () => {
   await renderTable();
-  const link = screen.getByRole('link', { name: 'RTL' });
+  const link = screen.getByRole('link', { name: 'RTL - Retail' });
   expect(link).toHaveAttribute('href', '/access/business-units/bu-a');
   expect(link).toHaveAttribute('title', 'Retail');
 });
 
 test('kode BU tanpa hak buka tampil sebagai lencana tanpa tautan', async () => {
   await renderTable({ canOpenBusinessUnit: false });
-  expect(screen.queryByRole('link', { name: 'RTL' })).toBeNull();
-  expect(screen.getByText('RTL')).toHaveAttribute('title', 'Retail');
+  expect(screen.queryByRole('link', { name: 'RTL - Retail' })).toBeNull();
+  expect(screen.getByText('RTL - Retail')).toHaveAttribute('title', 'Retail');
 });
 
 test('merk terhapus diberi penanda Terhapus', async () => {
