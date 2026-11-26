@@ -23,17 +23,34 @@ beforeEach(async () => {
   await seedSerialWorld(env);
 });
 
-const reportEvent = (serialId: string, caseId: string, message: string, extra = '') =>
+// `createdAt` kejadian = waktu laporan dibuat (aktivitas terakhir laporan tanpa kejadian lain), agar urutan daftar
+// (aktivitas terakhir) pada fixture sama dengan urutan pembuatan.
+const reportEvent = (
+  serialId: string,
+  caseId: string,
+  message: string,
+  createdAt = '2026-11-10T00:00:00.000Z',
+  extra = '',
+) =>
   env.DB.prepare(
-    `INSERT INTO serial_events (id, serial_id, case_id, seq, type, occurred_on, created_at, actor_id, actor_name, actor_team, message, changes_json, data_json) VALUES (?, ?, ?, 2, 'report_failure', '2026-11-10', '2026-11-10T00:00:00.000Z', 'x', 'Pelapor', 'qc', ?, ?, '{}')`,
+    `INSERT INTO serial_events (id, serial_id, case_id, seq, type, occurred_on, created_at, actor_id, actor_name, actor_team, message, changes_json, data_json) VALUES (?, ?, ?, 2, 'report_failure', '2026-11-10', ?, 'x', 'Pelapor', 'qc', ?, ?, '{}')`,
   )
     .bind(
       `${caseId}-rep${extra}`,
       serialId,
       caseId,
+      createdAt,
       message,
       '[{"field":"status","from":null,"to":"Dilaporkan"}]',
     )
+    .run();
+
+/** Kejadian tambahan pada laporan (mis. kirim/terima): menggeser aktivitas terakhir laporan itu. */
+const laterEvent = (serialId: string, caseId: string, seq: number, createdAt: string) =>
+  env.DB.prepare(
+    `INSERT INTO serial_events (id, serial_id, case_id, seq, type, occurred_on, created_at, actor_id, actor_name, actor_team, message, changes_json, data_json) VALUES (?, ?, ?, ?, 'note', '2026-11-12', ?, 'x', 'X', 'qc', 'catatan', '', '{}')`,
+  )
+    .bind(`${caseId}-ev${seq}`, serialId, caseId, seq, createdAt)
     .run();
 
 async function seedCase(
@@ -73,7 +90,7 @@ async function seedCase(
       .bind(`sn-${id}`)
       .run();
   }
-  await reportEvent(`sn-${id}`, id, over.message ?? `Rusak ${id}`);
+  await reportEvent(`sn-${id}`, id, over.message ?? `Rusak ${id}`, createdAt);
 }
 
 describe('serialCases.list', () => {
@@ -99,6 +116,42 @@ describe('serialCases.list', () => {
       summary: 'Rusak c2',
     });
     expect(out.data.nextCursor).toBeNull();
+  });
+
+  test('urutan: laporan aktif dulu, lalu selesai; masing-masing menurut aktivitas terakhir, bukan tanggal dibuat (2026-11-26)', async () => {
+    await seedCase('c1', 1); // aktif, dibuat paling lama
+    await seedCase('c2', 2); // aktif
+    await seedCase('c3', 3, { closed: true }); // selesai, dibuat paling baru
+    await seedCase('c4', 4, { closed: true }); // selesai
+    const base = (await list(SERIAL_USERS.viewer)).data.items.map((i: Json) => i.id);
+    expect(base).toEqual(['c2', 'c1', 'c4', 'c3']);
+    // c1 mendapat kejadian baru: naik ke atas kelompok aktif walau dibuat lebih dulu
+    await laterEvent('sn-c1', 'c1', 3, '2026-11-12T00:00:00.000Z');
+    // c3 mendapat kejadian baru: naik ke atas kelompok selesai, tetap di bawah semua laporan aktif
+    await laterEvent('sn-c3', 'c3', 3, '2026-11-13T00:00:00.000Z');
+    const out = await list(SERIAL_USERS.viewer);
+    expect(out.data.items.map((i: Json) => i.id)).toEqual(['c1', 'c2', 'c3', 'c4']);
+    // urutan yang sama bila disaring ke satu kelompok
+    expect(
+      (await list(SERIAL_USERS.viewer, { status: 'closed' })).data.items.map((i: Json) => i.id),
+    ).toEqual(['c3', 'c4']);
+  });
+
+  test('kursor melewati batas aktif/selesai tanpa duplikat dan tanpa celah', async () => {
+    await seedCase('c1', 1);
+    await seedCase('c2', 2, { closed: true });
+    await seedCase('c3', 3);
+    await seedCase('c4', 4, { closed: true });
+    await laterEvent('sn-c1', 'c1', 3, '2026-11-12T00:00:00.000Z');
+    const seen: string[] = [];
+    let cursor: string | undefined;
+    for (let guard = 0; guard < 5; guard++) {
+      const out = await list(SERIAL_USERS.viewer, { limit: 1, ...(cursor ? { cursor } : {}) });
+      seen.push(...out.data.items.map((i: Json) => i.id));
+      if (!out.data.nextCursor) break;
+      cursor = out.data.nextCursor;
+    }
+    expect(seen).toEqual(['c1', 'c3', 'c4', 'c2']);
   });
 
   test('lokasi saat ini dan lama laporan (aktif sampai hari ini, tertutup sampai tanggal tutup)', async () => {

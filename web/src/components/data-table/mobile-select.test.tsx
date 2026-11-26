@@ -9,7 +9,7 @@ import { mockMatchMedia } from '@/test/match-media';
 import { BulkBar } from './bulk-bar';
 import { DataTable } from './data-table';
 import type { RowAction } from './row-actions';
-import { LONG_PRESS_MS } from './use-long-press-select';
+import { LONG_PRESS_MS, useLongPressSelect } from './use-long-press-select';
 import { useRowSelection } from './use-row-selection';
 
 interface Row {
@@ -342,4 +342,187 @@ test('BulkBar ponsel: alasan tombol nonaktif tampil sebagai teks (tanpa hover)',
   );
   expect(screen.getByRole('button', { name: 'Nonaktifkan' })).toBeDisabled();
   expect(screen.getByText('Pilihan memuat akun Anda sendiri')).toBeVisible();
+});
+
+// --- Pilih tarik (useLongPressSelect dengan options.ids) ---
+
+const DRAG_IDS = ['a', 'b', 'c', 'd', 'e'];
+
+function DragList() {
+  const selection = useRowSelection('d');
+  const press = useLongPressSelect(selection, true, { ids: DRAG_IDS });
+  return (
+    <ul>
+      {DRAG_IDS.map((id) => (
+        <li key={id} aria-label={`kartu ${id}`} {...press.bind(id)}>
+          <span data-select-lane data-testid={`lane-${id}`}>
+            {selection.selected.has(id) ? 'v' : '-'}
+          </span>
+          <span data-testid={`body-${id}`}>isi</span>
+        </li>
+      ))}
+      <output data-testid="out">{[...selection.selected].sort().join(',')}</output>
+    </ul>
+  );
+}
+
+const originalElementFromPoint = document.elementFromPoint;
+afterEach(() => {
+  document.elementFromPoint = originalElementFromPoint;
+});
+
+function stubPoint(ids: string[]) {
+  const items = ids.map((id) => screen.getByLabelText(`kartu ${id}`));
+  document.elementFromPoint = (_x: number, y: number) => items[Math.round(y / 100) - 1] ?? null;
+}
+const out = () => screen.getByTestId('out').textContent;
+
+test('seret: tekan lama pada kartu 2 lalu tarik ke kartu 4 memilih 2-4', () => {
+  vi.useFakeTimers();
+  render(<DragList />);
+  stubPoint(DRAG_IDS);
+  const card = screen.getByLabelText('kartu b');
+  fireEvent.pointerDown(card, { clientX: 10, clientY: 200, button: 0, pointerType: 'touch' });
+  act(() => {
+    vi.advanceTimersByTime(LONG_PRESS_MS);
+  });
+  fireEvent.pointerMove(card, { clientX: 10, clientY: 400 });
+  fireEvent.pointerUp(card);
+  expect(out()).toBe('b,c,d');
+});
+
+test('seret dari lajur kotak centang saat mode pilih memilih rentang; badan kartu tetap menggulir', () => {
+  vi.useFakeTimers();
+  render(<DragList />);
+  stubPoint(DRAG_IDS);
+  const first = screen.getByLabelText('kartu a');
+  fireEvent.pointerDown(first, { clientX: 10, clientY: 100, button: 0, pointerType: 'touch' });
+  act(() => {
+    vi.advanceTimersByTime(LONG_PRESS_MS);
+  });
+  fireEvent.pointerUp(first);
+  expect(out()).toBe('a');
+
+  const lane = screen.getByTestId('lane-c');
+  fireEvent.pointerDown(lane, { clientX: 10, clientY: 300, button: 0, pointerType: 'touch' });
+  fireEvent.pointerMove(lane, { clientX: 10, clientY: 500 });
+  fireEvent.pointerUp(lane);
+  expect(out()).toBe('a,c,d,e');
+
+  // Badan kartu (bukan lajur) di mode pilih: bergerak jauh tidak memilih apa pun.
+  const body = screen.getByTestId('body-b');
+  fireEvent.pointerDown(body, { clientX: 10, clientY: 200, button: 0, pointerType: 'touch' });
+  fireEvent.pointerMove(body, { clientX: 10, clientY: 400 });
+  fireEvent.pointerUp(body);
+  expect(out()).toBe('a,c,d,e');
+});
+
+test('seret dari tekan lama tetap menelan klik susulan walau gulir otomatis memicu scroll', () => {
+  vi.useFakeTimers();
+  render(<DragList />);
+  stubPoint(DRAG_IDS);
+  const card = screen.getByLabelText('kartu b');
+  fireEvent.pointerDown(card, { clientX: 10, clientY: 200, button: 0, pointerType: 'touch' });
+  act(() => {
+    vi.advanceTimersByTime(LONG_PRESS_MS);
+  });
+  // Gulir otomatis memicu scroll (capture) di tengah seret.
+  fireEvent.scroll(window);
+  fireEvent.pointerMove(card, { clientX: 10, clientY: 400 });
+  fireEvent.pointerMove(card, { clientX: 10, clientY: 200 });
+  fireEvent.pointerUp(card);
+  expect(out()).toBe('b');
+  fireEvent.click(card);
+  expect(out()).toBe('b');
+});
+
+test('seret: pointercancel di tengah gestur tidak melempar dan meninggalkan pilihan sebagian', () => {
+  vi.useFakeTimers();
+  render(<DragList />);
+  stubPoint(DRAG_IDS);
+  const card = screen.getByLabelText('kartu b');
+  fireEvent.pointerDown(card, { clientX: 10, clientY: 200, button: 0, pointerType: 'touch' });
+  act(() => {
+    vi.advanceTimersByTime(LONG_PRESS_MS);
+  });
+  fireEvent.pointerMove(card, { clientX: 10, clientY: 300 });
+  expect(() => fireEvent.pointerCancel(card)).not.toThrow();
+  expect(out()).toBe('b,c');
+});
+
+test('tanpa options.ids seret nonaktif: tekan lama lalu bergerak hanya memilih satu kartu', () => {
+  vi.useFakeTimers();
+  function Plain() {
+    const selection = useRowSelection('p');
+    const press = useLongPressSelect(selection, true);
+    return (
+      <ul>
+        {DRAG_IDS.map((id) => (
+          <li key={id} aria-label={`kartu ${id}`} {...press.bind(id)} />
+        ))}
+        <output data-testid="out">{[...selection.selected].sort().join(',')}</output>
+      </ul>
+    );
+  }
+  render(<Plain />);
+  stubPoint(DRAG_IDS);
+  const card = screen.getByLabelText('kartu b');
+  fireEvent.pointerDown(card, { clientX: 10, clientY: 200, button: 0, pointerType: 'touch' });
+  act(() => {
+    vi.advanceTimersByTime(LONG_PRESS_MS);
+  });
+  fireEvent.pointerMove(card, { clientX: 10, clientY: 400 });
+  fireEvent.pointerUp(card);
+  expect(out()).toBe('b');
+});
+
+// --- Pilih tarik di DataCards ---
+
+test('DataCards: seret dari lajur kotak centang kartu 2 ke kartu 4 memilih tiga kartu; yang tak boleh dipilih dilewati', () => {
+  vi.useFakeTimers();
+  const rows: Row[] = ['1', '2', '3', '4', '5'].map((id) => ({ id, name: `Nama${id}` }));
+  function Cards() {
+    const selection = useRowSelection('cards-drag');
+    return (
+      <TooltipProvider>
+        <DataTable
+          rows={rows}
+          rowKey={(row) => row.id}
+          columns={[{ id: 'name', header: 'Nama', cell: (row) => <span>{row.name}</span> }]}
+          label="Merk"
+          selectLabel={(row) => row.name}
+          selection={selection}
+          rowSelectable={(row) => row.id !== '3'}
+        />
+        <output data-testid="out">{[...selection.selected].sort().join(',')}</output>
+      </TooltipProvider>
+    );
+  }
+  render(<Cards />);
+  const items = screen.getAllByRole('listitem');
+  document.elementFromPoint = (_x: number, y: number) => items[Math.round(y / 100) - 1] ?? null;
+  // Masuk mode pilih lewat tekan lama kartu 1.
+  fireEvent.pointerDown(items[0] as HTMLElement, {
+    clientX: 10,
+    clientY: 100,
+    button: 0,
+    pointerType: 'touch',
+  });
+  act(() => {
+    vi.advanceTimersByTime(LONG_PRESS_MS);
+  });
+  fireEvent.pointerUp(items[0] as HTMLElement);
+  expect(out()).toBe('1');
+
+  const lane = screen.getByRole('checkbox', { name: 'Pilih Nama2' }).closest('[data-select-lane]');
+  expect(lane).not.toBeNull();
+  fireEvent.pointerDown(lane as HTMLElement, {
+    clientX: 10,
+    clientY: 200,
+    button: 0,
+    pointerType: 'touch',
+  });
+  fireEvent.pointerMove(lane as HTMLElement, { clientX: 10, clientY: 400 });
+  fireEvent.pointerUp(lane as HTMLElement);
+  expect(out()).toBe('1,2,4');
 });

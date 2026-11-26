@@ -63,8 +63,8 @@ export function DataCards<T>({
   openOf,
 }: DataCardsProps<T>) {
   const roles = resolveMobileRoles(columns);
-  const { selecting, bind, exit } = useLongPressSelect(selection, true);
   const ids = rows.filter((row) => isSelectable?.(row) ?? true).map(rowKey);
+  const { selecting, bind, exit } = useLongPressSelect(selection, true, { ids });
   const allSelected = ids.length > 0 && ids.every((id) => selection?.selected.has(id));
   // Mode pilih = SATU bar bawah (`BulkBar`) bila halaman menampungnya; header pilihan di atas hanya cadangan.
   const hosted = useRegisterSelectMode(selecting, {
@@ -141,11 +141,16 @@ export function DataCards<T>({
               }}
               leading={
                 selection && selecting && selectable ? (
-                  <Checkbox
-                    aria-label={`Pilih ${nameOf(row)}`}
-                    checked={isSelected}
-                    onCheckedChange={() => selection.toggle(id)}
-                  />
+                  <span
+                    data-select-lane
+                    className="flex size-11 touch-none items-center justify-center"
+                  >
+                    <Checkbox
+                      aria-label={`Pilih ${nameOf(row)}`}
+                      checked={isSelected}
+                      onCheckedChange={() => selection.toggle(id)}
+                    />
+                  </span>
                 ) : undefined
               }
               title={titles.map(({ column }) => <div key={column.id}>{column.cell(row)}</div>)}

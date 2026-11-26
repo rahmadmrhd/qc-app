@@ -1,6 +1,7 @@
 import { MAX_FILE_BYTES } from '@shared/files';
 import { Camera, Upload } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { toast } from 'sonner';
 import {
   isCameraBlocked,
   markCameraBlocked,
@@ -202,6 +203,38 @@ export function FileDialog({
     setSelection(new Map(current).set(item.id, item));
   }
 
+  /**
+   * Shift+klik di pustaka: rentang ditambah/dilepas; menambah berhenti di batas jumlah berkas. `items` datang
+   * berurut mulai dari sisi jangkar (`useRangeSelect`), jadi yang terpotong selalu yang terjauh dari jangkar.
+   */
+  function selectRange(items: readonly LibraryItem[], on: boolean): string | undefined {
+    if (mode === 'single') return undefined;
+    const next = new Map(selectionRef.current);
+    if (!on) {
+      for (const item of items) next.delete(item.id);
+      setSelection(next);
+      return items[items.length - 1]?.id;
+    }
+    let room = roomLeft();
+    let truncated = false;
+    let last: string | undefined;
+    for (const item of items) {
+      if (!next.has(item.id)) {
+        if (room <= 0) {
+          truncated = true;
+          break;
+        }
+        next.set(item.id, item);
+        room -= 1;
+      }
+      last = item.id;
+    }
+    setSelection(next);
+    if (truncated) toast.error(`Maksimal ${capacity} berkas`);
+    // Tak ada yang diterapkan (kapasitas penuh): pertahankan jangkar lama, yaitu elemen pertama (sisi jangkar).
+    return last ?? items[0]?.id;
+  }
+
   const total = queued.length + selection.size;
 
   function requestClose() {
@@ -345,6 +378,8 @@ export function FileDialog({
       selection={selection}
       mode={mode}
       onToggle={toggle}
+      onSelectRange={selectRange}
+      canSelectMore={() => roomLeft() > 0}
       onPreview={setPreview}
       accept={mimes}
       onFiles={(files, refused) => addFiles(files, refused)}

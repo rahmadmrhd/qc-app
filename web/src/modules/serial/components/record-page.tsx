@@ -635,6 +635,17 @@ function RecordPageInner({
     (selected: boolean) => setAllRows(rowsRef.current.map((row) => ({ ...row, selected }))),
     [setAllRows],
   );
+  const selectMany = useCallback(
+    (clientIds: readonly string[], selected: boolean) => {
+      const target = new Set(clientIds);
+      setAllRows(
+        rowsRef.current.map((row) =>
+          target.has(row.clientId) && row.selected !== selected ? { ...row, selected } : row,
+        ),
+      );
+    },
+    [setAllRows],
+  );
   const edit = useCallback(
     (clientId: string, patch: Partial<StagingRow>) =>
       patchRow(clientId, (row) => ({ ...clearOutcome(row), ...patch })),
@@ -1212,6 +1223,7 @@ function RecordPageInner({
             disabled={saving}
             onSelect={select}
             onSelectAll={selectAll}
+            onSelectMany={selectMany}
             onEdit={edit}
             onCommitSerial={commitSerial}
             onOpenDetail={openDetail}
@@ -1228,6 +1240,7 @@ function RecordPageInner({
             disabled={saving}
             onSelect={select}
             onSelectAll={selectAll}
+            onSelectMany={selectMany}
             onOpenDetail={openDetail}
             uploadEntries={proofUploads.entries}
             onRetryUpload={retryUpload}

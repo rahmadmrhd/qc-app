@@ -13,6 +13,7 @@ import { useIsDesktop } from '@/hooks/use-is-desktop';
 import { useViewportFit } from '@/lib/viewport-fit';
 import { DataCards } from './data-cards';
 import { type RowAction, RowActions } from './row-actions';
+import { useRangeSelect } from './use-range-select';
 import { type RowSelection, usePruneSelection } from './use-row-selection';
 
 /**
@@ -196,6 +197,15 @@ function DataTableImpl<T>({
   const ids = rows.map(rowKey);
   const selectableIds = rows.filter(isSelectable).map(rowKey);
   usePruneSelection(selection, ids, !isLoading);
+  // Shift-klik memilih rentang baris yang dapat dipilih (5.13); baris tanpa checkbox tak ikut.
+  const { checkboxProps } = useRangeSelect({
+    ids: selectableIds,
+    isSelected: (id) => selection?.selected.has(id) ?? false,
+    apply: (rangeIds, on) => {
+      selection?.setAll(rangeIds, on);
+      return undefined;
+    },
+  });
 
   const selectedCount = selection
     ? selectableIds.filter((id) => selection.selected.has(id)).length
@@ -304,6 +314,7 @@ function DataTableImpl<T>({
                             aria-label={`Pilih ${nameOf(row)}`}
                             checked={isSelected}
                             onCheckedChange={() => selection.toggle(id)}
+                            {...checkboxProps(id)}
                           />
                         </div>
                       ) : null}
