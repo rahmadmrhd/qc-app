@@ -2338,6 +2338,14 @@ export interface SerialExistingDto {
   proofMin: number;
   /** BU yang boleh dipilih pengguna pada cek ulang (BU tulisnya dikurangi BU yang pernah ditinggalkan serial ini). */
   recheckBuIds: string[];
+  /**
+   * Hanya bila BU saat ini serial terbaca pengguna (selain itu tidak ada, pengungkapan tetap minimal): lokasi unit saat ini
+   * dan kejadian terbaru (waktu ISO + nama pelaku), untuk peringatan scan ulang di Catat.
+   */
+  unitLocationId?: string;
+  unitLocationLabel?: string;
+  lastEventAt?: string;
+  lastActorName?: string;
 }
 export interface SerialLookupManyOutput {
   found: SerialExistingDto[];
