@@ -200,7 +200,7 @@ export const SERIAL_LAPORAN_DAFTAR: GuideEntry = {
     },
     {
       target: 'case-filters',
-      text: 'Cari dengan awalan nomor LP atau serial. Bawaannya hanya laporan aktif; ganti ke "Laporan selesai" atau "Semua laporan", dan batasi per BU bila perlu.',
+      text: 'Cari dengan awalan nomor LP atau serial. Bawaannya semua laporan, laporan aktif di atas lalu yang selesai, masing-masing diurutkan menurut pembaruan terakhir; ganti ke "Laporan aktif" atau "Laporan selesai", dan batasi per BU bila perlu.',
       advance: 'next',
     },
     {
