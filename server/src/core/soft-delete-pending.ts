@@ -282,17 +282,21 @@ export const SOFT_DELETE_EXEMPT: Record<string, string> = {
     'Semua baris serial dihitung tanpa penyaring keadaan: pengisi riwayat BU dan kumpulan BU terlibat berlaku untuk serial terhapus juga agar tetap benar saat dipulihkan.',
   'server/src/modules/serial/bu-history.ts#serials@5#616ca633':
     'Semua baris serial dihitung tanpa penyaring keadaan: pengisi riwayat BU dan kumpulan BU terlibat berlaku untuk serial terhapus juga agar tetap benar saat dipulihkan.',
-  'server/src/modules/serial/case-list.ts#locations@1#e93022d2':
+  'server/src/modules/serial/case-list.ts#locations@1#3018ff71':
     'Penampil rujukan: nama lokasi tampil walau lokasi terhapus (lokasi terhapus dibaca nonaktif, soft delete); jalur tulis memeriksa lokasi hidup (`activeLocationName` memakai `liveWhere`).',
-  'server/src/modules/serial/case-list.ts#business_units@1#e93022d2':
+  'server/src/modules/serial/case-list.ts#business_units@1#3018ff71':
     'Penampil rujukan atau pembaca kode BU menurut id yang sudah divalidasi hidup oleh jalur tulis (`activeItemWritableForBu`, `liveWhere` pada BU target); BU terhapus tetap memberi nama dan hak (soft delete 9).',
-  'server/src/modules/serial/case-list.ts#items@1#e93022d2':
+  'server/src/modules/serial/case-list.ts#items@1#3018ff71':
     'Penampil rujukan: serial menampilkan nama item (LEFT JOIN) walau item terhapus; item terhapus tak dihitung/dipilih di jalur tulis (jalur tulis lain: `activeItemWritableForBu` (serial/repo.ts) menyaring hidup).',
-  'server/src/modules/serial/case-list.ts#brands@1#e93022d2':
+  'server/src/modules/serial/case-list.ts#brands@1#3018ff71':
     'Nama merk untuk tampilan/rujukan: merk terhapus tetap memberi nama pada item yang memakainya (keputusan T1, rujukan tersimpan tetap sah).',
   'server/src/modules/serial/case-list.ts#serial_cases@2#97fc5d0f':
     'Anak serial (kejadian, laporan, foto, stiker) dimuat atau ditulis menurut id serial atau laporan yang sudah lolos pemeriksaan hidup dan hak di pemanggil (`loadReadableSerialRow`, `loadSerialRow`, token laporan publik yang memeriksa serial hidup); tidak ada daftar lintas serial yang tak tersaring.',
-  'server/src/modules/serial/case-list.ts#serial_events@3#84a5ec7a':
+  'server/src/modules/serial/case-list.ts#serial_events@4#b5e033da':
+    'Subkueri aktivitas terakhir laporan: kejadian dibaca menurut serial dan laporan pada baris kueri luar yang sudah menyaring serial hidup (`liveWhere`); tidak ada daftar lintas serial yang tak tersaring.',
+  'server/src/modules/serial/case-list.ts#serial_events@5#b5e033da':
+    'Subkueri aktivitas terakhir laporan: kejadian dibaca menurut serial dan laporan pada baris kueri luar yang sudah menyaring serial hidup (`liveWhere`); tidak ada daftar lintas serial yang tak tersaring.',
+  'server/src/modules/serial/case-list.ts#serial_events@6#84a5ec7a':
     'Anak serial (kejadian, laporan, foto, stiker) dimuat atau ditulis menurut id serial atau laporan yang sudah lolos pemeriksaan hidup dan hak di pemanggil (`loadReadableSerialRow`, `loadSerialRow`, token laporan publik yang memeriksa serial hidup); tidak ada daftar lintas serial yang tak tersaring.',
   'server/src/modules/serial/case-repo.ts#serial_cases@1#ce0211b9':
     'Penghitung nomor laporan: MAX nomor SEMUA laporan, termasuk milik serial terhapus, agar nomor tak pernah dipakai ulang (nomor laporan tetap unik).',

@@ -4,7 +4,7 @@ import type { SerialCaseFilter } from '../queries';
 
 /** Search params halaman Laporan; nilai tak sah dibuang (bukan galat) agar URL lama atau rusak tetap terbuka. */
 export const caseSearchSchema = z.object({
-  /** `active` (bawaan bila kosong), `closed`, atau `all`. */
+  /** `all` (bawaan bila kosong), `active`, atau `closed`. */
   status: z.enum(['active', 'closed', 'all']).optional().catch(undefined),
   /** Business Unit (banyak nilai = salah satu dari). */
   buIds: z.array(z.string().max(100)).max(FILTER_LIST_MAX).optional().catch(undefined),
@@ -20,9 +20,12 @@ export function effectiveBuIds(search: CaseSearch): string[] {
   return search.buIds ?? (search.bu ? [search.bu] : []);
 }
 
-/** Status yang berlaku: tanpa pilihan = laporan aktif (bawaan, juga bagi tim servis). */
+/**
+ * Status yang berlaku: tanpa pilihan = semua laporan (bawaan, juga bagi tim servis; keputusan pemilik 2026-11-26).
+ * Urutannya dari server: laporan aktif dulu, lalu selesai, masing-masing menurut aktivitas terakhir.
+ */
 export function effectiveCaseStatus(search: CaseSearch): 'active' | 'closed' | 'all' {
-  return search.status ?? 'active';
+  return search.status ?? 'all';
 }
 
 /** Search params -> masukan `serialCases.list` (`all` = tanpa filter status). */

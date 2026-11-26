@@ -801,8 +801,10 @@ export function validateSerialCaseList(raw: unknown): SerialCaseListInput {
   const buId = reader.str('buId', { max: 100 });
   const buIds = readFilterList(reader, 'buIds');
   const query = reader.str('query', { max: 100 });
-  const cursor = reader.str('cursor', { max: 100 });
-  if (cursor !== '' && !/^[^|]+\|[^|]+$/.test(cursor)) reader.fail('cursor', 'Kursor tidak valid');
+  // `<0|1>|<aktivitas terakhir>|<nomor>` (nomor maks. 64 karakter + waktu ISO 24 karakter).
+  const cursor = reader.str('cursor', { max: 120 });
+  if (cursor !== '' && !/^[01]\|[^|]+\|[^|]+$/.test(cursor))
+    reader.fail('cursor', 'Kursor tidak valid');
   const limit = reader.raw('limit');
   if (
     limit !== undefined &&

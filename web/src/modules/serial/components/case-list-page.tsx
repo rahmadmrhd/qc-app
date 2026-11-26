@@ -29,16 +29,17 @@ export interface CaseListPageProps {
 }
 
 const STATUS_OPTIONS = [
+  { value: 'all', label: 'Semua laporan' },
   { value: 'active', label: 'Laporan aktif' },
   { value: 'closed', label: 'Laporan selesai' },
-  { value: 'all', label: 'Semua laporan' },
 ];
 
 const OUTCOME_LABEL = { good: 'Lolos', broken: 'Rusak' } as const;
 
 /**
  * Daftar laporan rusak (kit CRUD; bukan daftar serial): nomor LP (tautan ke halaman detail laporan),
- * serial, item, BU, status, lokasi, durasi (aktif: hari di status ini; selesai: lama penanganan), pelapor, dan ringkasan. Filter status (bawaan aktif) dan BU serta
+ * serial, item, BU, status, lokasi, durasi (aktif: hari di status ini; selesai: lama penanganan), pelapor, dan ringkasan. Filter status (bawaan semua laporan;
+ * urutan dari server: aktif dulu, lalu selesai, masing-masing menurut aktivitas terakhir) dan BU serta
  * pencarian awalan nomor LP atau serial berada di URL. Tanpa pilihan massal (laporan tidak dihapus). Tim servis (hanya
  * `serialservice`) melihat semua laporan di BU-nya. Di ponsel baris menjadi kartu.
  */
@@ -60,7 +61,7 @@ export function CaseListPage({ search, onSearchChange, onReport }: CaseListPageP
   );
   const status = effectiveCaseStatus(search);
   const buIds = effectiveBuIds(search);
-  const filtered = search.q !== undefined || buIds.length > 0 || status !== 'active';
+  const filtered = search.q !== undefined || buIds.length > 0 || status !== 'all';
 
   const columns: DataColumn<SerialCaseRowDto>[] = [
     {
@@ -163,7 +164,7 @@ export function CaseListPage({ search, onSearchChange, onReport }: CaseListPageP
             <FilterChip
               label="Status"
               display={
-                status === 'active' ? null : STATUS_OPTIONS.find((o) => o.value === status)?.label
+                status === 'all' ? null : STATUS_OPTIONS.find((o) => o.value === status)?.label
               }
               onClear={() => onSearchChange({ status: undefined })}
             >
@@ -175,7 +176,7 @@ export function CaseListPage({ search, onSearchChange, onReport }: CaseListPageP
                 value={status}
                 onValueChange={(next) =>
                   onSearchChange({
-                    status: next === 'active' ? undefined : (next as CaseSearch['status']),
+                    status: next === 'all' ? undefined : (next as CaseSearch['status']),
                   })
                 }
               />

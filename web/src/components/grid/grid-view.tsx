@@ -6,6 +6,7 @@ import {
   StartSelectButton,
 } from '@/components/data-table/selection-bar';
 import { useLongPressSelect } from '@/components/data-table/use-long-press-select';
+import { useRangeSelect } from '@/components/data-table/use-range-select';
 import { type RowSelection, usePruneSelection } from '@/components/data-table/use-row-selection';
 import { useInfiniteSentinel } from '@/components/file-dialog/use-infinite-sentinel';
 import { ListState } from '@/components/page/list-state';
@@ -90,11 +91,23 @@ export function GridView<T>({
 }: GridViewProps<T>) {
   usePruneSelection(selection, items.map(itemKey), !isLoading);
   const desktop = useIsDesktop();
-  // Ponsel: pilih massal tahan-lama (checkbox hanya tampil di mode pilih); >= 768 px checkbox selalu tampil.
-  const { selecting, bind, enter, exit } = useLongPressSelect(selection, !desktop);
   const selectableIds = items.filter((item) => isSelectable?.(item) ?? true).map(itemKey);
+  // Ponsel: pilih massal tahan-lama (checkbox hanya tampil di mode pilih); >= 768 px checkbox selalu tampil.
+  // `ids` mengaktifkan pilih tarik (dari tekan lama atau dari lajur kotak centang).
+  const { selecting, bind, enter, exit } = useLongPressSelect(selection, !desktop, {
+    ids: selectableIds,
+  });
   const allSelected =
     selectableIds.length > 0 && selectableIds.every((id) => selection?.selected.has(id));
+  // Desktop: Shift+klik memilih/melepas rentang kartu yang dapat dipilih.
+  const { checkboxProps } = useRangeSelect({
+    ids: selectableIds,
+    isSelected: (id) => selection?.selected.has(id) ?? false,
+    apply: (rangeIds, on) => {
+      selection?.setAll(rangeIds, on);
+      return undefined;
+    },
+  });
   const hosted = useRegisterSelectMode(selecting, {
     count: selection?.count ?? 0,
     allSelected,
@@ -167,12 +180,24 @@ export function GridView<T>({
             >
               {renderItem(item)}
               {selection && selectable && (desktop || selecting) ? (
-                <div className="absolute top-1.5 left-1.5 rounded bg-background/80 p-1">
-                  <Checkbox
-                    aria-label={`Pilih ${selectLabel?.(item) ?? id}`}
-                    checked={selection.selected.has(id)}
-                    onCheckedChange={() => selection.toggle(id)}
-                  />
+                // Lajur sentuh 44 px transparan (ponsel); latar kecil hanya di sekitar kotak centang.
+                <div
+                  data-select-lane
+                  className={cn(
+                    'absolute',
+                    desktop ? 'top-1.5 left-1.5' : 'top-0 left-0 size-11 touch-none',
+                  )}
+                >
+                  <span
+                    className={cn('flex w-fit rounded bg-background/80 p-1', !desktop && 'm-1.5')}
+                  >
+                    <Checkbox
+                      aria-label={`Pilih ${selectLabel?.(item) ?? id}`}
+                      checked={selection.selected.has(id)}
+                      onCheckedChange={() => selection.toggle(id)}
+                      {...checkboxProps(id)}
+                    />
+                  </span>
                 </div>
               ) : null}
             </li>

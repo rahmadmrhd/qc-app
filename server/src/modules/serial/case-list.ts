@@ -28,8 +28,13 @@ import { SERIAL_LIST_DEFAULT_LIMIT } from './validate';
 
 /**
  * Daftar Laporan (rancangan 2026-11-14 §4.5): satu baris per laporan (`serial_cases`) pada BU yang boleh dibaca. Pembacaan
- * TIDAK dibatasi status serial (tim servis murni melihat semua laporan di BU-nya). Urut terbaru dulu
- * (`created_at DESC, number DESC`); kursor = `created_at|number`.
+ * TIDAK dibatasi status serial (tim servis murni melihat semua laporan di BU-nya).
+ *
+ * Urutan (keputusan pemilik 2026-11-26): laporan AKTIF dulu, lalu yang selesai; di dalam tiap kelompok menurut
+ * aktivitas terakhir (`MAX(serial_events.created_at)` laporan itu; laporan tanpa kejadian memakai `created_at`)
+ * terbaru dulu, lalu nomor menurun sebagai pemutus seri. Kursor = `<0|1>|<aktivitas terakhir>|<nomor>` (0 = aktif).
+ * Urutan memakai ekspresi turunan sehingga tiap permintaan mengurutkan seluruh laporan yang cocok; jumlah laporan
+ * kecil dan subkueri memakai indeks `serial_events_case (serial_id, case_id, seq)`.
  */
 interface CaseListRow {
   id: string;
@@ -51,7 +56,15 @@ interface CaseListRow {
   status_changed_on: string | null;
   report_message: string | null;
   location_name: string | null;
+  /** Aktivitas terakhir laporan (ISO UTC): dasar urutan dan kursor daftar. */
+  last_activity: string;
 }
+
+/** Aktivitas terakhir laporan: kejadian terbaru yang bertanda laporan itu, atau waktu dibuatnya bila belum ada. */
+const LAST_ACTIVITY_SQL =
+  'COALESCE((SELECT MAX(e.created_at) FROM serial_events e WHERE e.serial_id = c.serial_id AND e.case_id = c.id), c.created_at)';
+/** 0 = laporan aktif, 1 = selesai: aktif selalu di atas. */
+const CLOSED_RANK_SQL = "CASE WHEN c.closed_on = '' THEN 0 ELSE 1 END";
 
 const STATUS_SET: readonly string[] = SERIAL_STATUSES;
 const CUSTODY_SET: readonly string[] = SERIAL_CUSTODIES;
@@ -73,7 +86,7 @@ export function caseSummary(message: string): string {
  * tak pernah berbeda bentuk.
  */
 function caseRowsSql(tail: string): string {
-  return `SELECT c.id, c.number, c.serial_id, c.bu_id, c.opened_on, c.closed_on, c.outcome, c.created_at, c.created_by, s.serial, s.status, s.custody, bu.code AS bu_code, bu.name AS bu_name, b.name AS brand_name, i.model, (SELECT e.occurred_on FROM serial_events e WHERE e.serial_id = c.serial_id AND e.changes_json LIKE '%"field":"status"%' ORDER BY e.seq DESC LIMIT 1) AS status_changed_on, (SELECT e.message FROM serial_events e WHERE e.serial_id = c.serial_id AND e.case_id = c.id AND e.type = 'report_failure' ORDER BY e.seq LIMIT 1) AS report_message, l.name AS location_name FROM serial_cases c JOIN serials s ON s.id = c.serial_id LEFT JOIN locations l ON l.id = s.location_id JOIN business_units bu ON bu.id = c.bu_id LEFT JOIN items i ON i.id = s.item_id LEFT JOIN brands b ON b.id = i.brand_id WHERE ${liveWhere('s')} AND ${tail}`;
+  return `SELECT c.id, c.number, c.serial_id, c.bu_id, c.opened_on, c.closed_on, c.outcome, c.created_at, c.created_by, s.serial, s.status, s.custody, bu.code AS bu_code, bu.name AS bu_name, b.name AS brand_name, i.model, (SELECT e.occurred_on FROM serial_events e WHERE e.serial_id = c.serial_id AND e.changes_json LIKE '%"field":"status"%' ORDER BY e.seq DESC LIMIT 1) AS status_changed_on, (SELECT e.message FROM serial_events e WHERE e.serial_id = c.serial_id AND e.case_id = c.id AND e.type = 'report_failure' ORDER BY e.seq LIMIT 1) AS report_message, l.name AS location_name, ${LAST_ACTIVITY_SQL} AS last_activity FROM serial_cases c JOIN serials s ON s.id = c.serial_id LEFT JOIN locations l ON l.id = s.location_id JOIN business_units bu ON bu.id = c.bu_id LEFT JOIN items i ON i.id = s.item_id LEFT JOIN brands b ON b.id = i.brand_id WHERE ${liveWhere('s')} AND ${tail}`;
 }
 
 function toCaseRowDto(row: CaseListRow, today: string): SerialCaseRowDto {
@@ -129,14 +142,17 @@ export async function listSerialCases(
     binds.push(`${escapeLike(query)}%`, `${escapeLike(query)}%`);
   }
   if (input.cursor !== undefined) {
-    const match = /^([^|]+)\|([^|]+)$/.exec(input.cursor);
-    if (match?.[1] && match[2]) {
-      where.push('(c.created_at < ? OR (c.created_at = ? AND c.number < ?))');
-      binds.push(match[1], match[1], match[2]);
+    const match = /^([01])\|([^|]+)\|([^|]+)$/.exec(input.cursor);
+    if (match?.[1] && match[2] && match[3]) {
+      const rank = Number(match[1]);
+      where.push(
+        `(${CLOSED_RANK_SQL} > ? OR (${CLOSED_RANK_SQL} = ? AND (${LAST_ACTIVITY_SQL} < ? OR (${LAST_ACTIVITY_SQL} = ? AND c.number < ?))))`,
+      );
+      binds.push(rank, rank, match[2], match[2], match[3]);
     }
   }
   const rows = await env.DB.prepare(
-    `${caseRowsSql(where.join(' AND '))} ORDER BY c.created_at DESC, c.number DESC LIMIT ?`,
+    `${caseRowsSql(where.join(' AND '))} ORDER BY ${CLOSED_RANK_SQL}, last_activity DESC, c.number DESC LIMIT ?`,
   )
     .bind(...binds, limit + 1)
     .all<CaseListRow>();
@@ -145,7 +161,10 @@ export async function listSerialCases(
   const today = wibDateIso(nowOf(env));
   return {
     items: page.map((row) => toCaseRowDto(row, today)),
-    nextCursor: rows.results.length > limit && last ? `${last.created_at}|${last.number}` : null,
+    nextCursor:
+      rows.results.length > limit && last
+        ? `${last.closed_on.trim() === '' ? 0 : 1}|${last.last_activity}|${last.number}`
+        : null,
   };
 }
 

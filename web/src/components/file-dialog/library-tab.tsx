@@ -7,6 +7,7 @@ import {
 import { Eye, Search, Trash2 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
+import { useRangeSelect } from '@/components/data-table/use-range-select';
 import type { RowSelection } from '@/components/data-table/use-row-selection';
 import { GridView } from '@/components/grid/grid-view';
 import { Select } from '@/components/select';
@@ -53,6 +54,13 @@ export interface LibraryTabProps {
   selection: ReadonlyMap<string, LibraryItem>;
   mode: 'single' | 'multiple';
   onToggle(item: LibraryItem): void;
+  /**
+   * Shift+klik pada kotak centang (mode jamak): pemilik pilihan menerapkan rentang `items` (urutan tampil) dan
+   * menghormati batas jumlah berkasnya. Tanpa ini Shift+klik = klik biasa.
+   */
+  onSelectRange?(items: readonly LibraryItem[], on: boolean): string | undefined;
+  /** false = tak ada ruang untuk memilih lagi, jadi klik biasa pada gambar belum terpilih tak menjadi jangkar. */
+  canSelectMore?(): boolean;
   onPreview(item: LibraryItem): void;
   accept: readonly string[];
   onFiles(files: File[], rejected: { name: string; reason: string }[]): void;
@@ -97,6 +105,8 @@ export function LibraryTab({
   selection,
   mode,
   onToggle,
+  onSelectRange,
+  canSelectMore,
   onPreview,
   accept,
   onFiles,
@@ -140,6 +150,23 @@ export function LibraryTab({
     }
     return [...seen.values()];
   }, [result.data]);
+
+  // Desktop: Shift+klik memilih rentang gambar yang sedang dimuat (hanya mode jamak di dialog pilihan).
+  const itemIds = useMemo(() => items.map((item) => item.id), [items]);
+  const { checkboxProps, setAnchor } = useRangeSelect({
+    ids: itemIds,
+    isSelected: (id) => selection.has(id),
+    canAnchor: (_id, on) => !on || canSelectMore?.() !== false,
+    apply: (rangeIds, on) => {
+      // Urutan dari sisi jangkar dipertahankan agar pemanggil yang memotong memilih yang terdekat dari jangkar.
+      const byId = new Map(items.map((item) => [item.id, item]));
+      return onSelectRange?.(
+        rangeIds.flatMap((id) => byId.get(id) ?? []),
+        on,
+      );
+    },
+  });
+  const rangeEnabled = selectable && mode === 'multiple' && onSelectRange !== undefined;
 
   const { fetchNextPage, hasNextPage, isFetchingNextPage, isFetchNextPageError } = result;
 
@@ -307,7 +334,16 @@ export function LibraryTab({
                   className="absolute inset-0 flex items-center justify-center outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   tabIndex={selectable ? -1 : undefined}
                   aria-label={selectable ? undefined : `Pratinjau ${item.name}`}
-                  onClick={() => (selectable ? onToggle(item) : onPreview(item))}
+                  onClick={() => {
+                    if (!selectable) {
+                      onPreview(item);
+                      return;
+                    }
+                    // Klik gambar juga menjadi jangkar rentang, sama seperti klik kotak centang.
+                    if (rangeEnabled && (selected || canSelectMore?.() !== false))
+                      setAnchor(item.id, !selected);
+                    onToggle(item);
+                  }}
                 >
                   <img
                     src={item.thumbUrl}
@@ -335,6 +371,7 @@ export function LibraryTab({
                         checked={selected}
                         aria-label={`Pilih ${item.name}`}
                         onCheckedChange={() => onToggle(item)}
+                        {...(rangeEnabled ? checkboxProps(item.id) : {})}
                       />
                     )}
                   </div>

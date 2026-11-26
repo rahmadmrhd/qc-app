@@ -16,7 +16,7 @@ import { RowBadges, rowStatus, type StagingTableProps, TONE_CLASS } from './stag
 
 export type StagingCardsProps = Pick<
   StagingTableProps,
-  'rows' | 'onSelect' | 'onSelectAll' | 'onOpenDetail' | 'disabled'
+  'rows' | 'onSelect' | 'onSelectAll' | 'onSelectMany' | 'onOpenDetail' | 'disabled'
 > & {
   /** Unggahan foto bukti yang berjalan/gagal; tiap kartu menampilkan milik barisnya dengan Ulangi/Buang/Batalkan. */
   uploadEntries?: readonly UploadEntry[];
@@ -69,15 +69,18 @@ const CardView = memo(function CardView({
       }}
       leading={
         selecting ? (
-          <input
-            type="checkbox"
-            className="size-5 shrink-0 accent-primary"
-            data-tour="serial-row-select"
-            aria-label={`Pilih baris ${row.serial}`}
-            checked={row.selected}
-            disabled={disabled}
-            onChange={(event) => onSelect(row.clientId, event.target.checked)}
-          />
+          // Lajur sentuh 44 px: seret dari sini memilih rentang kartu (hanya lajur ini yang `touch-none`).
+          <span data-select-lane className="flex size-11 touch-none items-center justify-center">
+            <input
+              type="checkbox"
+              className="size-5 shrink-0 accent-primary"
+              data-tour="serial-row-select"
+              aria-label={`Pilih baris ${row.serial}`}
+              checked={row.selected}
+              disabled={disabled}
+              onChange={(event) => onSelect(row.clientId, event.target.checked)}
+            />
+          </span>
         ) : undefined
       }
       title={
@@ -147,6 +150,7 @@ export function StagingCards({
   rows,
   onSelect,
   onSelectAll,
+  onSelectMany,
   onOpenDetail,
   disabled = false,
   uploadEntries,
@@ -160,15 +164,16 @@ export function StagingCards({
       selected,
       count: selected.size,
       toggle: (id) => onSelect(id, !selected.has(id)),
-      setAll: (_ids, on) => onSelectAll(on),
+      setAll: (ids, on) => onSelectMany(ids, on),
       remove: () => undefined,
       clear: () => onSelectAll(false),
     };
-  }, [rows, onSelect, onSelectAll]);
+  }, [rows, onSelect, onSelectAll, onSelectMany]);
   const ids = useMemo(() => rows.map((row) => row.clientId), [rows]);
   const { selecting, bind, enter, exit } = useLongPressSelect(
     disabled ? undefined : selection,
     true,
+    { ids },
   );
   const allSelected = ids.length > 0 && ids.every((id) => selection.selected.has(id));
   // Mode pilih = SATU bar bawah (bar pilihan Serial lewat `SelectModeProvider` RecordPage); header kit di atas daftar
