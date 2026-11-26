@@ -342,11 +342,15 @@ export const SOFT_DELETE_EXEMPT: Record<string, string> = {
     'Penampil rujukan atau pembaca kode BU menurut id yang sudah divalidasi hidup oleh jalur tulis (`activeItemWritableForBu`, `liveWhere` pada BU target); BU terhapus tetap memberi nama dan hak (soft delete 9).',
   'server/src/modules/serial/recheck-entry.ts#serial_events@1#cb0debcf':
     'Anak serial (kejadian, laporan, foto, stiker) dimuat atau ditulis menurut id serial atau laporan yang sudah lolos pemeriksaan hidup dan hak di pemanggil (`loadReadableSerialRow`, `loadSerialRow`, token laporan publik yang memeriksa serial hidup); tidak ada daftar lintas serial yang tak tersaring.',
-  'server/src/modules/serial/recheck-entry.ts#business_units@4#27d835b8':
+  'server/src/modules/serial/recheck-entry.ts#serial_events@2#e923616f':
+    'Anak serial (kejadian, laporan, foto, stiker) dimuat atau ditulis menurut id serial atau laporan yang sudah lolos pemeriksaan hidup dan hak di pemanggil (`loadReadableSerialRow`, `loadSerialRow`, token laporan publik yang memeriksa serial hidup); tidak ada daftar lintas serial yang tak tersaring.',
+  'server/src/modules/serial/recheck-entry.ts#serial_events@3#e923616f':
+    'Anak serial (kejadian, laporan, foto, stiker) dimuat atau ditulis menurut id serial atau laporan yang sudah lolos pemeriksaan hidup dan hak di pemanggil (`loadReadableSerialRow`, `loadSerialRow`, token laporan publik yang memeriksa serial hidup); tidak ada daftar lintas serial yang tak tersaring.',
+  'server/src/modules/serial/recheck-entry.ts#business_units@4#3f52d8b6':
     'Penampil rujukan atau pembaca kode BU menurut id yang sudah divalidasi hidup oleh jalur tulis (`activeItemWritableForBu`, `liveWhere` pada BU target); BU terhapus tetap memberi nama dan hak (soft delete 9).',
-  'server/src/modules/serial/recheck-entry.ts#items@1#27d835b8':
+  'server/src/modules/serial/recheck-entry.ts#items@1#3f52d8b6':
     'Penampil rujukan: serial menampilkan nama item (LEFT JOIN) walau item terhapus; item terhapus tak dihitung/dipilih di jalur tulis (jalur tulis lain: `activeItemWritableForBu` (serial/repo.ts) menyaring hidup).',
-  'server/src/modules/serial/recheck-entry.ts#brands@1#27d835b8':
+  'server/src/modules/serial/recheck-entry.ts#brands@1#3f52d8b6':
     'Nama merk untuk tampilan/rujukan: merk terhapus tetap memberi nama pada item yang memakainya (keputusan T1, rujukan tersimpan tetap sah).',
   'server/src/modules/serial/repo.ts#serials@1#ef199223':
     'Pembaca menilai `deleted_at` baris itu sendiri (kolomnya dibaca, bukan disaring): kiriman ulang `clientId`, hak baca berkas/foto bagi pemulih, keadaan foto; serial terhapus hanya terbaca pemegang hak Pulihkan.',

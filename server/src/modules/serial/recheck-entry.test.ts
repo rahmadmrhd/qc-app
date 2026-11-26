@@ -407,7 +407,14 @@ describe('serials.lookupMany', () => {
     ).run();
     const out = await call(BOTH, 'serials.lookupMany', { serials: ['ab12', 'TIDAK-ADA', 'AB12'] });
     expect(out.ok).toBe(true);
-    expect(out.data.found).toEqual([
+    const first = out.data.found[0] as Json;
+    expect(first.unitLocationId).toBe('loc-sby');
+    expect(typeof first.unitLocationLabel).toBe('string');
+    expect(first.lastActorName).toBe('Seed');
+    expect(typeof first.lastEventAt).toBe('string');
+    const { unitLocationId, unitLocationLabel, lastEventAt, lastActorName, ...core } = first;
+    expect(out.data.found).toHaveLength(1);
+    expect([core]).toEqual([
       {
         serial: 'AB12',
         id: 'sn1',
@@ -462,6 +469,54 @@ describe('serials.lookupMany', () => {
     // Pengguna yang membaca BU B menerima namanya.
     const bOnly = await call(B_ONLY, 'serials.lookupMany', { serials: ['AB12'] });
     expect(bOnly.data.found[0]).toMatchObject({ buCode: 'B', buName: 'Nama Rahasia B' });
+  });
+
+  test('posisi unit dan kejadian terbaru: ada untuk BU terbaca, tidak ada untuk BU tak terbaca; pelaku = kejadian terbaru', async () => {
+    await env.DB.prepare(
+      "INSERT INTO serial_events (id, serial_id, case_id, seq, type, occurred_on, created_at, actor_id, actor_name, actor_team, message, changes_json, data_json) VALUES ('sn1-e2', 'sn1', '', 2, 'note', '2026-11-13', '2026-11-13T05:00:00.000Z', 'x', 'Budi@gmail.com', 'qc', '', '[]', '{}')",
+    ).run();
+    const own = await call(W, 'serials.lookupMany', { serials: ['AB12'] });
+    expect(own.data.found[0]).toMatchObject({
+      unitLocationId: 'loc-sby',
+      lastEventAt: '2026-11-13T05:00:00.000Z',
+      lastActorName: 'Budi',
+    });
+    expect(typeof own.data.found[0].unitLocationLabel).toBe('string');
+    await env.DB.batch(
+      moveBuStatements(env, {
+        serialId: 'sn1',
+        fromBuId: 'bu-a',
+        toBuId: 'bu-b',
+        now: '2026-11-13T00:00:00.000Z',
+      }),
+    );
+    // Pencatat hanya-A tidak membaca BU B (BU saat ini): semua field tambahan tidak ada.
+    const hidden = (await call(W, 'serials.lookupMany', { serials: ['AB12'] })).data.found[0];
+    for (const key of ['unitLocationId', 'unitLocationLabel', 'lastEventAt', 'lastActorName']) {
+      expect(key in hidden).toBe(false);
+    }
+  });
+
+  test('satu batch, lokasi sama: serial BU tak terbaca tidak memuat keempat field tambahan, yang terbaca tetap', async () => {
+    await seedSerial(env, {
+      id: 'sn2',
+      serial: 'CD34',
+      buId: 'bu-b',
+      itemId: 'i-a2',
+      locationId: 'loc-sby',
+    });
+    await env.DB.prepare(
+      "INSERT INTO serial_events (id, serial_id, case_id, seq, type, occurred_on, created_at, actor_id, actor_name, actor_team, message, changes_json, data_json) VALUES ('sn2-e2', 'sn2', '', 2, 'note', '2026-11-13', '2026-11-13T05:00:00.000Z', 'x', 'Rahasia@gmail.com', 'qc', '', '[]', '{}')",
+    ).run();
+    const out = await call(W, 'serials.lookupMany', { serials: ['AB12', 'CD34'] });
+    const byBu = (code: string) => out.data.found.find((f: Json) => f.buCode === code);
+    const readableRow = byBu('A');
+    const hiddenRow = byBu('B');
+    expect(readableRow.unitLocationId).toBe('loc-sby');
+    expect(typeof readableRow.unitLocationLabel).toBe('string');
+    for (const key of ['unitLocationId', 'unitLocationLabel', 'lastEventAt', 'lastActorName']) {
+      expect(key in hiddenRow).toBe(false);
+    }
   });
 
   test('BU nonaktif tidak termasuk recheckBuIds; BU saat ini tetap termasuk walau nonaktif', async () => {

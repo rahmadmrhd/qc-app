@@ -27,7 +27,7 @@ import { useOptionalActiveLocations } from '@/modules/location/active-locations-
 import {
   addSerials,
   applyBulk,
-  applyLookup,
+  applyLookupCounted,
   applyResults,
   type BulkPatch,
   type Defaults,
@@ -49,6 +49,7 @@ import { hasProofPhotos } from '../lib/leave-guard';
 import { lockedLocationOf, todayWib, toLocationOptions } from '../lib/locations';
 import { applyProofMins, fetchProofMins, uniqueItemIds } from '../lib/proof-refresh';
 import type { QcsnImport } from '../lib/qcsn';
+import { findRescanWarnings, type RescanWarning } from '../lib/rescan';
 import { type ProofSession, useProofSinks, useProofUploads } from '../lib/use-proof-uploads';
 import { useSerialLocations } from '../lib/use-serial-locations';
 import {
@@ -66,6 +67,7 @@ import { ConfirmClearDraftDialog } from './confirm-clear-draft-dialog';
 import { ConfirmRemoveDialog } from './confirm-remove-dialog';
 import { ImportExportBar } from './import-export-bar';
 import { EMPTY_ITEM_BU, ItemBuField, type ItemBuValue } from './item-bu-field';
+import { RescanWarningDialog } from './rescan-warning-dialog';
 import { RowEditDialog, type RowEditResult } from './row-edit-dialog';
 import { SELECTION_BAR_SPACE_CLASS, SelectionBar } from './selection-bar';
 import { SerialLocationField } from './serial-location-field';
@@ -335,11 +337,9 @@ function RecordPageInner({
               }
             }
             const before = rowsRef.current;
-            const next = applyLookup(before, chunk, data.found);
-            if (next !== before) {
-              changed += next.filter((row, index) => row !== before[index]).length;
-              setAllRows(next);
-            }
+            const outcome = applyLookupCounted(before, chunk, data.found);
+            changed += outcome.changed;
+            if (outcome.rows !== before) setAllRows(outcome.rows);
           } catch (caught) {
             // Gagal (jaringan/server): baris dibiarkan. Simpan menolak jalan terus (stiker bawaan akan salah dipotong
             // bila serialnya ternyata sudah ada), sedangkan pencarian latar belakang diam saja.
@@ -867,6 +867,29 @@ function RecordPageInner({
     return saveRows(external);
   }
 
+  // Peringatan scan ulang (hanya saat Simpan): resolver menunggu pilihan pengguna di dialog.
+  const [rescanWarnings, setRescanWarnings] = useState<RescanWarning[] | null>(null);
+  const rescanResolveRef = useRef<((proceed: boolean) => void) | null>(null);
+  function confirmRescan(warnings: RescanWarning[]): Promise<boolean> {
+    return new Promise((resolve) => {
+      rescanResolveRef.current = resolve;
+      setRescanWarnings(warnings);
+    });
+  }
+  function answerRescan(proceed: boolean) {
+    const resolve = rescanResolveRef.current;
+    rescanResolveRef.current = null;
+    setRescanWarnings(null);
+    resolve?.(proceed);
+  }
+  useEffect(
+    () => () => {
+      rescanResolveRef.current?.(false);
+      rescanResolveRef.current = null;
+    },
+    [],
+  );
+
   async function saveRows(external: boolean): Promise<boolean> {
     const current = rowsRef.current;
     const blocked = current.filter(
@@ -885,6 +908,19 @@ function RecordPageInner({
         text: `${blocked.length} baris belum lengkap atau tidak bisa dicek ulang (item, lokasi, tanggal uji, foto bukti, atau status serial); lihat kolom Hasil.`,
       });
       return false;
+    }
+    const rescans = findRescanWarnings(current);
+    if (rescans.length > 0) {
+      preparingRef.current = true;
+      let proceed: boolean;
+      try {
+        proceed = await confirmRescan(rescans);
+      } finally {
+        preparingRef.current = false;
+      }
+      if (!proceed) return false;
+      // Pengguna bisa menyunting/menunggu foto selama dialog terbuka (modal, jadi tak lazim): periksa ulang unggahan.
+      if (rejectPendingUploads()) return false;
     }
     setSaving(true);
     setNotice(null);
@@ -1358,6 +1394,12 @@ function RecordPageInner({
           onClose={() => setBulkOpen(false)}
         />
       ) : null}
+      <RescanWarningDialog
+        open={rescanWarnings !== null}
+        warnings={rescanWarnings ?? []}
+        onContinue={() => answerRescan(true)}
+        onCancel={() => answerRescan(false)}
+      />
       <ConfirmClearDraftDialog
         open={clearOpen && rows.length > 0 && !saving}
         count={rows.length}
