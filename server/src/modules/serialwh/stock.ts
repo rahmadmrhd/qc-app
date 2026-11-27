@@ -30,6 +30,9 @@ interface BoxRow {
   capacity: number | string;
   remaining: number | string;
   item_id: string;
+  bu_id: string;
+  bu_code: string | null;
+  bu_name: string | null;
 }
 
 interface SerialRow {
@@ -47,6 +50,9 @@ interface BoxMeta {
   remaining: number;
   kind: 'full' | 'loose';
   itemId: string;
+  buId: string;
+  buCode: string;
+  buName: string;
 }
 
 /** Kursor halaman: `<bagian>|<nomor>|<id>` (bagian 0 = penuh, 1 = ecer). */
@@ -86,7 +92,7 @@ function stockSql(
     );
     binds.push(asNumber, like);
   }
-  const sql = `SELECT ${select} FROM warehouse_ready_boxes b JOIN warehouse_ready_serials rs ON rs.box_id = b.id JOIN serials s ON s.id = rs.serial_id JOIN warehouse_dispatches rd ON rd.id = rs.dispatch_id WHERE ${liveWhere('s')} AND ${where.join(' AND ')} ${tail}`;
+  const sql = `SELECT ${select} FROM warehouse_ready_boxes b JOIN warehouse_ready_serials rs ON rs.box_id = b.id JOIN serials s ON s.id = rs.serial_id JOIN warehouse_dispatches rd ON rd.id = rs.dispatch_id LEFT JOIN business_units bu ON bu.id = b.bu_id WHERE ${liveWhere('s')} AND ${where.join(' AND ')} ${tail}`;
   return { sql, binds };
 }
 
@@ -122,6 +128,20 @@ async function itemLabels(env: Env, itemIds: string[]): Promise<Map<string, stri
   return out;
 }
 
+/** Tipe yang punya stok ready terbaca pada BU itu (tanpa saringan Tipe dan pencarian), urut label. */
+async function readItemFacets(env: Env, buIds: string[]): Promise<{ id: string; label: string }[]> {
+  const query = stockSql('DISTINCT b.item_id', { buIds, query: '' }, '');
+  const rows = await env.DB.prepare(query.sql)
+    .bind(...query.binds)
+    .all<{ item_id: string }>();
+  const ids = rows.results.map((row) => row.item_id);
+  const labels = await itemLabels(env, ids);
+  return ids
+    .map((id) => ({ id, label: labels.get(id) ?? '' }))
+    .filter((facet) => facet.label !== '')
+    .sort((a, b) => a.label.localeCompare(b.label) || (a.id < b.id ? -1 : 1));
+}
+
 /**
  * Stok Ready per kardus pada BU ber-`serialwh: view` (irisan dengan `buIds`). Kardus penuh dulu (nomor naik), lalu ecer;
  * paginasi menurut kardus. `totals` dan `picked` dihitung atas SELURUH hasil terfilter, bukan hanya halaman ini.
@@ -137,6 +157,7 @@ export async function listReadyStock(
     boxes: [],
     nextCursor: null,
     totals: { units: 0, fullBoxes: 0, looseBoxes: 0, maxBoxNumber: 0 },
+    itemFacets: [],
     ...(input.pickCount !== undefined ? { picked: [] } : {}),
   };
   if (buIds.length === 0) return empty;
@@ -149,9 +170,9 @@ export async function listReadyStock(
   const limit = input.limit ?? READY_STOCK_LIMITS.listDefault;
 
   const boxQuery = stockSql(
-    'b.id, b.number, b.capacity, b.item_id, COUNT(*) AS remaining',
+    'b.id, b.number, b.capacity, b.item_id, b.bu_id, bu.code AS bu_code, bu.name AS bu_name, COUNT(*) AS remaining',
     filters,
-    'GROUP BY b.id, b.number, b.capacity, b.item_id',
+    'GROUP BY b.id, b.number, b.capacity, b.item_id, b.bu_id, bu.code, bu.name',
   );
   const boxRows = await env.DB.prepare(boxQuery.sql)
     .bind(...boxQuery.binds)
@@ -166,14 +187,19 @@ export async function listReadyStock(
       remaining,
       kind: boxKindOf(remaining, capacity),
       itemId: row.item_id,
+      buId: row.bu_id.trim(),
+      buCode: (row.bu_code ?? '').trim(),
+      buName: row.bu_name ?? '',
     };
   });
   const partOf = (box: BoxMeta): number => (box.kind === 'full' ? 0 : 1);
   metas.sort((a, b) => partOf(a) - partOf(b) || a.number - b.number || (a.id < b.id ? -1 : 1));
+  const itemFacets = await readItemFacets(env, buIds);
   if (metas.length === 0) {
     return {
       ...empty,
       totals: { ...empty.totals, maxBoxNumber: await maxOpenBoxNumber(env, filters) },
+      itemFacets,
     };
   }
 
@@ -262,6 +288,7 @@ export async function listReadyStock(
     boxes: pageMetas.map((meta) => boxes.get(meta.id) as ReadyStockBoxDto),
     nextCursor: hasMore && last ? encodeCursor(last) : null,
     totals,
+    itemFacets,
     ...(picked ? { picked } : {}),
   };
 }

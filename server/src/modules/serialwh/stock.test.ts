@@ -281,6 +281,25 @@ describe('serialWarehouse.readyStock', () => {
     ).toBe(12);
   });
 
+  test('kardus membawa BU dan halaman membawa itemFacets (tidak diiris itemIds, diiris BU terbaca)', async () => {
+    await box({ id: 'b1', number: 1, capacity: 1, serials: ['F-1'] });
+    await box({ id: 'b2', number: 2, capacity: 1, serials: ['F-2'], itemId: 'i-a2' });
+    const out = await call(WH_USERS.view, { itemIds: ['i-a1'] });
+    expect(out.ok).toBe(true);
+    expect(numbers(out.data)).toEqual([1]);
+    const first = out.data.boxes[0];
+    expect(first.buId).toBe('bu-a');
+    expect(first.buCode).not.toBe('');
+    expect(first.buName).not.toBe('');
+    const facets = out.data.itemFacets as { id: string; label: string }[];
+    expect(facets.map((f) => f.id).sort()).toEqual(['i-a1', 'i-a2']);
+    expect(facets.every((f) => f.label !== '')).toBe(true);
+    const labels = facets.map((f) => f.label);
+    expect([...labels].sort((a, b) => a.localeCompare(b))).toEqual(labels);
+    // BU lain tidak terbaca: tanpa facet.
+    expect((await call(WH_USERS.editB, {})).data.itemFacets).toEqual([]);
+  });
+
   test('validasi masukan', async () => {
     expect((await call(E, { limit: 0 })).ok).toBe(false);
     expect((await call(E, { limit: 51 })).ok).toBe(false);

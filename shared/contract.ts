@@ -1632,6 +1632,10 @@ export interface ReadyStockBoxDto {
   kind: 'full' | 'loose';
   itemId: string;
   itemLabel: string;
+  /** BU pemilik kardus (kode dan nama untuk tampilan; BU terhapus tetap terbaca). */
+  buId: string;
+  buCode: string;
+  buName: string;
   serials: ReadyStockSerialDto[];
 }
 export interface ListReadyStockInput {
@@ -1647,6 +1651,8 @@ export interface ReadyStockPageDto {
   boxes: ReadyStockBoxDto[];
   nextCursor: string | null;
   totals: { units: number; fullBoxes: number; looseBoxes: number; maxBoxNumber: number };
+  /** Tipe yang ada di stok terbaca (BU terbaca, diiris `buIds`, tidak diiris `itemIds`), urut label: bahan filter Tipe. */
+  itemFacets: { id: string; label: string }[];
   picked?: string[];
 }
 export interface WarehouseSubmitInput {
