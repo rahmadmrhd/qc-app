@@ -5,7 +5,7 @@ import { flushSync } from 'react-dom';
 import { LinkMultiField, type LinkOption } from '@/components/link-field';
 import { FilterBar, FilterChip, multiFilterDisplay } from '@/components/page/filter-bar';
 import { useChipDraft } from '@/components/page/filter-draft';
-import { MultiSelect } from '@/components/select';
+import { MultiSelect, Select } from '@/components/select';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -63,6 +63,17 @@ function exclusiveDeleted(next: string[], previous: readonly string[]): string[]
   if (!previous.includes(DELETED_VIEW)) return [DELETED_VIEW];
   return next.filter((value) => value !== DELETED_VIEW);
 }
+
+const WH_FILTER_LABEL = { yes: 'Tercatat WH', no: 'Belum tercatat WH' } as const;
+const WH_FILTER_OPTIONS = [
+  { value: '', label: 'Semua' },
+  { value: 'yes', label: 'Tercatat WH' },
+  { value: 'no', label: 'Belum tercatat WH' },
+];
+const PROOF_FILTER_OPTIONS = [
+  { value: '', label: 'Semua' },
+  { value: 'yes', label: 'Butuh foto' },
+];
 
 const CUSTODY_FILTER_OPTIONS = (Object.keys(CUSTODY_LABEL) as (keyof typeof CUSTODY_LABEL)[]).map(
   (value) => ({ value, label: CUSTODY_LABEL[value] }),
@@ -369,6 +380,38 @@ export function SerialFilters({ search, onChange, canSeeDeleted = false }: Seria
                 custody: undefined,
               })
             }
+          />
+        </FilterChip>
+        <FilterChip
+          label="Gudang"
+          display={search.whRecorded ? WH_FILTER_LABEL[search.whRecorded] : ''}
+          onClear={() => onChange({ whRecorded: undefined })}
+        >
+          <Select
+            id="serial-filter-wh"
+            label="Filter gudang"
+            hideLabel
+            placeholder="Semua"
+            options={WH_FILTER_OPTIONS}
+            value={search.whRecorded ?? ''}
+            onValueChange={(next) =>
+              onChange({ whRecorded: next === 'yes' || next === 'no' ? next : undefined })
+            }
+          />
+        </FilterChip>
+        <FilterChip
+          label="Butuh foto"
+          display={search.needsProof ? 'Butuh foto' : ''}
+          onClear={() => onChange({ needsProof: undefined })}
+        >
+          <Select
+            id="serial-filter-needs-proof"
+            label="Filter butuh foto"
+            hideLabel
+            placeholder="Semua"
+            options={PROOF_FILTER_OPTIONS}
+            value={search.needsProof ? 'yes' : ''}
+            onValueChange={(next) => onChange({ needsProof: next === 'yes' ? true : undefined })}
           />
         </FilterChip>
         <FilterChip

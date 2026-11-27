@@ -19,6 +19,7 @@ import { ListPage } from '@/components/page/list-page';
 import { ConfirmDeleteDialog } from '@/components/soft-delete/confirm-delete-dialog';
 import { DeletedBadge } from '@/components/soft-delete/deleted-badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { describeError } from '@/lib/api/describe-error';
 import { formatStamp } from '@/lib/format-stamp';
@@ -220,8 +221,21 @@ export function SerialListPage({ search, onSearchChange, onNew }: SerialListPage
             </span>
             {serial.deleted ? <DeletedBadge /> : null}
           </span>
-          {serial.hasProofPhotos || serial.proofProblemCount > 0 ? (
+          {serial.hasProofPhotos ||
+          serial.proofProblemCount > 0 ||
+          serial.whRecorded ||
+          serial.needsProof ? (
             <div className="mt-1 flex flex-wrap gap-1">
+              {serial.whRecorded ? (
+                <Badge color="info" variant="soft">
+                  Tercatat WH
+                </Badge>
+              ) : null}
+              {serial.needsProof ? (
+                <Badge color="warning" variant="soft">
+                  Butuh foto
+                </Badge>
+              ) : null}
               {serial.hasProofPhotos ? <ProofBadge /> : null}
               <ProofProblemBadge count={serial.proofProblemCount} />
             </div>
@@ -363,6 +377,8 @@ export function SerialListPage({ search, onSearchChange, onNew }: SerialListPage
     filter.statuses !== undefined ||
     filter.from !== undefined ||
     filter.to !== undefined ||
+    filter.whRecorded !== undefined ||
+    filter.needsProof !== undefined ||
     deletedView;
   const countLabel =
     list.isSuccess && (items.length > 0 || filtered)
@@ -503,6 +519,8 @@ const CLEAR_FILTERS: Partial<SerialSearch> = {
   status: undefined,
   mine: undefined,
   deleted: undefined,
+  whRecorded: undefined,
+  needsProof: undefined,
   from: undefined,
   to: undefined,
 };

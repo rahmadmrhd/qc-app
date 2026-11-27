@@ -45,7 +45,12 @@ function meWith(): MeDto {
     code,
     name: code,
     status: 'active' as const,
-    permissions: { item: 'none' as const, serial: 'edit' as const, serialservice: 'none' as const },
+    permissions: {
+      item: 'none' as const,
+      serial: 'edit' as const,
+      serialservice: 'none' as const,
+      serialwh: 'none' as const,
+    },
   });
   return {
     email: 'a@gmail.com',
@@ -64,6 +69,7 @@ function meWith(): MeDto {
       stickerstock: 'none',
       serial: 'edit',
       serialservice: 'none',
+      serialwh: 'none',
       countrylock: 'none',
       dashboard: 'none',
     },

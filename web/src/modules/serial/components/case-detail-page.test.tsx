@@ -109,6 +109,7 @@ function meWith(serial: 'none' | 'view' | 'edit'): MeDto {
       stickerstock: 'none',
       serial,
       serialservice: 'none',
+      serialwh: 'none',
       countrylock: 'none',
       dashboard: 'none',
     },
@@ -118,7 +119,7 @@ function meWith(serial: 'none' | 'view' | 'edit'): MeDto {
         code: 'SBY',
         name: 'Surabaya',
         status: 'active',
-        permissions: { item: 'none', serial, serialservice: 'none' },
+        permissions: { item: 'none', serial, serialservice: 'none', serialwh: 'none' },
       },
     ],
     locations: [],
@@ -130,10 +131,10 @@ function serviceMe(): MeDto {
   const base = meWith('view');
   return {
     ...base,
-    permissions: { ...base.permissions, serialservice: 'edit' },
+    permissions: { ...base.permissions, serialservice: 'edit', serialwh: 'none' },
     businessUnits: base.businessUnits.map((bu) => ({
       ...bu,
-      permissions: { ...bu.permissions, serialservice: 'edit' },
+      permissions: { ...bu.permissions, serialservice: 'edit', serialwh: 'none' },
     })),
   };
 }

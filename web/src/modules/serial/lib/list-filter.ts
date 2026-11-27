@@ -53,6 +53,10 @@ export const serialSearchSchema = z.object({
    * terhadap status alur).
    */
   deleted: z.literal(true).optional().catch(undefined),
+  /** Gudang: `yes` = Tercatat WH, `no` = Belum tercatat WH. */
+  whRecorded: z.enum(['yes', 'no']).optional().catch(undefined),
+  /** Hanya serial "Butuh foto". */
+  needsProof: z.literal(true).optional().catch(undefined),
   from: isoDate,
   to: isoDate,
 });
@@ -212,6 +216,8 @@ export function filterOfSearch(
     ...(creators.length > 0 ? { createdBys: creators } : {}),
     ...(lists.statuses.length > 0 ? { statuses: lists.statuses } : {}),
     ...(deletedView ? { deleted: true } : {}),
+    ...(search.whRecorded ? { whRecorded: search.whRecorded } : {}),
+    ...(search.needsProof ? { needsProof: true } : {}),
     ...(search.from ? { from: search.from } : {}),
     ...(search.to ? { to: search.to } : {}),
   };

@@ -67,6 +67,7 @@ const INDEX = [
   '/qrcode/default',
   '/serial',
   '/serial/reports',
+  '/serial/gudang/riwayat',
   '/sticker',
   '/sticker/library',
   '/sticker/types',
@@ -88,6 +89,7 @@ const VIEW = [
   '/qrcode/default/$presetId',
   '/serial/$serialId',
   '/serial/reports/$caseId',
+  '/serial/gudang/riwayat/$orderId',
   '/sticker/$stickerId',
   '/sticker/types/$typeId',
 ];
@@ -115,7 +117,7 @@ const FORM_DEFAULT = [
   '/qrcode/default/$presetId/edit',
 ];
 /** Form dengan tabel draft: konten selebar `<main>` (`full`). */
-const FORM_FULL = ['/serial/new'];
+const FORM_FULL = ['/serial/new', '/serial/gudang'];
 /** Halaman lain (Beranda, informasi, pesan status, alihan): konten terpusat selebar bawaan. */
 const OTHER = ['/', '/desktop', '/forbidden', '/sticker/stock'];
 

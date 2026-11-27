@@ -21,6 +21,7 @@ import {
   Lock,
   MapPin,
   Package,
+  PackageCheck,
   QrCode,
   Settings,
   Settings2,
@@ -157,7 +158,7 @@ export const NAV_GROUPS: NavGroup[] = [
             label: 'Daftar',
             to: '/serial',
             icon: ListChecks,
-            excludes: ['/serial/settings', '/serial/report', '/serial/reports'],
+            excludes: ['/serial/settings', '/serial/report', '/serial/reports', '/serial/gudang'],
             permission: [
               { module: 'serial', level: 'view' },
               { module: 'serialservice', level: 'view' },
@@ -173,6 +174,19 @@ export const NAV_GROUPS: NavGroup[] = [
               { module: 'serial', level: 'view' },
               { module: 'serialservice', level: 'view' },
             ],
+          },
+          {
+            label: 'Keluar Gudang',
+            to: '/serial/gudang',
+            icon: PackageCheck,
+            excludes: ['/serial/gudang/riwayat'],
+            permission: { module: 'serialwh', level: 'edit' },
+          },
+          {
+            label: 'Riwayat Gudang',
+            to: '/serial/gudang/riwayat',
+            icon: History,
+            permission: { module: 'serialwh', level: 'view' },
           },
           {
             label: 'Pengaturan',

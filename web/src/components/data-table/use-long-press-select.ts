@@ -52,7 +52,7 @@ export function useLongPressSelect(
   // Mode pilih yang dimulai tanpa gestur (tombol "Pilih"): ada walau belum ada butir terpilih; berakhir saat pilihan
   // kosong lagi (otomatis) atau lewat `exit`.
   const [manual, setManual] = useState(false);
-  const count = selection?.count ?? 0;
+  const count = selection?.modeCount ?? selection?.count ?? 0;
   const hadSelection = useRef(false);
   useEffect(() => {
     if (count > 0) hadSelection.current = true;

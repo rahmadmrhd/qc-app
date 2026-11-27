@@ -13,6 +13,7 @@ import {
   SheetTrigger,
 } from '@/components/ui/sheet';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { cn } from '@/lib/utils';
 
 export interface FilterBarSearch {
   value: string;
@@ -82,11 +83,14 @@ export function FilterChip({
   label,
   display,
   onClear,
+  invalid = false,
   children,
 }: {
   label: string;
   display?: string | null;
   onClear?: () => void;
+  /** Isian wajib yang masih kosong: bingkai merah (mis. scan ditahan karena chip ini belum diisi). */
+  invalid?: boolean;
   children: ReactNode;
 }) {
   const filled = display !== undefined && display !== null && display !== '';
@@ -143,11 +147,13 @@ export function FilterChip({
   return (
     <div
       data-filled={filled || undefined}
-      className={
+      data-invalid={invalid || undefined}
+      className={cn(
         filled
           ? 'shrink-0 inline-flex h-8 items-center rounded-full border border-info-text/35 bg-info-text/10 text-sm touch:h-11'
-          : 'shrink-0 inline-flex h-8 items-center rounded-full border border-dashed text-sm touch:h-11'
-      }
+          : 'shrink-0 inline-flex h-8 items-center rounded-full border border-dashed text-sm touch:h-11',
+        invalid && 'border-solid border-destructive-text ring-2 ring-destructive-text/30',
+      )}
     >
       {phone ? (
         <Sheet open={open} onOpenChange={onOpenChange}>

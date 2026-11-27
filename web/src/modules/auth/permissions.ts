@@ -150,6 +150,38 @@ export function canManageSerialSettings(me: MeDto | null | undefined): boolean {
   return me?.canManageSerialSettings === true;
 }
 
+/** BU hidup tempat user punya minimal `level` pada `serialwh` (pilihan BU Keluar Gudang). */
+export function warehouseBuIds(me: MeDto | null | undefined, level: 'view' | 'edit'): string[] {
+  return liveBuIdsWithLevelOf(me, 'serialwh', level);
+}
+
+/** Boleh memakai form Keluar Gudang: `serialwh: edit` pada minimal satu BU hidup. */
+export function canUseWarehouse(me: MeDto | null | undefined): boolean {
+  return warehouseBuIds(me, 'edit').length > 0;
+}
+
+/** Boleh membuka daftar Serial (`/serial`): `serial` atau `serialservice` level `view` (aturan yang sama dengan rutenya). */
+export function canReadSerials(me: MeDto | null | undefined): boolean {
+  return canAnywhere(me, 'serial', 'view') || canAnywhere(me, 'serialservice', 'view');
+}
+
+/**
+ * Tujuan cadangan tombol Batal form Keluar Gudang (mis. tab baru atau tautan langsung): halaman yang memang boleh
+ * dibuka pengguna ini, jadi pemegang `serialwh` saja tidak mendarat di /forbidden.
+ */
+export function warehouseCancelTarget(
+  me: MeDto | null | undefined,
+): '/serial' | '/serial/gudang/riwayat' | '/' {
+  if (canReadSerials(me)) return '/serial';
+  if (canReadWarehouse(me)) return '/serial/gudang/riwayat';
+  return '/';
+}
+
+/** Boleh membuka Riwayat Gudang: `serialwh: view` pada minimal satu BU. */
+export function canReadWarehouse(me: MeDto | null | undefined): boolean {
+  return buIdsWithLevelOf(me, 'serialwh', 'view').length > 0;
+}
+
 /** Mencatat serial baru (Tambah, Country Lock): level `edit` pada minimal satu BU HIDUP (BU terhapus tak tampil di pilihan). */
 export function canRecordSerials(me: MeDto | null | undefined): boolean {
   return liveBuIdsWithLevelOf(me, 'serial', 'edit').length > 0;

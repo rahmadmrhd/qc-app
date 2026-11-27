@@ -20,6 +20,7 @@ const VIEWS: readonly [file: string, kind: string][] = [
   ['qrcode/components/qr-preset-view.tsx', 'qrPreset'],
   ['sticker/components/sticker-type-view.tsx', 'stickerType'],
   ['sticker/components/sticker-view.tsx', 'sticker'],
+  ['serialwh/components/order-detail-page.tsx', 'warehouseOrder'],
 ];
 
 const modules = path.resolve(__dirname, '..');

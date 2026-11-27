@@ -97,3 +97,9 @@ test('aksi audit postel.* berlabel Indonesia', () => {
   expect(auditActionLabel('postel.delete')).toBe('Postel dihapus');
   expect(auditActionLabel('postel.settings')).toBe('Konfigurasi Postel diubah');
 });
+
+test('label aksi Keluar Gudang', () => {
+  expect(auditActionLabel('serialwh.dispatch_create')).toBe('Keluar Gudang dicatat');
+  expect(auditActionLabel('serialwh.dispatch_done')).toBe('Keluar Gudang selesai');
+  expect(auditActionLabel('serialwh.dispatch_cancel')).toBe('Keluar Gudang dibatalkan otomatis');
+});
