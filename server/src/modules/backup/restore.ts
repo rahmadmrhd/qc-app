@@ -11,6 +11,7 @@ import { isDriveId } from '@server/core/google/settings';
 import { redactSecrets } from '@server/core/redact';
 import { clientArgs, type DumpTarget } from './dump';
 import { createDumpInspector } from './dump-inspect';
+import type { DumpScanner } from './dump-scan';
 import { parseBackupName } from './names';
 import { listAllEntriesVia, recognizedBackups } from './upload';
 
@@ -110,7 +111,12 @@ async function downloadTo(body: ReadableStream<Uint8Array>, path: string): Promi
  * dibuka SEBELUM apa pun diimpor). Memeriksa baris penutup "Dump completed" dan isi dump (`dump-inspect.ts`: tolak
  * USE/CREATE|DROP DATABASE/GRANT/perintah klien/tulisan ke skema lain; huruf besar/kecil dan backtick tak dibedakan).
  */
-async function gunzipTo(gzPath: string, sqlPath: string, targetSchema: string): Promise<void> {
+export async function gunzipTo(
+  gzPath: string,
+  sqlPath: string,
+  targetSchema: string,
+  scanner?: DumpScanner,
+): Promise<void> {
   let tail = '';
   const lines = createDumpInspector(targetSchema);
   const inspector = new Transform({
@@ -118,6 +124,7 @@ async function gunzipTo(gzPath: string, sqlPath: string, targetSchema: string): 
       const text = chunk.toString('latin1');
       try {
         lines.feed(text);
+        scanner?.feed(text);
       } catch (error) {
         callback(
           new RestoreError(
@@ -349,7 +356,7 @@ export function importArgs(target: DumpTarget, schema: string): string[] {
   return [...clientArgs(target), '--binary-mode', schema];
 }
 
-export function createMariadbImporter(target: DumpTarget) {
+export function createMariadbImporter(target: DumpTarget, options: { timeoutMs?: number } = {}) {
   return async (sqlPath: string, schema: string): Promise<void> => {
     const proc = Bun.spawn([Bun.which('mariadb') ?? 'mariadb', ...importArgs(target, schema)], {
       env: { MYSQL_PWD: target.password },
@@ -357,7 +364,23 @@ export function createMariadbImporter(target: DumpTarget) {
       stdout: 'ignore',
       stderr: 'pipe',
     });
-    const [stderr, code] = await Promise.all([new Response(proc.stderr).text(), proc.exited]);
+    // Impor yang menggantung (koneksi putus, server macet) tak boleh menahan job tanpa batas.
+    let timedOut = false;
+    const timer =
+      options.timeoutMs === undefined
+        ? undefined
+        : setTimeout(() => {
+            timedOut = true;
+            proc.kill();
+          }, options.timeoutMs);
+    let stderr: string;
+    let code: number;
+    try {
+      [stderr, code] = await Promise.all([new Response(proc.stderr).text(), proc.exited]);
+    } finally {
+      if (timer !== undefined) clearTimeout(timer);
+    }
+    if (timedOut) throw new Error('impor melewati batas waktu dan dihentikan');
     if (code !== 0) {
       const detail = redactSecrets(stderr.trim().slice(0, 500), target.password);
       throw new Error(`mariadb gagal (kode keluar ${code})${detail === '' ? '' : `: ${detail}`}`);
@@ -448,12 +471,13 @@ export async function resolveBackupFolderId(sources: {
 export const RESTORE_STALE_AFTER_MS = 6 * 60 * 60 * 1000;
 
 /**
- * Membuang folder kerja pemulihan lama (`job-*`) yang tertinggal proses yang terbunuh (berisi SQL seluruh basis data).
- * Hanya yang berumur > `RESTORE_STALE_AFTER_MS` (mtime): pemulihan lain yang sedang berjalan tidak kehilangan berkas.
+ * Membuang folder kerja pemulihan lama (`job-*`; verifikasi cadangan memakai awalan sendiri lewat `prefix`) yang
+ * tertinggal proses yang terbunuh (berisi SQL seluruh basis data). Hanya yang berumur > `RESTORE_STALE_AFTER_MS`
+ * (mtime): pemulihan lain yang sedang berjalan tidak kehilangan berkas.
  */
 export async function purgeStaleRestoreDirs(
   root: string,
-  options: { now?: number; maxAgeMs?: number } = {},
+  options: { now?: number; maxAgeMs?: number; prefix?: string } = {},
 ): Promise<number> {
   let names: string[];
   try {
@@ -464,7 +488,8 @@ export async function purgeStaleRestoreDirs(
   const now = options.now ?? Date.now();
   const maxAge = options.maxAgeMs ?? RESTORE_STALE_AFTER_MS;
   let removed = 0;
-  for (const name of names.filter((candidate) => candidate.startsWith('job-'))) {
+  const prefix = options.prefix ?? 'job-';
+  for (const name of names.filter((candidate) => candidate.startsWith(prefix))) {
     const path = join(root, name);
     const info = await stat(path).catch(() => null);
     if (info === null || now - info.mtimeMs <= maxAge) continue;

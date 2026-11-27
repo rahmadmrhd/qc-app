@@ -13,6 +13,8 @@ import { ensureLocalDir, fileDigest, LOCAL_BACKUP_KEEP, pruneLocalDumps } from '
 import { backupName, parseBackupName, wibDate, wibHour } from './names';
 import { selectBackupsToDelete } from './retention';
 import { ensureBackupFolder, listAllEntries, uploadVerified } from './upload';
+import { scheduleBackupVerifyJob } from './verify-schedule';
+import { SETTING_BACKUP_LAST_SUCCESS_NAME } from './verify-state';
 
 /** Jam WIB paling awal cadangan harian dijadwalkan. */
 export const BACKUP_START_HOUR_WIB = 2;
@@ -117,6 +119,8 @@ async function uploadStep(ctx: Parameters<JobHandler['run']>[0]): Promise<StepOu
     SETTING_BACKUP_LAST_SUCCESS,
     parseBackupName(name)?.date ?? wibDate(nowOf(env)),
   );
+  // Nama berkas yang berhasil: dasar penjadwalan dan peringatan verifikasi (`verify-schedule.ts`, `verify-alert.ts`).
+  await putSetting(env, SETTING_BACKUP_LAST_SUCCESS_NAME, name);
   return { progress: 70 };
 }
 
@@ -145,6 +149,13 @@ async function retentionStep(ctx: Parameters<JobHandler['run']>[0]): Promise<Ste
     await pruneLocalDumps(dir, LOCAL_BACKUP_KEEP);
   } catch (error) {
     console.error(`cadangan: pembersihan folder lokal gagal: ${String(error)}`);
+  }
+  // Uji pemulihan langsung sesudah cadangan (bukan pada jam tetap yang dapat mendahuluinya). Kegagalan menyisipkan job
+  // tidak menggagalkan cadangan yang sudah aman; penjadwal jam-an mengejarnya.
+  try {
+    await scheduleBackupVerifyJob(env);
+  } catch (error) {
+    console.error(`cadangan: verifikasi gagal dijadwalkan: ${String(error)}`);
   }
   return {
     progress: 100,

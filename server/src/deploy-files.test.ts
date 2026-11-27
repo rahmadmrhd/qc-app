@@ -242,6 +242,7 @@ describe('deploy: compose.yml qc-app', () => {
 
   test('CLI pemulihan (T31) ikut di image agar dapat dijalankan lewat docker exec', () => {
     expect(dockerfile).toContain('COPY scripts/restore-backup.ts scripts/restore-backup.ts');
+    expect(dockerfile).toContain('COPY scripts/verify-backup.ts scripts/verify-backup.ts');
   });
 
   test('subnet jaringan dipatok dari variabel (I5) dan tidak memakai kolam otomatis Docker', () => {

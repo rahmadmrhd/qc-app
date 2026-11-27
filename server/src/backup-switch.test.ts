@@ -38,3 +38,15 @@ describe('sakelar cadangan terjadwal (BACKUP_ENABLED)', () => {
     expect(envFromConfig(config, {} as Db).BACKUP_ENABLED).toBe(false);
   });
 });
+
+describe('uji pemulihan cadangan (RESTORE_DATABASE_URL)', () => {
+  const verify = (extra: Record<string, string> = {}) =>
+    envFromConfig(loadConfig({ ...PRODUCTION, ...extra }), {} as Db).BACKUP_VERIFY;
+
+  test('tanpa RESTORE_DATABASE_URL verifikasi tidak terpasang; dengan URL sah terpasang', () => {
+    expect(verify()).toBeUndefined();
+    expect(
+      verify({ RESTORE_DATABASE_URL: 'mysql://qc_restore:abc123@qc-db:3306/' }),
+    ).toBeFunction();
+  });
+});

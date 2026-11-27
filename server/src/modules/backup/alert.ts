@@ -34,7 +34,7 @@ function describeAge(ms: number): string {
 }
 
 /** Mengirim satu peringatan bila selang minimum sejak yang terakhir terkirim sudah lewat; kegagalan kirim tidak dilempar. */
-async function sendThrottled(
+export async function sendThrottled(
   env: Env,
   settingKey: string,
   message: { subject: string; text: string },
