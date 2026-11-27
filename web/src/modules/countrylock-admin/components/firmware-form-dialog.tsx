@@ -1,4 +1,6 @@
 import type { ClFirmwareDto } from '@shared/contract';
+import { FIRMWARE_CODE_MAX } from '@shared/countrylock-bundle';
+import { hasControlChars } from '@shared/text';
 import { useQuery } from '@tanstack/react-query';
 import { type FormEvent, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
@@ -14,7 +16,7 @@ import { BRAND_OPTIONS } from '../lib/labels';
 import { filesQueryOptions, useSaveFirmware } from '../queries';
 
 const FORM_ID = 'cl-firmware-form';
-const CODE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,31}$/;
+const LABEL_MAX = 120;
 
 export interface FirmwareFormDialogProps {
   open: boolean;
@@ -73,12 +75,17 @@ export function FirmwareFormDialog({
     const trimmedCode = code.trim();
     const trimmedLabel = label.trim();
     const sortNumber = Number(sort);
-    if (!CODE_PATTERN.test(trimmedCode)) {
-      setError('Kode hanya huruf, angka, titik, garis bawah, atau strip (maks. 32 karakter)');
+    // Aturan yang sama dengan server: 1 sampai FIRMWARE_CODE_MAX karakter, spasi boleh, tanpa karakter kontrol.
+    if (
+      trimmedCode === '' ||
+      trimmedCode.length > FIRMWARE_CODE_MAX ||
+      hasControlChars(trimmedCode)
+    ) {
+      setError(`Kode wajib diisi, maksimal ${FIRMWARE_CODE_MAX} karakter, tanpa karakter kontrol`);
       return;
     }
-    if (trimmedLabel === '') {
-      setError('Label wajib diisi');
+    if (trimmedLabel === '' || hasControlChars(trimmedLabel)) {
+      setError('Label wajib diisi dan tanpa karakter kontrol');
       return;
     }
     if (!Number.isInteger(sortNumber) || sortNumber < 0) {
@@ -136,7 +143,7 @@ export function FirmwareFormDialog({
             required
             aria-required="true"
             disabled={identityLocked}
-            maxLength={32}
+            maxLength={FIRMWARE_CODE_MAX}
             onChange={(event) => setCode(event.target.value)}
           />
           {identityLocked ? (
@@ -154,7 +161,7 @@ export function FirmwareFormDialog({
             value={label}
             required
             aria-required="true"
-            maxLength={80}
+            maxLength={LABEL_MAX}
             onChange={(event) => setLabel(event.target.value)}
           />
         </div>

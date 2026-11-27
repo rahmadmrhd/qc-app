@@ -678,6 +678,21 @@ test('firmware dikosongkan saat Country lock dimatikan atau merk diganti ke merk
   );
 });
 
+test('ganti merk tanpa memilih firmware lagi: kode lama TIDAK ikut terkirim', async () => {
+  const { onSubmit } = renderForm();
+  await pickBrand('Ubiquiti');
+  await userEvent.type(screen.getByLabelText('Tipe'), 'AF-5XHD');
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Country lock (wajib)' }));
+  await pickSelect(screen, 'Firmware', 'AF-5XHD');
+  await pickBrand('Mikrotik');
+  await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
+  await waitFor(() =>
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({ brandId: 'b3', isCountryLock: true, firmware: '' }),
+    ),
+  );
+});
+
 test('firmware: tanpa pilihan dari server field nonaktif; firmware merk lain tak ditawarkan', async () => {
   renderForm({ firmwareOptions: { mikrotik: [], ubiquiti: [] } });
   await pickBrand('Ubiquiti');

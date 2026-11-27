@@ -299,11 +299,13 @@ export function ItemForm({
   }
 
   function selectBrand(id: string | null, known?: BrandDto) {
+    // Merk LAMA harus dibaca sebelum `brandId` diganti: dibaca sesudahnya, `previousName` selalu sama dengan merk baru
+    // sehingga firmware lama tak pernah dikosongkan (kode merk lain ikut terkirim dan ditolak server).
+    const previousName = brandById(form.getFieldValue('brandId'))?.name ?? '';
     form.setFieldValue('brandId', id ?? '');
     clear('brandId');
     // Kode firmware hanya berlaku untuk merk tertentu: kosongkan bila tak berlaku bagi merk baru.
     const brandName = id === null ? '' : ((known ?? brandById(id))?.name ?? '');
-    const previousName = brandById(form.getFieldValue('brandId'))?.name ?? '';
     if (countryLockBrandOf(brandName) !== countryLockBrandOf(previousName)) {
       form.setFieldValue('firmware', '');
       clear('firmware');

@@ -151,4 +151,38 @@ describe('FirmwarePage', () => {
       ),
     );
   });
+
+  test('firmware berkode spasi (mis. Mantbox 19s) dapat diubah labelnya walau kodenya terkunci', async () => {
+    firmwares = [firmware('f9', 'Mantbox 19s', { inUseCount: 2 })];
+    await page();
+    await userEvent.click(await screen.findByRole('button', { name: 'Ubah Mantbox 19s' }));
+    const dialog = await screen.findByRole('alertdialog');
+    const label = within(dialog).getByLabelText(/Label/);
+    await userEvent.clear(label);
+    await userEvent.type(label, 'Mantbox baru');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Simpan' }));
+    await waitFor(() =>
+      expect(apiMock).toHaveBeenCalledWith(
+        'clFirmwares.save',
+        expect.objectContaining({ id: 'f9', code: 'Mantbox 19s', label: 'Mantbox baru' }),
+      ),
+    );
+  });
+
+  test('kode sepanjang batas server (40 karakter) diterima', async () => {
+    await page();
+    await userEvent.click(await screen.findByRole('button', { name: 'Tambah firmware' }));
+    const dialog = await screen.findByRole('alertdialog');
+    const code = within(dialog).getByLabelText(/Kode/) as HTMLInputElement;
+    expect(code.maxLength).toBe(40);
+    await userEvent.type(within(dialog).getByLabelText(/Label/), 'Panjang');
+    await userEvent.type(code, 'K'.repeat(40));
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Simpan' }));
+    await waitFor(() =>
+      expect(apiMock).toHaveBeenCalledWith(
+        'clFirmwares.save',
+        expect.objectContaining({ code: 'K'.repeat(40) }),
+      ),
+    );
+  });
 });
