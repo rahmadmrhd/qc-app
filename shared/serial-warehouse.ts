@@ -70,3 +70,29 @@ export const WAREHOUSE_READY_NOTE = 'Dicatat Gudang · Ready';
 export function warehouseRecordedNote(orderNumber: string): string {
   return `Dicatat Gudang · SO ${orderNumber}`;
 }
+
+/** Jenis pengeluaran Gudang: `order` = Penjualan (keluar ke SO), `ready` = Ready Stock (tanpa SO). */
+export type WarehouseDispatchKind = 'order' | 'ready';
+
+export const WAREHOUSE_KIND_LABEL: Record<WarehouseDispatchKind, string> = {
+  order: 'Penjualan',
+  ready: 'Ready Stock',
+};
+
+/** Awalan nomor riwayat: `OUT` (Penjualan) dan `RS` (Ready Stock). */
+export function dispatchNumberPrefix(kind: WarehouseDispatchKind): 'OUT' | 'RS' {
+  return kind === 'ready' ? 'RS' : 'OUT';
+}
+
+/**
+ * Nomor riwayat Gudang `<OUT|RS>/<kode BU>/<YYMM>-<urutan>`: urutan per (awalan, BU, bulan WIB hari dibuat), minimal 4
+ * digit (lebih dari 9999 menjadi lebih panjang). Kode BU tak dapat diubah dan berpola `^[A-Z0-9-]+$`.
+ */
+export function dispatchNumber(
+  kind: WarehouseDispatchKind,
+  buCode: string,
+  period: string,
+  sequence: number,
+): string {
+  return `${dispatchNumberPrefix(kind)}/${buCode}/${period}-${String(sequence).padStart(4, '0')}`;
+}

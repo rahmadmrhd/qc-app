@@ -3,7 +3,7 @@ import { requirePermission } from '@/modules/auth/permissions';
 import { OrderDetailPage } from '@/modules/serialwh/components/order-detail-page';
 import { warehouseOrderQueryOptions } from '@/modules/serialwh/queries';
 
-export const Route = createFileRoute('/_app/serial/gudang/riwayat/$orderId')({
+export const Route = createFileRoute('/_app/serial/gudang/riwayat/so/$orderId')({
   staticData: {
     crumb: ({ params, queryClient }) => ({
       label:

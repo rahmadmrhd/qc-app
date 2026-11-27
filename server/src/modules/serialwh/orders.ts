@@ -151,6 +151,7 @@ export function toDispatch(row: DispatchListRow): WarehouseDispatchDto {
   const status = row.status.trim();
   return {
     id: row.id.trim(),
+    number: row.number,
     itemId: row.item_id.trim(),
     itemLabel: `${row.brand_name ?? ''} ${(row.model ?? '').trim()}`.trim(),
     dispatchedOn: row.dispatched_on,
@@ -192,7 +193,7 @@ export async function loadOrderDto(
   const [summary] = await selectSummaries(env.DB, 'o.id = ?', [order.id], '');
   if (!summary) throw appError('NOT_FOUND', 'Catatan SO tidak ditemukan');
   const dispatches = await env.DB.prepare(
-    'SELECT d.id, d.order_id, d.client_id, d.item_id, d.dispatched_on, d.note, d.mode, d.status, d.header_hash, d.chunk_size, d.chunk_count, d.chunks_received, d.serial_total, d.created_count, d.created_at, d.created_by, d.completed_at, d.cancelled_at, b.name AS brand_name, i.model FROM warehouse_dispatches d LEFT JOIN items i ON i.id = d.item_id LEFT JOIN brands b ON b.id = i.brand_id WHERE d.order_id = ? ORDER BY d.created_at DESC, d.id DESC',
+    'SELECT d.id, d.number, d.order_id, d.client_id, d.item_id, d.dispatched_on, d.note, d.mode, d.status, d.header_hash, d.chunk_size, d.chunk_count, d.chunks_received, d.serial_total, d.created_count, d.created_at, d.created_by, d.completed_at, d.cancelled_at, b.name AS brand_name, i.model FROM warehouse_dispatches d LEFT JOIN items i ON i.id = d.item_id LEFT JOIN brands b ON b.id = i.brand_id WHERE d.order_id = ? ORDER BY d.created_at DESC, d.id DESC',
   )
     .bind(order.id)
     .all<DispatchListRow>();

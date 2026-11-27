@@ -17,7 +17,7 @@ const NOT_FOUND = 'Pencatatan ready tidak ditemukan';
 type ReadyRow = DispatchListRow & { bu_code: string; bu_name: string };
 
 const READY_SELECT =
-  "SELECT d.id, d.order_id, d.client_id, d.item_id, d.dispatched_on, d.note, d.mode, d.kind, d.bu_id, d.status, d.header_hash, d.chunk_size, d.chunk_count, d.chunks_received, d.serial_total, d.created_count, d.created_at, d.created_by, d.completed_at, d.cancelled_at, b.name AS brand_name, i.model, bu.code AS bu_code, bu.name AS bu_name FROM warehouse_dispatches d JOIN business_units bu ON bu.id = d.bu_id LEFT JOIN items i ON i.id = d.item_id LEFT JOIN brands b ON b.id = i.brand_id WHERE d.kind = 'ready'";
+  "SELECT d.id, d.number, d.order_id, d.client_id, d.item_id, d.dispatched_on, d.note, d.mode, d.kind, d.bu_id, d.status, d.header_hash, d.chunk_size, d.chunk_count, d.chunks_received, d.serial_total, d.created_count, d.created_at, d.created_by, d.completed_at, d.cancelled_at, b.name AS brand_name, i.model, bu.code AS bu_code, bu.name AS bu_name FROM warehouse_dispatches d JOIN business_units bu ON bu.id = d.bu_id LEFT JOIN items i ON i.id = d.item_id LEFT JOIN brands b ON b.id = i.brand_id WHERE d.kind = 'ready'";
 
 function toReady(user: UserContext, row: ReadyRow): WarehouseReadyDto {
   const buId = row.bu_id.trim();

@@ -91,11 +91,11 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   'serial.proof_remove': 'Foto bukti Serial Number dihapus',
   'serial.proof_reupload': 'Foto bukti Serial Number diunggah ulang',
   'serial.proof_retention': 'Foto bukti gagal dibuang otomatis',
-  'serialwh.dispatch_create': 'Keluar Gudang dicatat',
-  'serialwh.dispatch_done': 'Keluar Gudang selesai',
-  'serialwh.dispatch_cancel': 'Keluar Gudang dibatalkan otomatis',
-  'serialwh.ready_create': 'Ready Gudang dicatat',
-  'serialwh.ready_done': 'Ready Gudang selesai',
+  'serialwh.dispatch_create': 'Penjualan Gudang dicatat',
+  'serialwh.dispatch_done': 'Penjualan Gudang selesai',
+  'serialwh.dispatch_cancel': 'Penjualan Gudang dibatalkan otomatis',
+  'serialwh.ready_create': 'Ready Stock dicatat',
+  'serialwh.ready_done': 'Ready Stock selesai',
   'serialwh.links_update': 'Tautan task SO diubah',
   'export.sheets': 'Data diekspor ke Sheets',
   'dashboard.share_create': 'Tautan dashboard dibuat',
@@ -199,7 +199,7 @@ export function auditFieldLabel(key: string): string {
 
 /** Aksi Keluar Gudang yang berbagi kunci antara mode SO dan ready; label ready dipilih menurut jenis/target. */
 const READY_ACTION_LABELS: Record<string, string> = {
-  'serialwh.dispatch_cancel': 'Ready Gudang dibatalkan otomatis',
+  'serialwh.dispatch_cancel': 'Ready Stock dibatalkan otomatis',
 };
 
 /**

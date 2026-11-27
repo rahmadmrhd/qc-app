@@ -1,5 +1,6 @@
 import type { WarehouseDispatchDto, WarehouseDispatchSerialDto } from '@shared/contract';
 import { useInfiniteQuery } from '@tanstack/react-query';
+import { Link } from '@tanstack/react-router';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
@@ -24,7 +25,7 @@ export const DISPATCH_STATUS = {
 } as const;
 
 const SERIAL_COLUMNS: DataColumn<WarehouseDispatchSerialDto>[] = [
-  { id: 'seq', header: 'No', cell: (row) => row.seq },
+  { id: 'seq', header: 'No', cell: (row) => row.seq + 1 },
   {
     id: 'serial',
     header: 'Serial Number',
@@ -53,7 +54,7 @@ const SERIAL_COLUMNS: DataColumn<WarehouseDispatchSerialDto>[] = [
 ];
 
 /** Tabel Serial Number satu pengeluaran (berkursor `seq`); dimuat hanya setelah dibuka. */
-function DispatchSerials({ dispatchId }: { dispatchId: string }) {
+export function DispatchSerials({ dispatchId }: { dispatchId: string }) {
   const list = useInfiniteQuery(warehouseDispatchSerialsQueryOptions(dispatchId));
   const rows = list.data?.pages.flatMap((page) => page.items) ?? [];
   return (
@@ -75,6 +76,43 @@ function DispatchSerials({ dispatchId }: { dispatchId: string }) {
   );
 }
 
+/**
+ * "Salin ulang" satu pengeluaran selesai: janji teks dilempar langsung ke clipboard dari gestur klik (cadangan dialog
+ * bila clipboard ditolak). `dialog` WAJIB dirender pemanggil.
+ */
+export function useCopyDispatch(dispatchId: string) {
+  const [copied, setCopied] = useState<{ text: string; count: number } | null>(null);
+  const [copying, setCopying] = useState(false);
+
+  async function copyAgain() {
+    setCopying(true);
+    const fetched = fetchWarehouseCopyText(dispatchId);
+    fetched.catch(() => undefined);
+    try {
+      const ok = await copyLines(fetched.then((result) => result.text));
+      const result = await fetched;
+      if (ok) toast.success(`${result.count} Serial Number disalin`);
+      else setCopied(result);
+    } catch (error) {
+      toast.error(describeError(error));
+    } finally {
+      setCopying(false);
+    }
+  }
+
+  const dialog = (
+    <ClipboardResultDialog
+      open={copied !== null}
+      onOpenChange={(next) => {
+        if (!next) setCopied(null);
+      }}
+      text={copied?.text ?? ''}
+      count={copied?.count ?? 0}
+    />
+  );
+  return { copyAgain, copying, dialog };
+}
+
 export interface DispatchSectionProps {
   dispatch: WarehouseDispatchDto;
   /** `serialwh: edit` pada BU SO: "Lanjutkan" hanya bagi pengguna ini. */
@@ -90,27 +128,9 @@ export function DispatchSection({ dispatch, canEdit }: DispatchSectionProps) {
   const me = useMe();
   const stack = useStackNavigation();
   const [open, setOpen] = useState(false);
-  const [copied, setCopied] = useState<{ text: string; count: number } | null>(null);
-  const [copying, setCopying] = useState(false);
   const status = DISPATCH_STATUS[dispatch.status];
   const hasDraft = draftDispatchId(me.email) === dispatch.id;
-
-  async function copyAgain() {
-    setCopying(true);
-    // Janji dilempar langsung ke clipboard dari gestur klik; teks yang sama disimpan untuk cadangan dialog.
-    const fetched = fetchWarehouseCopyText(dispatch.id);
-    fetched.catch(() => undefined);
-    try {
-      const ok = await copyLines(fetched.then((result) => result.text));
-      const result = await fetched;
-      if (ok) toast.success(`${result.count} Serial Number disalin`);
-      else setCopied(result);
-    } catch (error) {
-      toast.error(describeError(error));
-    } finally {
-      setCopying(false);
-    }
-  }
+  const copy = useCopyDispatch(dispatch.id);
 
   return (
     <article
@@ -118,7 +138,18 @@ export function DispatchSection({ dispatch, canEdit }: DispatchSectionProps) {
       aria-label={`Pengeluaran ${dispatch.dispatchedOn}`}
     >
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-        <h3 className="font-medium">{formatDay(dispatch.dispatchedOn)}</h3>
+        <h3 className="font-medium">
+          <Link
+            to="/serial/gudang/riwayat/$dispatchId"
+            params={{ dispatchId: dispatch.id }}
+            className="text-info-text underline-offset-4 hover:underline"
+          >
+            {dispatch.number}
+          </Link>
+          <span className="ml-2 font-normal text-muted-foreground">
+            {formatDay(dispatch.dispatchedOn)}
+          </span>
+        </h3>
         <Badge variant="soft" color={status.color}>
           {status.label}
         </Badge>
@@ -171,20 +202,13 @@ export function DispatchSection({ dispatch, canEdit }: DispatchSectionProps) {
           <ActionButton
             action="copy"
             label="Salin ulang"
-            busy={copying}
-            onClick={() => void copyAgain()}
+            busy={copy.copying}
+            onClick={() => void copy.copyAgain()}
           />
         ) : null}
       </div>
       {open ? <DispatchSerials dispatchId={dispatch.id} /> : null}
-      <ClipboardResultDialog
-        open={copied !== null}
-        onOpenChange={(next) => {
-          if (!next) setCopied(null);
-        }}
-        text={copied?.text ?? ''}
-        count={copied?.count ?? 0}
-      />
+      {copy.dialog}
     </article>
   );
 }

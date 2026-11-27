@@ -1223,6 +1223,29 @@
     "status": 200
   },
   {
+    "id": "serialWarehouse.dispatchGet",
+    "verb": "GET",
+    "path": "/serial-warehouse/dispatches/{id}",
+    "status": 200
+  },
+  {
+    "id": "serialWarehouse.dispatchList",
+    "verb": "GET",
+    "path": "/serial-warehouse/dispatches",
+    "query": {
+      "buIds": "list",
+      "cursor": "string",
+      "customerIds": "list",
+      "from": "string",
+      "kind": "string",
+      "limit": "number",
+      "query": "string",
+      "status": "string",
+      "to": "string"
+    },
+    "status": 200
+  },
+  {
     "id": "serialWarehouse.dispatchSerials",
     "verb": "GET",
     "path": "/serial-warehouse/dispatches/{id}/serials",

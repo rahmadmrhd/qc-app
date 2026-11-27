@@ -19,10 +19,10 @@ test('rantai induk: butir menu = Beranda saja; detail/ubah/tambah naik per tingk
   expect(parentChainFor('/sticker/library', patterns)).toEqual(['/']);
 });
 
-test('detail ready: induk menaut ke tab Ready Riwayat Gudang', () => {
-  expect(parentChainFor('/serial/gudang/riwayat/ready/r1', patterns)).toEqual([
+test('detail SO dan detail pengeluaran: induknya Riwayat Gudang', () => {
+  expect(parentChainFor('/serial/gudang/riwayat/so/o1', patterns)).toEqual([
     '/',
-    '/serial/gudang/riwayat?tab=ready',
+    '/serial/gudang/riwayat',
   ]);
   expect(parentChainFor('/serial/gudang/riwayat/o1', patterns)).toEqual([
     '/',

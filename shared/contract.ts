@@ -38,6 +38,7 @@ import type { PartialPermissionMap, PermissionMap } from './permissions';
 import type { PostelCondition, PostelRole } from './postel';
 import type { QrExportStatus, QrLayout, QrLinkSource, QrNamePlacement, QrStyle } from './qrcode';
 import type {
+  WarehouseDispatchKind,
   WarehouseDispatchMode,
   WarehouseDispatchStatus,
   WarehouseSubmitMode,
@@ -1665,6 +1666,8 @@ export interface WarehouseOrdersPageDto {
 }
 export interface WarehouseDispatchDto {
   id: string;
+  /** Nomor riwayat `OUT|RS/<kode BU>/<YYMM>-<urutan>`. */
+  number: string;
   itemId: string;
   itemLabel: string;
   dispatchedOn: string;
@@ -1716,6 +1719,61 @@ export interface ListWarehouseReadyInput {
 export interface WarehouseReadyPageDto {
   items: WarehouseReadyDto[];
   nextCursor: string | null;
+}
+/** Satu pengeluaran Gudang pada riwayat gabungan: Penjualan (`order`, punya SO) atau Ready Stock (`ready`, tanpa SO). */
+export interface WarehouseDispatchListItemDto {
+  id: string;
+  /** Nomor riwayat `OUT|RS/<kode BU>/<YYMM>-<urutan>`. */
+  number: string;
+  kind: WarehouseDispatchKind;
+  /** Kosong pada Ready Stock. */
+  orderId: string;
+  orderNumber: string;
+  buId: string;
+  buCode: string;
+  buName?: string;
+  customerId: string;
+  customerName: string;
+  itemId: string;
+  /** Tipe (merk dan model) barang. */
+  itemLabel: string;
+  /** Serial yang sudah tercatat pada pengeluaran ini. */
+  serialCount: number;
+  dispatchedOn: string;
+  status: WarehouseDispatchStatus;
+  /** Task Serah Terima tertaut pada SO (kosong pada Ready Stock). */
+  handovers: WarehouseLinkedHandoverDto[];
+  createdBy: string;
+  createdAt: string;
+}
+export interface WarehouseDispatchDetailDto extends WarehouseDispatchListItemDto {
+  note: string;
+  completedAt: string;
+  cancelledAt: string;
+  chunkCount: number;
+  chunksReceived: number;
+  createdCount: number;
+  /** `serialwh: edit` pada BU pengeluaran. */
+  canEdit: boolean;
+}
+export interface ListWarehouseDispatchesInput {
+  /** Cari nomor riwayat, No SO, atau nama customer. */
+  query?: string;
+  kind?: WarehouseDispatchKind;
+  customerIds?: string[];
+  buIds?: string[];
+  from?: string;
+  to?: string;
+  status?: WarehouseDispatchStatus;
+  cursor?: string;
+  limit?: number;
+}
+export interface WarehouseDispatchesPageDto {
+  items: WarehouseDispatchListItemDto[];
+  nextCursor: string | null;
+}
+export interface GetWarehouseDispatchInput {
+  id: string;
 }
 export interface GetWarehouseReadyInput {
   id: string;
@@ -2062,6 +2120,14 @@ export interface ApiContract {
   'serialWarehouse.getOrder': { input: GetWarehouseOrderInput; output: WarehouseOrderDto };
   'serialWarehouse.readyList': { input: ListWarehouseReadyInput; output: WarehouseReadyPageDto };
   'serialWarehouse.ready': { input: GetWarehouseReadyInput; output: WarehouseReadyDto };
+  'serialWarehouse.dispatchList': {
+    input: ListWarehouseDispatchesInput;
+    output: WarehouseDispatchesPageDto;
+  };
+  'serialWarehouse.dispatchGet': {
+    input: GetWarehouseDispatchInput;
+    output: WarehouseDispatchDetailDto;
+  };
   'serialProofs.upload': { input: UploadSerialProofInput; output: SerialProofPhotoDto };
   'serialProofs.get': { input: GetSerialProofInput; output: SerialProofContentDto };
   'serialProofs.remove': { input: RemoveSerialProofInput; output: { id: string } };

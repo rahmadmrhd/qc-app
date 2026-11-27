@@ -1,8 +1,10 @@
 import { appError } from '@server/core/errors';
 import { readFilterList, readObject } from '@server/core/validate';
 import type {
+  GetWarehouseDispatchInput,
   GetWarehouseOrderInput,
   GetWarehouseReadyInput,
+  ListWarehouseDispatchesInput,
   ListWarehouseDispatchSerialsInput,
   ListWarehouseItemOptionsInput,
   ListWarehouseOrderOptionsInput,
@@ -387,6 +389,44 @@ export function validateWarehouseListReady(raw: unknown): ListWarehouseReadyInpu
     ...(cursor !== '' ? { cursor } : {}),
     ...(limit !== undefined ? { limit } : {}),
   };
+}
+
+export function validateWarehouseListDispatches(raw: unknown): ListWarehouseDispatchesInput {
+  const reader = readObject(raw ?? {});
+  const query = reader.str('query', { max: 100 });
+  const kind = reader.str('kind', { max: 10 });
+  if (kind !== '' && kind !== 'order' && kind !== 'ready') reader.fail('kind', 'Jenis tidak valid');
+  const customerIds = readFilterList(reader, 'customerIds');
+  const buIds = readFilterList(reader, 'buIds');
+  const from = reader.str('from', { max: 10 });
+  if (from !== '' && !isIsoDate(from)) reader.fail('from', 'Tanggal tidak valid');
+  const to = reader.str('to', { max: 10 });
+  if (to !== '' && !isIsoDate(to)) reader.fail('to', 'Tanggal tidak valid');
+  const status = reader.str('status', { max: 10 });
+  if (status !== '' && !DISPATCH_STATUSES.includes(status)) {
+    reader.fail('status', 'Status tidak valid');
+  }
+  const cursor = reader.str('cursor', { max: 200 });
+  const limit = readLimit(reader, WAREHOUSE_LIMITS.listMax);
+  reader.done();
+  return {
+    ...(query !== '' ? { query } : {}),
+    ...(kind === 'order' || kind === 'ready' ? { kind } : {}),
+    ...(customerIds ? { customerIds } : {}),
+    ...(buIds ? { buIds } : {}),
+    ...(from !== '' ? { from } : {}),
+    ...(to !== '' ? { to } : {}),
+    ...(status !== '' ? { status: status as WarehouseDispatchStatus } : {}),
+    ...(cursor !== '' ? { cursor } : {}),
+    ...(limit !== undefined ? { limit } : {}),
+  };
+}
+
+export function validateWarehouseGetDispatch(raw: unknown): GetWarehouseDispatchInput {
+  const reader = readObject(raw ?? {});
+  const id = reader.str('id', { required: true, max: 100 });
+  reader.done();
+  return { id };
 }
 
 export function validateWarehouseGetReady(raw: unknown): GetWarehouseReadyInput {

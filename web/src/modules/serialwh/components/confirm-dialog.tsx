@@ -77,8 +77,8 @@ export interface ConfirmDialogProps {
 const CHUNK = WAREHOUSE_LIMITS.lookupMax;
 
 const PURPOSE_OPTIONS = [
-  { value: 'order', label: 'Keluar ke SO' },
-  { value: 'ready', label: 'Catat ready' },
+  { value: 'order', label: 'Penjualan' },
+  { value: 'ready', label: 'Ready Stock' },
 ];
 
 /** Dialog konfirmasi kirim (spek 5.5). State direset tiap dibuka (isi hanya dipasang saat terbuka). */
@@ -258,7 +258,7 @@ function ConfirmBody({
   return (
     <>
       <DialogHeader>
-        <DialogTitle>Simpan Keluar Gudang</DialogTitle>
+        <DialogTitle>Simpan Catat Serial WH</DialogTitle>
         <DialogDescription>
           {summary.total} Serial Number
           {summary.newCount > 0 ? `, ${summary.newCount} baru` : ''}

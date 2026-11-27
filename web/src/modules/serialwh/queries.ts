@@ -1,10 +1,9 @@
 import type {
+  ListWarehouseDispatchesInput,
   ListWarehouseDispatchSerialsInput,
   ListWarehouseHandoverCandidatesInput,
   ListWarehouseItemOptionsInput,
   ListWarehouseOrderOptionsInput,
-  ListWarehouseOrdersInput,
-  ListWarehouseReadyInput,
   ListWarehouseSerialsInput,
   SetWarehouseOrderLinksInput,
   WarehouseLookupInput,
@@ -27,8 +26,7 @@ export type WarehouseItemOptionsFilter = Omit<ListWarehouseItemOptionsInput, 'cu
 export type WarehouseSerialsFilter = Omit<ListWarehouseSerialsInput, 'cursor'>;
 export type WarehouseOrderOptionsFilter = Omit<ListWarehouseOrderOptionsInput, 'cursor'>;
 export type WarehouseCandidatesFilter = Omit<ListWarehouseHandoverCandidatesInput, 'cursor'>;
-export type WarehouseOrdersFilter = Omit<ListWarehouseOrdersInput, 'cursor'>;
-export type WarehouseReadyFilter = Omit<ListWarehouseReadyInput, 'cursor'>;
+export type WarehouseDispatchesFilter = Omit<ListWarehouseDispatchesInput, 'cursor'>;
 
 /** Pilihan Item pada BU ber-`serialwh: edit` (cari di server, berkursor). */
 export function warehouseItemOptionsQueryOptions(filter: WarehouseItemOptionsFilter = {}) {
@@ -101,15 +99,26 @@ export function warehouseContextQueryOptions(handoverId: string) {
   });
 }
 
-/** Riwayat catatan SO (berkursor). */
-export function warehouseOrdersQueryOptions(filter: WarehouseOrdersFilter = {}) {
+/** Riwayat gabungan Penjualan + Ready Stock, satu baris per pengeluaran (berkursor). */
+export function warehouseDispatchesQueryOptions(filter: WarehouseDispatchesFilter = {}) {
   return infiniteQueryOptions({
-    queryKey: serialwhKeys.orders(filter),
+    queryKey: serialwhKeys.dispatches(filter),
     queryFn: ({ pageParam }) =>
-      api('serialWarehouse.listOrders', { ...filter, ...(pageParam ? { cursor: pageParam } : {}) }),
+      api('serialWarehouse.dispatchList', {
+        ...filter,
+        ...(pageParam ? { cursor: pageParam } : {}),
+      }),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (last) => last.nextCursor ?? undefined,
     placeholderData: keepPreviousData,
+  });
+}
+
+/** Detail satu pengeluaran (Penjualan atau Ready Stock). */
+export function warehouseDispatchQueryOptions(id: string) {
+  return queryOptions({
+    queryKey: serialwhKeys.dispatch(id),
+    queryFn: () => api('serialWarehouse.dispatchGet', { id }),
   });
 }
 
@@ -117,25 +126,6 @@ export function warehouseOrderQueryOptions(id: string) {
   return queryOptions({
     queryKey: serialwhKeys.order(id),
     queryFn: () => api('serialWarehouse.getOrder', { id }),
-  });
-}
-
-/** Riwayat pencatatan ready tanpa SO (berkursor). */
-export function warehouseReadyListQueryOptions(filter: WarehouseReadyFilter = {}) {
-  return infiniteQueryOptions({
-    queryKey: serialwhKeys.readyList(filter),
-    queryFn: ({ pageParam }) =>
-      api('serialWarehouse.readyList', { ...filter, ...(pageParam ? { cursor: pageParam } : {}) }),
-    initialPageParam: undefined as string | undefined,
-    getNextPageParam: (last) => last.nextCursor ?? undefined,
-    placeholderData: keepPreviousData,
-  });
-}
-
-export function warehouseReadyQueryOptions(id: string) {
-  return queryOptions({
-    queryKey: serialwhKeys.ready(id),
-    queryFn: () => api('serialWarehouse.ready', { id }),
   });
 }
 
@@ -185,7 +175,12 @@ export function useSetWarehouseOrderLinks() {
     mutationFn: (input: SetWarehouseOrderLinksInput) => api('serialWarehouse.setLinks', input),
     onSuccess: (order) => {
       queryClient.setQueryData(serialwhKeys.order(order.id), order);
-      markStale(queryClient, ['serialwh', 'orders'], ['serialwh', 'candidates']);
+      markStale(
+        queryClient,
+        ['serialwh', 'dispatches'],
+        ['serialwh', 'dispatch'],
+        ['serialwh', 'candidates'],
+      );
     },
   });
 }

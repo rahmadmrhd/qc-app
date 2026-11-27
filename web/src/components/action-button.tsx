@@ -266,10 +266,10 @@ export const ACTIONS: Record<ActionKind, ActionSpec> = {
     variant: 'outline',
     compactVariant: 'ghost',
   },
-  // Keluar Gudang: membuka form pengeluaran Serial Number dari detail task Serah Terima.
+  // Catat Serial WH: membuka form pencatatan Serial Number Gudang (Penjualan atau Ready Stock) dari daftar Riwayat atau detail task.
   warehouse: {
     icon: PackageCheck,
-    label: 'Keluar Gudang',
+    label: 'Catat Serial WH',
     color: 'primary',
     variant: 'outline',
     compactVariant: 'ghost',

@@ -1,4 +1,4 @@
-import type { MeDto, WarehouseOrderSummaryDto } from '@shared/contract';
+import type { MeDto, WarehouseDispatchListItemDto } from '@shared/contract';
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
@@ -15,20 +15,33 @@ vi.mock('@/modules/auth/use-me', () => ({ useMe: () => me }));
 
 import { OrdersPage } from './orders-page';
 
-const order = (over: Partial<WarehouseOrderSummaryDto>): WarehouseOrderSummaryDto => ({
-  id: 'o1',
-  number: 'SO-001',
+const dispatch = (over: Partial<WarehouseDispatchListItemDto>): WarehouseDispatchListItemDto => ({
+  id: 'd1',
+  number: 'OUT/BU1/2611-0001',
+  kind: 'order',
+  orderId: 'o1',
+  orderNumber: 'SO-001',
   buId: 'b1',
   buCode: 'BU1',
   customerId: 'c1',
   customerName: 'PT Maju',
-  dispatchCount: 2,
+  itemId: 'i1',
+  itemLabel: 'Tenda AX300',
   serialCount: 40,
-  lastDispatchedOn: '2026-11-20',
-  hasPending: false,
-  handoverCount: 1,
-  createdAt: '2026-11-19T01:00:00.000Z',
-  updatedAt: '2026-11-20T01:00:00.000Z',
+  dispatchedOn: '2026-11-20',
+  status: 'done',
+  handovers: [
+    {
+      id: 'h1',
+      number: 'ST-20261119-001',
+      status: 'done',
+      customerName: 'PT Maju',
+      createdAt: '2026-11-19T01:00:00.000Z',
+      readable: true,
+    },
+  ],
+  createdBy: 'wh@x.com',
+  createdAt: '2026-11-20T01:00:00.000Z',
   ...over,
 });
 
@@ -43,7 +56,7 @@ function Harness({ initial = {} }: { initial?: Record<string, unknown> }) {
 }
 
 const listCalls = () =>
-  apiMock.mock.calls.filter((call) => call[0] === 'serialWarehouse.listOrders');
+  apiMock.mock.calls.filter((call) => call[0] === 'serialWarehouse.dispatchList');
 const lastInput = () => listCalls().at(-1)?.[1] as Record<string, unknown>;
 
 beforeEach(() => {
@@ -77,16 +90,20 @@ beforeEach(() => {
     locations: [],
   } as MeDto;
   apiMock.mockImplementation((id: string) => {
-    if (id === 'serialWarehouse.listOrders') {
+    if (id === 'serialWarehouse.dispatchList') {
       return Promise.resolve({
         items: [
-          order({}),
-          order({
-            id: 'o2',
-            number: 'SO-002',
-            hasPending: true,
-            customerId: 'c2',
-            customerName: 'CV Jaya',
+          dispatch({}),
+          dispatch({
+            id: 'd2',
+            number: 'RS/BU1/2611-0001',
+            kind: 'ready',
+            orderId: '',
+            orderNumber: '',
+            customerId: '',
+            customerName: '',
+            status: 'pending',
+            handovers: [],
           }),
         ],
         nextCursor: null,
@@ -106,35 +123,61 @@ beforeEach(() => {
   });
 });
 
-test('merender kolom dan tautan No SO ke detail; status Belum selesai', async () => {
+test('satu baris per pengeluaran: No Riwayat menaut ke detail pengeluaran, No SO ke detail SO', async () => {
   await renderInRouter(<Harness />);
-  const link = await screen.findByRole('link', { name: 'SO-001' });
-  expect(link).toHaveAttribute('href', '/serial/gudang/riwayat/o1');
+  const link = await screen.findByRole('link', { name: 'OUT/BU1/2611-0001' });
+  expect(link).toHaveAttribute('href', '/serial/gudang/riwayat/d1');
+  expect(screen.getByRole('link', { name: 'SO-001' })).toHaveAttribute(
+    'href',
+    '/serial/gudang/riwayat/so/o1',
+  );
+  expect(screen.getByRole('link', { name: 'ST-20261119-001' })).toHaveAttribute(
+    'href',
+    '/handover/h1',
+  );
   const rows = screen.getAllByRole('row');
-  const second = rows[2] as HTMLElement;
-  expect(within(second).getByText('Belum selesai')).toBeInTheDocument();
-  expect(within(second).getByText('CV Jaya')).toBeInTheDocument();
   const first = rows[1] as HTMLElement;
   expect(within(first).getByText('Selesai')).toBeInTheDocument();
+  expect(within(first).getByText('Tenda AX300')).toBeInTheDocument();
   expect(within(first).getByText('40')).toBeInTheDocument();
+  const ready = rows[2] as HTMLElement;
+  expect(within(ready).getByText('RS/BU1/2611-0001')).toBeInTheDocument();
+  expect(within(ready).getByText('Belum selesai')).toBeInTheDocument();
+  expect(within(ready).queryByRole('link', { name: /SO-/ })).not.toBeInTheDocument();
   for (const header of [
+    'No Riwayat',
     'No SO',
     'BU',
     'Customer',
-    'Pengeluaran',
+    'Tipe',
     'Serial',
-    'Terakhir',
+    'Tanggal',
+    'Task Serah Terima',
     'Status',
-    'Task',
   ]) {
     expect(screen.getByRole('columnheader', { name: header })).toBeInTheDocument();
   }
   expect(lastInput()).toEqual({});
 });
 
+test('tombol Catat Serial WH membuka form bagi pemegang serialwh: edit', async () => {
+  const { router } = await renderInRouter(<Harness />);
+  await screen.findByText('OUT/BU1/2611-0001');
+  await userEvent.click(screen.getByRole('button', { name: 'Catat Serial WH' }));
+  await waitFor(() => expect(router.state.location.pathname).toBe('/serial/gudang'));
+});
+
+test('filter Jenis Ready Stock dikirim ke server', async () => {
+  await renderInRouter(<Harness />);
+  await screen.findByText('OUT/BU1/2611-0001');
+  await userEvent.click(screen.getByRole('button', { name: /^Jenis(:|$)/ }));
+  await pickSelect(screen, 'Filter jenis', 'Ready Stock');
+  await waitFor(() => expect(lastInput()).toEqual({ kind: 'ready' }));
+});
+
 test('filter status Belum selesai dikirim ke server', async () => {
   await renderInRouter(<Harness />);
-  await screen.findByText('SO-001');
+  await screen.findByText('OUT/BU1/2611-0001');
   await userEvent.click(screen.getByRole('button', { name: /^Status(:|$)/ }));
   await pickSelect(screen, 'Filter status', 'Belum selesai');
   await waitFor(() => expect(lastInput()).toEqual({ status: 'pending' }));
@@ -142,7 +185,7 @@ test('filter status Belum selesai dikirim ke server', async () => {
 
 test('filter customer dan BU jamak dikirim sebagai daftar', async () => {
   await renderInRouter(<Harness />);
-  await screen.findByText('SO-001');
+  await screen.findByText('OUT/BU1/2611-0001');
   await userEvent.click(screen.getByRole('button', { name: /^Customer(:|$)/ }));
   await pickLink(screen, 'Filter customer', 'PT Maju');
   await pickLink(screen, 'Filter customer', 'CV Jaya');
@@ -156,10 +199,10 @@ test('filter customer dan BU jamak dikirim sebagai daftar', async () => {
 
 test('kosong tanpa filter: ajakan', async () => {
   apiMock.mockImplementation((id: string) =>
-    id === 'serialWarehouse.listOrders'
+    id === 'serialWarehouse.dispatchList'
       ? Promise.resolve({ items: [], nextCursor: null })
       : Promise.resolve({ locations: [], customers: [], inactiveCustomerNames: [] }),
   );
   await renderInRouter(<Harness />);
-  expect(await screen.findByText('Belum ada Keluar Gudang yang tercatat.')).toBeInTheDocument();
+  expect(await screen.findByText('Belum ada pencatatan Gudang.')).toBeInTheDocument();
 });

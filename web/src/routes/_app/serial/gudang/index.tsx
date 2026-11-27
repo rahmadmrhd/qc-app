@@ -11,7 +11,7 @@ const searchSchema = z.object({
 });
 
 export const Route = createFileRoute('/_app/serial/gudang/')({
-  staticData: { pageWidth: 'full' },
+  staticData: { pageWidth: 'full', crumb: () => ({ label: 'Catat Serial WH' }) },
   validateSearch: (search: Record<string, unknown>) => searchSchema.parse(search),
   beforeLoad: ({ context }) => requirePermission(context.queryClient, 'serialwh', 'edit'),
   component: DispatchRoute,

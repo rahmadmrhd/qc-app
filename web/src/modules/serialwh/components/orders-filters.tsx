@@ -1,5 +1,6 @@
 import { formatBuLabel } from '@shared/business-units';
-import type { WarehouseOrderSummaryDto } from '@shared/contract';
+import type { WarehouseDispatchListItemDto } from '@shared/contract';
+import { WAREHOUSE_KIND_LABEL } from '@shared/serial-warehouse';
 import { useQuery } from '@tanstack/react-query';
 import { LinkMultiField, type LinkOption } from '@/components/link-field';
 import { FilterBar, FilterChip, multiFilterDisplay } from '@/components/page/filter-bar';
@@ -19,19 +20,19 @@ export interface OrdersFiltersProps {
   search: OrdersSearchParams;
   onChange: (patch: Partial<OrdersSearchParams>) => void;
   /** Baris yang sudah dimuat: sumber nama customer bagi pengguna yang hanya boleh melihat (tanpa `options`). */
-  rows: readonly WarehouseOrderSummaryDto[];
-  /** `ready` = tab Ready: tanpa kolom cari dan Customer, status memuat "Dibatalkan otomatis". */
-  mode?: 'order' | 'ready';
+  rows: readonly WarehouseDispatchListItemDto[];
 }
 
 const STATUS_OPTIONS = [
   { value: 'all', label: 'Semua status' },
   { value: 'pending', label: 'Belum selesai' },
   { value: 'done', label: 'Selesai' },
-];
-const READY_STATUS_OPTIONS = [
-  ...STATUS_OPTIONS,
   { value: 'cancelled', label: 'Dibatalkan otomatis' },
+];
+const KIND_OPTIONS = [
+  { value: 'all', label: 'Semua jenis' },
+  { value: 'order', label: WAREHOUSE_KIND_LABEL.order },
+  { value: 'ready', label: WAREHOUSE_KIND_LABEL.ready },
 ];
 
 interface DateRange {
@@ -57,7 +58,7 @@ function DateRangeFields({
     <div className="space-y-3">
       <div className="space-y-1.5">
         <Label htmlFor="wh-orders-from" className="text-xs text-muted-foreground">
-          Tanggal keluar dari
+          Tanggal dari
         </Label>
         <Input
           id="wh-orders-from"
@@ -68,7 +69,7 @@ function DateRangeFields({
       </div>
       <div className="space-y-1.5">
         <Label htmlFor="wh-orders-to" className="text-xs text-muted-foreground">
-          Tanggal keluar sampai
+          Tanggal sampai
         </Label>
         <Input
           id="wh-orders-to"
@@ -89,13 +90,12 @@ function rangeDisplay(from: string | undefined, to: string | undefined): string 
 }
 
 /**
- * Filter Riwayat Gudang: kolom cari, Customer, BU, Tanggal keluar, dan Status. Customer dan BU jamak (maks.
+ * Filter Riwayat Gudang: kolom cari, Jenis, Customer, BU, Tanggal, dan Status. Customer dan BU jamak (maks.
  * `FILTER_LIST_MAX`). Pilihan customer dari `serialWarehouse.options` hanya bagi pengguna `serialwh: edit` (rute itu
  * butuh edit), selain itu dari baris yang sudah dimuat.
  */
-export function OrdersFilters({ search, onChange, rows, mode = 'order' }: OrdersFiltersProps) {
-  const isReady = mode === 'ready';
-  const statusOptions = isReady ? READY_STATUS_OPTIONS : STATUS_OPTIONS;
+export function OrdersFilters({ search, onChange, rows }: OrdersFiltersProps) {
+  const statusOptions = STATUS_OPTIONS;
   const me = useMe();
   const canOptions = canUseWarehouse(me);
   const options = useQuery({ ...warehouseOptionsQueryOptions(), enabled: canOptions });
@@ -127,18 +127,30 @@ export function OrdersFilters({ search, onChange, rows, mode = 'order' }: Orders
 
   return (
     <FilterBar
-      {...(isReady
-        ? {}
-        : {
-            search: {
-              value: text,
-              onChange: setText,
-              placeholder: 'Cari No SO',
-              label: 'Cari No SO',
-            },
-          })}
+      search={{
+        value: text,
+        onChange: setText,
+        placeholder: 'Cari No Riwayat, No SO, atau customer',
+        label: 'Cari No Riwayat, No SO, atau customer',
+      }}
     >
-      {isReady ? null : (
+      <FilterChip
+        label="Jenis"
+        display={search.kind ? WAREHOUSE_KIND_LABEL[search.kind] : null}
+        onClear={() => onChange({ kind: undefined })}
+      >
+        <Select
+          id="wh-orders-kind"
+          label="Filter jenis"
+          hideLabel
+          options={KIND_OPTIONS}
+          value={search.kind ?? 'all'}
+          onValueChange={(next) =>
+            onChange({ kind: next === 'order' || next === 'ready' ? next : undefined })
+          }
+        />
+      </FilterChip>
+      {
         <FilterChip
           label="Customer"
           display={multiFilterDisplay(customerIds.map(customerLabel))}
@@ -158,7 +170,7 @@ export function OrdersFilters({ search, onChange, rows, mode = 'order' }: Orders
             onChange={(next) => onChange({ customerIds: next.length > 0 ? next : undefined })}
           />
         </FilterChip>
-      )}
+      }
       <FilterChip
         label="BU"
         display={multiFilterDisplay(buIds.map(buLabel))}
@@ -179,7 +191,7 @@ export function OrdersFilters({ search, onChange, rows, mode = 'order' }: Orders
         />
       </FilterChip>
       <FilterChip
-        label="Tanggal keluar"
+        label="Tanggal"
         display={rangeDisplay(search.from, search.to)}
         onClear={() => onChange({ from: undefined, to: undefined })}
       >

@@ -665,11 +665,11 @@ function seedOneNewRow() {
   });
 }
 
-test('Catat ready: header tanpa SO, customer, dan task; hasil membuka detail ready', async () => {
+test('Ready Stock: header tanpa SO, customer, dan task; hasil membuka detail ready', async () => {
   seedOneNewRow();
   const { router } = await renderPage();
   await userEvent.click(await screen.findByRole('button', { name: /Salin ke clipboard \(1\)/ }));
-  await pickSelect(screen, 'Tujuan', 'Catat ready');
+  await pickSelect(screen, 'Tujuan', 'Ready Stock');
   await userEvent.click(screen.getByRole('button', { name: 'Simpan & salin' }));
   await waitFor(() => expect(submitCalls).toHaveLength(1));
   const header = submitCalls[0]?.header;
@@ -683,12 +683,10 @@ test('Catat ready: header tanpa SO, customer, dan task; hasil membuka detail rea
   expect(header).not.toHaveProperty('orderId');
   expect(await screen.findByRole('textbox', { name: 'Daftar Serial Number' })).toHaveValue('RDY1');
   await userEvent.click(screen.getByRole('button', { name: 'Buka riwayat' }));
-  await waitFor(() =>
-    expect(router.state.location.pathname).toBe('/serial/gudang/riwayat/ready/d1'),
-  );
+  await waitFor(() => expect(router.state.location.pathname).toBe('/serial/gudang/riwayat/d1'));
 });
 
-test('Keluar ke SO tetap mengirim header SO tanpa mode dan hasilnya membuka detail SO', async () => {
+test('Penjualan tetap mengirim header SO tanpa mode dan hasilnya membuka detail pengeluaran', async () => {
   seedOneNewRow();
   const { router } = await renderPage();
   await userEvent.click(await screen.findByRole('button', { name: /Salin ke clipboard \(1\)/ }));
@@ -698,10 +696,10 @@ test('Keluar ke SO tetap mengirim header SO tanpa mode dan hasilnya membuka deta
   await waitFor(() => expect(submitCalls).toHaveLength(1));
   expect(submitCalls[0]?.header).not.toHaveProperty('mode');
   await userEvent.click(await screen.findByRole('button', { name: 'Buka riwayat' }));
-  await waitFor(() => expect(router.state.location.pathname).toBe('/serial/gudang/riwayat/o1'));
+  await waitFor(() => expect(router.state.location.pathname).toBe('/serial/gudang/riwayat/d1'));
 });
 
-test('tujuan Catat ready mengubah arti filter Sembunyikan yang sudah tercatat (forMode)', async () => {
+test('tujuan Ready Stock mengubah arti filter Sembunyikan yang sudah tercatat (forMode)', async () => {
   seedOneNewRow();
   await renderPage();
   const serialsCalls = () =>
@@ -709,6 +707,6 @@ test('tujuan Catat ready mengubah arti filter Sembunyikan yang sudah tercatat (f
   await waitFor(() => expect(serialsCalls().length).toBeGreaterThan(0));
   expect(serialsCalls().at(-1)?.[1]).not.toHaveProperty('forMode');
   await userEvent.click(await screen.findByRole('button', { name: /Salin ke clipboard \(1\)/ }));
-  await pickSelect(screen, 'Tujuan', 'Catat ready');
+  await pickSelect(screen, 'Tujuan', 'Ready Stock');
   await waitFor(() => expect(serialsCalls().at(-1)?.[1]).toMatchObject({ forMode: 'ready' }));
 });

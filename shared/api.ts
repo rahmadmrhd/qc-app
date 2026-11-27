@@ -687,6 +687,23 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
     },
   },
   'serialWarehouse.ready': { verb: 'GET', path: '/serial-warehouse/ready/{id}' },
+  // Riwayat gabungan Penjualan + Ready Stock (per pengeluaran). `submit` memakai POST pada jalur yang sama.
+  'serialWarehouse.dispatchList': {
+    verb: 'GET',
+    path: '/serial-warehouse/dispatches',
+    query: {
+      query: 'string',
+      kind: 'string',
+      customerIds: 'list',
+      buIds: 'list',
+      from: 'string',
+      to: 'string',
+      status: 'string',
+      cursor: 'string',
+      limit: 'number',
+    },
+  },
+  'serialWarehouse.dispatchGet': { verb: 'GET', path: '/serial-warehouse/dispatches/{id}' },
   // Bukti foto QC Serial Number. `serialProofs.get` TANPA `etag` dan memakai `cache: 'revalidate'` (`private, no-cache`): isi pada
   // id yang sama berubah dari foto asli (draft/antre) menjadi hasil bercap (selesai), jadi ETag `id` atau `immutable`
   // akan menyajikan foto basi; tanpa validator, tiap tampilan mengunduh ulang berkasnya.

@@ -21,7 +21,6 @@ import {
   Lock,
   MapPin,
   Package,
-  PackageCheck,
   QrCode,
   Settings,
   Settings2,
@@ -176,16 +175,11 @@ export const NAV_GROUPS: NavGroup[] = [
             ],
           },
           {
-            label: 'Keluar Gudang',
-            to: '/serial/gudang',
-            icon: PackageCheck,
-            excludes: ['/serial/gudang/riwayat'],
-            permission: { module: 'serialwh', level: 'edit' },
-          },
-          {
             label: 'Riwayat Gudang',
             to: '/serial/gudang/riwayat',
             icon: History,
+            // Form pencatatan dibuka dari tombol "Catat Serial WH" di daftar ini (bukan menu sendiri).
+            alsoActiveOn: ['/serial/gudang'],
             permission: { module: 'serialwh', level: 'view' },
           },
           {

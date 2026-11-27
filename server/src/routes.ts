@@ -216,6 +216,8 @@ export const ALL_API_IDS: Record<ApiId, true> = {
   'serialWarehouse.getOrder': true,
   'serialWarehouse.readyList': true,
   'serialWarehouse.ready': true,
+  'serialWarehouse.dispatchList': true,
+  'serialWarehouse.dispatchGet': true,
   'serialProofs.upload': true,
   'serialProofs.get': true,
   'serialProofs.remove': true,

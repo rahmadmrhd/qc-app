@@ -273,21 +273,21 @@ test('panel kanan memuat log aktivitas task (kind handover)', async () => {
   });
 });
 
-test('aksi Keluar Gudang hanya bila onWarehouse diberikan (serialwh edit), lewat menu Aksi lainnya', async () => {
+test('aksi Catat Serial WH hanya bila onWarehouse diberikan (serialwh edit), lewat menu Aksi lainnya', async () => {
   setup();
-  expect(await moreActionNames()).not.toContain('Keluar Gudang');
+  expect(await moreActionNames()).not.toContain('Catat Serial WH');
   document.body.innerHTML = '';
   const onWarehouse = vi.fn();
   setup({ onWarehouse });
-  expect(screen.queryByRole('button', { name: 'Keluar Gudang' })).not.toBeInTheDocument();
-  await clickMoreAction('Keluar Gudang');
+  expect(screen.queryByRole('button', { name: 'Catat Serial WH' })).not.toBeInTheDocument();
+  await clickMoreAction('Catat Serial WH');
   expect(onWarehouse).toHaveBeenCalledTimes(1);
 });
 
-test('aksi Keluar Gudang tidak tampil untuk task terhapus', async () => {
+test('aksi Catat Serial WH tidak tampil untuk task terhapus', async () => {
   setup(
     { onWarehouse: vi.fn() },
     makeHandover({ deleted: { deletedAt: '2026-11-20T01:00:00.000Z', deletedBy: 'x@x.com' } }),
   );
-  if (!hasNoMoreActions()) expect(await moreActionNames()).not.toContain('Keluar Gudang');
+  if (!hasNoMoreActions()) expect(await moreActionNames()).not.toContain('Catat Serial WH');
 });

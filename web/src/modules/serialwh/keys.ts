@@ -1,10 +1,9 @@
 import type {
+  ListWarehouseDispatchesInput,
   ListWarehouseDispatchSerialsInput,
   ListWarehouseHandoverCandidatesInput,
   ListWarehouseItemOptionsInput,
   ListWarehouseOrderOptionsInput,
-  ListWarehouseOrdersInput,
-  ListWarehouseReadyInput,
   ListWarehouseSerialsInput,
 } from '@shared/contract';
 
@@ -21,12 +20,10 @@ export const serialwhKeys = {
   candidates: (input: Omit<ListWarehouseHandoverCandidatesInput, 'cursor'>) =>
     ['serialwh', 'candidates', input] as const,
   context: (handoverId: string) => ['serialwh', 'context', handoverId] as const,
-  orders: (filter: Omit<ListWarehouseOrdersInput, 'cursor'>) =>
-    ['serialwh', 'orders', filter] as const,
+  dispatches: (filter: Omit<ListWarehouseDispatchesInput, 'cursor'>) =>
+    ['serialwh', 'dispatches', filter] as const,
+  dispatch: (id: string) => ['serialwh', 'dispatch', id] as const,
   order: (id: string) => ['serialwh', 'order', id] as const,
-  readyList: (filter: Omit<ListWarehouseReadyInput, 'cursor'>) =>
-    ['serialwh', 'ready-list', filter] as const,
-  ready: (id: string) => ['serialwh', 'ready', id] as const,
   dispatchSerials: (id: string, input: Omit<ListWarehouseDispatchSerialsInput, 'id' | 'cursor'>) =>
     ['serialwh', 'dispatch-serials', id, input] as const,
   copyText: (id: string) => ['serialwh', 'copy-text', id] as const,
