@@ -431,3 +431,20 @@ Spek: `docs/superpowers/specs/2026-11-20-soft-delete-design.md`, rencana `docs/s
 | H8 | Matikan jaringan, centang butir dan beri komentar di task; dari akun lain hapus task itu; nyalakan jaringan | Antrean ditolak dengan toast "Task sudah dihapus" dan "Salin teks"; papan luring tidak lagi memuat task itu setelah dimuat ulang | 14 |
 | H9 | Buka `/serial/new` dan `/serial/report` di desktop dan di ponsel 375 px | Judul, Batal, dan Simpan/Lapor rusak di bar judul (desktop) atau bar bawah (ponsel, ditambah tombol kamera dan menu Impor/Ekspor); Simpan ditahan selama unggahan foto dengan alasan terlihat | 48 |
 | H10 | Di aplikasi desktop (dialog Catat Serial Number Country Lock), perhatikan field Item, BU, dan Lokasi | Tidak ada tautan "Buka" (jendela baru ditolak cangkang); di peramban tautan tetap ada bagi pemegang izin | 49 |
+
+## Keluar Gudang, badge dan filter Serial Number, dan saran Item (2026-11-26)
+
+Spek: `docs/superpowers/specs/2026-11-26-serial-keluar-gudang-design.md`. Uji di staging dengan akun `serialwh: edit` dan `serialwh: view` pada satu BU, serta satu akun tanpa izin `serialwh`. Siapkan item yang boleh dicatat, satu serial Lolos yang sudah ada, dan satu item wajib foto.
+
+| # | Langkah | Hasil yang diharapkan | Spek |
+|---|---|---|---|
+| W1 | Scan tiga serial baru di `/serial/gudang` dengan Item terisi, lalu salin ke clipboard di Chrome dan Safari | Tiga baris berstatus draf; clipboard berisi satu SN per baris dalam urutan scan; bila clipboard gagal muncul "Salin lagi" tanpa kiriman ulang | 5.6 |
+| W2 | Keluarkan lagi dengan No SO yang sama (akun `edit`) | Masuk ke catatan SO yang sama; satu SO tetap satu BU | 6 |
+| W3 | Pilih rentang dengan shift-klik di desktop dan pilih tarik di ponsel 375 px | Rentang terpilih; bar aksi tampil; baris di luar rentang tidak ikut terpilih | 5.13 |
+| W4 | Tutup tab saat pengeluaran 1.000+ serial sedang dikirim, lalu buka lagi | Draf utuh; kiriman dilanjutkan dari potongan berikutnya tanpa serial ganda | 5.6 |
+| W5 | Buka Riwayat dengan akun `serialwh: view` | Hanya baca; tidak ada tombol keluarkan | 5.10 |
+| W6 | Buka Daftar Serial Number dengan filter "Butuh foto" dan "Gudang" | Badge "Butuh foto" dan "Tercatat WH" sesuai isi serial | 8 |
+| W7 | Dari detail task Serah Terima pilih Keluar Gudang, lalu tautkan SO | Task tampil di detail SO; task yang sudah dihapus tidak tampil | 5.11 |
+| W8 | Ketik nama Item di checklist Serah Terima | Saran Item tampil; lencana muncul di catatan; pembaca tanpa hak Item tidak melihat lencana | 5.15 |
+| W9 | Buka `/serial/gudang` di desktop dan di ponsel 375 px | Tidak ada scroll horizontal; di ponsel Item di atas kolom scan | 22 |
+| W10 | Uji manual yang belum bisa diotomasi: pemindai Bluetooth dan pemindai kamera di perangkat fisik | Scan berurutan tanpa serial ganda; kamera tetap menyala sampai dialog ditutup | 5.4 |
