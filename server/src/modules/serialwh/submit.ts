@@ -37,6 +37,7 @@ import {
   type WarehouseAuditTarget,
   warehouseAuditStmt,
 } from './audit';
+import { BOX_TAKEN_MESSAGE, boxStatements, releaseStatements } from './boxes';
 import { addOrderLinksStmts, assertLinkableHandovers } from './handover-links';
 import { reserveDispatchNumber } from './number';
 import {
@@ -63,7 +64,9 @@ const RACE_MESSAGE = 'Data berubah saat disimpan. Coba lagi';
 export function headerHash(header: WarehouseSubmitHeader): string {
   const canonical = JSON.stringify({
     // `mode` hanya ikut pada ready: sidik pengeluaran SO yang sedang berjalan sebelum fitur ini tetap sama.
-    ...(header.mode === 'ready' ? { mode: 'ready' } : {}),
+    ...(header.mode === 'ready'
+      ? { mode: 'ready', boxStart: header.boxStart, boxSize: header.boxSize }
+      : {}),
     dispatchedOn: header.dispatchedOn,
     orderKey: orderKey(header.orderNumber),
     buId: header.buId,
@@ -91,6 +94,9 @@ const fieldError = (field: string, message: string) =>
 function mapFinalError(error: unknown): unknown {
   if (isGuardFailure(error)) return appError('CONFLICT', RACE_MESSAGE);
   if (error instanceof DbError && error.kind === 'duplicate') {
+    if (error.key?.includes('warehouse_ready_boxes_open')) {
+      return fieldError('boxStart', BOX_TAKEN_MESSAGE);
+    }
     return appError('CONFLICT', RACE_MESSAGE);
   }
   // Jumlah/potongan di luar rentang kolom INT (spek: tanpa batas buatan): galat validasi yang rapi, bukan 500.
@@ -550,6 +556,8 @@ async function submitOnce(
                 itemId: header.itemId,
                 dispatchedOn: header.dispatchedOn,
                 serialTotal: header.total,
+                boxFrom: header.boxStart,
+                boxTo: (header.boxStart ?? 0) + Math.ceil(header.total / (header.boxSize ?? 1)) - 1,
               },
             }
           : {
@@ -628,6 +636,20 @@ async function submitOnce(
       }),
     );
   }
+  if (ready && header.boxStart !== undefined && header.boxSize !== undefined) {
+    statements.push(
+      ...(await boxStatements(env, {
+        dispatchId,
+        buId,
+        itemId: header.itemId,
+        header: { boxStart: header.boxStart, boxSize: header.boxSize },
+        serialIds: plans.map((plan) => plan.serialId),
+        firstSeq: input.chunkIndex * header.chunkSize,
+        user: user.email,
+        now,
+      })),
+    );
+  }
   // Selesai bila ini potongan terakhir. Urutan penetapan penting: kolom dihitung dari nilai LAMA lebih dulu. Dijaga CAS
   // status `pending` (penyapu yang membatalkan serentak membuat batch ini batal, bukan campur).
   statements.push(
@@ -635,6 +657,8 @@ async function submitOnce(
       `UPDATE warehouse_dispatches SET completed_at = CASE WHEN status <> 'pending' THEN ${CAS_FAIL_SQL} WHEN chunks_received + 1 = chunk_count THEN ? ELSE completed_at END, status = CASE WHEN chunks_received + 1 = chunk_count THEN 'done' ELSE status END, created_count = created_count + ?, chunks_received = chunks_received + 1 WHERE id = ?`,
     ).bind(now, created, dispatchId),
   );
+  // Penjualan selesai melepas serial ready dari stok dan menutup kardus yang kosong (no-op bila bukan `done`).
+  if (!ready) statements.push(...releaseStatements(env, dispatchId));
   // Audit penyelesaian: bersyarat di SQL (status `done` dan belum tercatat), aman untuk potongan serentak.
   statements.push(
     dispatchDoneAuditStmt(env.DB, {

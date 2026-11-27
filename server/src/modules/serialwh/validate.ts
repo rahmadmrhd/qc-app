@@ -24,6 +24,7 @@ import {
   chunkRowsOf,
   normalizeOrderNumber,
   orderNumberProblem,
+  WAREHOUSE_BOX_LIMITS,
   WAREHOUSE_LIMITS,
   type WarehouseDispatchStatus,
 } from '@shared/serial-warehouse';
@@ -242,8 +243,38 @@ function parseHeader(raw: unknown): WarehouseSubmitHeader {
   ) {
     return invalid('chunkSize', `Ukuran potongan harus 1-${WAREHOUSE_LIMITS.chunkMax}`);
   }
+  // Nomor kardus pertama dan pcs per kardus: wajib bersama pada ready, ditolak pada mode SO.
+  let box: { boxStart: number; boxSize: number } | null = null;
+  if (ready) {
+    const { boxStart, boxSize } = raw;
+    if (
+      typeof boxStart !== 'number' ||
+      !Number.isInteger(boxStart) ||
+      boxStart < 1 ||
+      boxStart > WAREHOUSE_BOX_LIMITS.numberMax
+    ) {
+      return invalid('boxStart', `Nomor kardus harus 1-${WAREHOUSE_BOX_LIMITS.numberMax}`);
+    }
+    if (
+      typeof boxSize !== 'number' ||
+      !Number.isInteger(boxSize) ||
+      boxSize < 1 ||
+      boxSize > WAREHOUSE_BOX_LIMITS.sizeMax
+    ) {
+      return invalid('boxSize', `Pcs per kardus harus 1-${WAREHOUSE_BOX_LIMITS.sizeMax}`);
+    }
+    box = { boxStart, boxSize };
+  } else {
+    if (raw.boxStart !== undefined && raw.boxStart !== null) {
+      return invalid('boxStart', 'Hanya untuk catat ready');
+    }
+    if (raw.boxSize !== undefined && raw.boxSize !== null) {
+      return invalid('boxSize', 'Hanya untuk catat ready');
+    }
+  }
   return {
     ...(ready ? { mode: 'ready' as const } : {}),
+    ...(box ?? {}),
     dispatchedOn: raw.dispatchedOn,
     ...(!ready && typeof raw.orderId === 'string' && raw.orderId !== ''
       ? { orderId: raw.orderId }

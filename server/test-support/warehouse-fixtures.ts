@@ -59,11 +59,16 @@ export interface DispatchOptions {
   dispatchedOn?: string;
   note?: string;
   handoverIds?: string[];
+  /** Mode ready: nomor kardus pertama (bawaan: nomor unik per panggilan) dan pcs per kardus (bawaan 10). */
+  boxStart?: number;
+  boxSize?: number;
   /** Serial yang sudah ada (id + nomor). */
   existing?: { id: string; serial: string }[];
   /** Nomor serial baru yang dibuat (lokasi `loc-sby`). */
   fresh?: string[];
 }
+
+let readyBoxCursor = 1;
 
 /** Satu pengeluaran sekali kirim (satu potongan) lewat kabel REST; mengembalikan hasil `serialWarehouse.submit`. */
 export async function submitDispatch(env: Env, email: string, options: DispatchOptions) {
@@ -81,12 +86,14 @@ export async function submitDispatch(env: Env, email: string, options: DispatchO
       testDate: '2026-11-12',
     })),
   ];
+  const boxStart = options.boxStart ?? readyBoxCursor;
+  if (options.ready && options.boxStart === undefined) readyBoxCursor += 100;
   const { restCall } = await import('./rest-call');
   return (await restCall(env, email, 'serialWarehouse.submit', {
     clientId: crypto.randomUUID(),
     chunkIndex: 0,
     header: {
-      ...(options.ready ? { mode: 'ready' } : {}),
+      ...(options.ready ? { mode: 'ready', boxStart, boxSize: options.boxSize ?? 10 } : {}),
       dispatchedOn: options.dispatchedOn ?? '2026-11-12',
       orderNumber: options.ready ? '' : (options.orderNumber ?? 'SO-1'),
       buId: options.buId ?? 'bu-a',
