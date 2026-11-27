@@ -101,4 +101,6 @@ Putusan pembangun setelah pemeriksaan independen (semuanya pilihan pembangun, da
 - **Paginasi dan "Pilih N unit":** paginasi menurut kardus dengan kursor (bagian, nomor kardus); satu kardus boleh melebihi ukuran halaman. "Pilih N unit" dihitung server atas seluruh stok yang terfilter (rute daftar menerima `pickCount` dan mengembalikan id terpilih), bukan hanya baris yang dimuat.
 - **Draf dan batas:** serial terpilih dikirim ke form Catat Serial WH lewat state router sementara dan masuk ke draf sebagai baris biasa (lolos validasi dan cek BU yang sama). Jumlah terpilih tidak boleh melebihi batas baris draf; bila lebih, tombol "Keluarkan" menolak dengan alasan.
 
+- **Penyimpangan kecil dari agen web (pilihan pembangun, dapat dikoreksi):** (1) batas draf oper `HAND_OFF_ROWS_MAX = 5000` baris (`web/src/modules/serialwh/lib/hand-off.ts`; draf sebesar itu masih jauh di bawah kuota penyimpanan) dipakai sebagai batas "Keluarkan"; (2) "Pilih N unit" berupa isian jumlah di atas tabel Stok Ready (bukan tombol tetap).
+
 Terbuka bagi pemilik produk: tidak ada (keduanya dijawab 2026-11-27 dan sudah dimasukkan di atas).
