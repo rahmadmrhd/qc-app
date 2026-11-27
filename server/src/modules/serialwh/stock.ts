@@ -29,6 +29,7 @@ interface BoxRow {
   number: number | string;
   capacity: number | string;
   remaining: number | string;
+  item_id: string;
 }
 
 interface SerialRow {
@@ -45,6 +46,7 @@ interface BoxMeta {
   capacity: number;
   remaining: number;
   kind: 'full' | 'loose';
+  itemId: string;
 }
 
 /** Kursor halaman: `<bagian>|<nomor>|<id>` (bagian 0 = penuh, 1 = ecer). */
@@ -88,6 +90,38 @@ function stockSql(
   return { sql, binds };
 }
 
+/** Nomor kardus terbuka tertinggi (BU + Tipe terfilter), termasuk kardus pencatatan pending dan kardus tanpa stok. */
+async function maxOpenBoxNumber(env: Env, filters: Filters): Promise<number> {
+  const where = ["closed_key = ''", `bu_id IN (${placeholders(filters.buIds.length)})`];
+  const binds: unknown[] = [...filters.buIds];
+  if (filters.itemIds) {
+    where.push(`item_id IN (${placeholders(filters.itemIds.length)})`);
+    binds.push(...filters.itemIds);
+  }
+  const row = await env.DB.prepare(
+    `SELECT MAX(number) AS top FROM warehouse_ready_boxes WHERE ${where.join(' AND ')}`,
+  )
+    .bind(...binds)
+    .first<{ top: number | string | null }>();
+  return Number(row?.top ?? 0);
+}
+
+/** Label "merk model" per item (item atau merk terhapus = label kosong). */
+async function itemLabels(env: Env, itemIds: string[]): Promise<Map<string, string>> {
+  const unique = [...new Set(itemIds)];
+  const out = new Map<string, string>();
+  if (unique.length === 0) return out;
+  const rows = await env.DB.prepare(
+    `SELECT i.id, i.model, b.name AS brand_name FROM items i LEFT JOIN brands b ON b.id = i.brand_id AND ${liveWhere('b')} WHERE ${liveWhere('i')} AND i.id IN (${placeholders(unique.length)})`,
+  )
+    .bind(...unique)
+    .all<{ id: string; model: string | null; brand_name: string | null }>();
+  for (const row of rows.results) {
+    out.set(row.id, `${row.brand_name ?? ''} ${(row.model ?? '').trim()}`.trim());
+  }
+  return out;
+}
+
 /**
  * Stok Ready per kardus pada BU ber-`serialwh: view` (irisan dengan `buIds`). Kardus penuh dulu (nomor naik), lalu ecer;
  * paginasi menurut kardus. `totals` dan `picked` dihitung atas SELURUH hasil terfilter, bukan hanya halaman ini.
@@ -115,9 +149,9 @@ export async function listReadyStock(
   const limit = input.limit ?? READY_STOCK_LIMITS.listDefault;
 
   const boxQuery = stockSql(
-    'b.id, b.number, b.capacity, COUNT(*) AS remaining',
+    'b.id, b.number, b.capacity, b.item_id, COUNT(*) AS remaining',
     filters,
-    'GROUP BY b.id, b.number, b.capacity',
+    'GROUP BY b.id, b.number, b.capacity, b.item_id',
   );
   const boxRows = await env.DB.prepare(boxQuery.sql)
     .bind(...boxQuery.binds)
@@ -131,17 +165,23 @@ export async function listReadyStock(
       capacity,
       remaining,
       kind: boxKindOf(remaining, capacity),
+      itemId: row.item_id,
     };
   });
   const partOf = (box: BoxMeta): number => (box.kind === 'full' ? 0 : 1);
   metas.sort((a, b) => partOf(a) - partOf(b) || a.number - b.number || (a.id < b.id ? -1 : 1));
-  if (metas.length === 0) return empty;
+  if (metas.length === 0) {
+    return {
+      ...empty,
+      totals: { ...empty.totals, maxBoxNumber: await maxOpenBoxNumber(env, filters) },
+    };
+  }
 
   const totals = {
     units: metas.reduce((sum, box) => sum + box.remaining, 0),
     fullBoxes: metas.filter((box) => box.kind === 'full').length,
     looseBoxes: metas.filter((box) => box.kind === 'loose').length,
-    maxBoxNumber: metas.reduce((max, box) => Math.max(max, box.number), 0),
+    maxBoxNumber: await maxOpenBoxNumber(env, filters),
   };
 
   const start = cursor
@@ -156,8 +196,15 @@ export async function listReadyStock(
   const hasMore = start >= 0 && start + limit < metas.length;
   const last = pageMetas[pageMetas.length - 1];
 
+  const labels = await itemLabels(
+    env,
+    pageMetas.map((meta) => meta.itemId),
+  );
   const boxes = new Map<string, ReadyStockBoxDto>(
-    pageMetas.map((meta) => [meta.id, { ...meta, serials: [] }]),
+    pageMetas.map((meta) => [
+      meta.id,
+      { ...meta, itemLabel: labels.get(meta.itemId) ?? '', serials: [] },
+    ]),
   );
   if (pageMetas.length > 0) {
     const serialQuery = stockSql(

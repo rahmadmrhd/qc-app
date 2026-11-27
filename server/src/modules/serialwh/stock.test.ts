@@ -120,6 +120,8 @@ describe('serialWarehouse.readyStock', () => {
       recordedOn: '2026-11-12',
       processing: false,
     });
+    expect(out.data.boxes[0].itemId).toBe('i-a1');
+    expect(out.data.boxes[0].itemLabel).not.toBe('');
     expect(out.data.totals).toEqual({ units: 8, fullBoxes: 2, looseBoxes: 2, maxBoxNumber: 4 });
     expect(out.data.nextCursor).toBeNull();
     expect(out.data.picked).toBeUndefined();
@@ -252,6 +254,31 @@ describe('serialWarehouse.readyStock', () => {
     const denied = await call(WH_USERS.serialOnly, {});
     expect(denied.ok).toBe(false);
     expect(denied.error.code).toBe('FORBIDDEN');
+  });
+
+  test('maxBoxNumber memuat kardus terbuka tanpa stok dan dari pencatatan pending; kardus tertutup tidak', async () => {
+    await readyDispatch('rd-pending', { status: 'pending' });
+    await box({ id: 'b1', number: 2, capacity: 2, serials: ['M-1', 'M-2'] });
+    // Pending: tidak tampil di daftar, tetapi nomornya dipegang.
+    await box({ id: 'b2', number: 9, capacity: 1, serials: ['M-3'], dispatch: 'rd-pending' });
+    // Terbuka tanpa stok terlihat (semua serial sudah dilepas).
+    await box({ id: 'b3', number: 12, capacity: 1, serials: ['M-4'], released: ['M-4'] });
+    // Tertutup: tidak dihitung.
+    await box({ id: 'b4', number: 40, capacity: 1, serials: ['M-5'], released: ['M-5'] });
+    await env.DB.prepare(
+      "UPDATE warehouse_ready_boxes SET closed_key = 'out1' WHERE id = 'b4'",
+    ).run();
+    // Kardus Tipe lain tidak ikut saat difilter Tipe.
+    await box({ id: 'b5', number: 77, capacity: 1, serials: ['M-6'], itemId: 'i-a2' });
+    const out = await call(E, { itemIds: ['i-a1'] });
+    expect(numbers(out.data)).toEqual([2]);
+    expect(out.data.totals.maxBoxNumber).toBe(12);
+    expect((await call(E, {})).data.totals.maxBoxNumber).toBe(77);
+    expect((await call(WH_USERS.editB, {})).data.totals.maxBoxNumber).toBe(0);
+    // Hasil kosong karena pencarian: nomor tetap dari seluruh kardus terbuka BU + Tipe.
+    expect(
+      (await call(E, { itemIds: ['i-a1'], query: 'tidak-ada' })).data.totals.maxBoxNumber,
+    ).toBe(12);
   });
 
   test('validasi masukan', async () => {

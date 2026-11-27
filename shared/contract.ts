@@ -1628,6 +1628,8 @@ export interface ReadyStockBoxDto {
   capacity: number;
   remaining: number;
   kind: 'full' | 'loose';
+  itemId: string;
+  itemLabel: string;
   serials: ReadyStockSerialDto[];
 }
 export interface ListReadyStockInput {
