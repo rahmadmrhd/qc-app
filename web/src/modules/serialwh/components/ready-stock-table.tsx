@@ -1,7 +1,6 @@
 import { type DataColumn, DataTable, type RowSelection } from '@/components/data-table';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
-import { useIsDesktop } from '@/hooks/use-is-desktop';
 import { formatDay } from '@/modules/serial/lib/labels';
 
 /** Satu serial di stok, sudah diratakan dari kardusnya (urutan = urutan tampil). */
@@ -18,18 +17,12 @@ export interface ReadyRow {
   tone: 'a' | 'b';
   firstOfBox: boolean;
   itemLabel: string;
-}
-
-/** Tipe dan BU serial (dari `serialWarehouse.lookup`); kosong bila belum termuat atau tak boleh dibaca. */
-export interface ReadyRowInfo {
-  itemLabel: string;
-  buCode: string;
+  buLabel: string;
 }
 
 export interface ReadyStockTableProps {
   label: string;
   rows: readonly ReadyRow[];
-  info: ReadonlyMap<string, ReadyRowInfo>;
   /** Pilihan bersama (hanya bagian yang tampil di tabel ini). */
   selection: RowSelection;
   /** Memilih atau melepas semua serial yang bisa dipilih pada satu kardus. */
@@ -50,12 +43,10 @@ export interface ReadyStockTableProps {
 export function ReadyStockTable({
   label,
   rows,
-  info,
   selection,
   onToggleBox,
   ...rest
 }: ReadyStockTableProps) {
-  const desktop = useIsDesktop();
   const boxState = (boxId: string): boolean | 'indeterminate' => {
     const selectable = rows.filter((row) => row.boxId === boxId && !row.processing);
     const chosen = selectable.filter((row) => selection.selected.has(row.id)).length;
@@ -72,17 +63,15 @@ export function ReadyStockTable({
       mobile: 'meta',
       cell: (row) => (
         <div className="flex items-center gap-2">
-          {desktop ? (
-            row.firstOfBox && boxSelectable(row.boxId) ? (
-              <Checkbox
-                aria-label={`Pilih kardus ${row.boxNumber}`}
-                checked={boxState(row.boxId)}
-                onCheckedChange={() => onToggleBox(row.boxId, boxState(row.boxId) !== true)}
-              />
-            ) : (
-              <span className="inline-block size-4" aria-hidden="true" />
-            )
-          ) : null}
+          {row.firstOfBox && boxSelectable(row.boxId) ? (
+            <Checkbox
+              aria-label={`Pilih kardus ${row.boxNumber}`}
+              checked={boxState(row.boxId)}
+              onCheckedChange={() => onToggleBox(row.boxId, boxState(row.boxId) !== true)}
+            />
+          ) : (
+            <span className="inline-block size-4" aria-hidden="true" />
+          )}
           <span className="font-medium">{row.boxNumber}</span>
           <span className="text-xs text-muted-foreground">
             {row.remaining}/{row.capacity}
@@ -94,7 +83,7 @@ export function ReadyStockTable({
       id: 'item',
       header: 'Tipe',
       mobile: 'meta',
-      cell: (row) => row.itemLabel || info.get(row.id)?.itemLabel || '—',
+      cell: (row) => row.itemLabel || '—',
     },
     {
       id: 'serial',
@@ -111,7 +100,7 @@ export function ReadyStockTable({
         </span>
       ),
     },
-    { id: 'bu', header: 'BU', mobile: 'meta', cell: (row) => info.get(row.id)?.buCode || '—' },
+    { id: 'bu', header: 'BU', mobile: 'meta', cell: (row) => row.buLabel || '—' },
     {
       id: 'recorded',
       header: 'Dicatat',

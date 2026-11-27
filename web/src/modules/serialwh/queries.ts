@@ -196,16 +196,6 @@ export function useSubmitWarehouseChunk() {
   });
 }
 
-/** Tipe dan BU serial Stok Ready lewat `serialWarehouse.lookup` (satu potongan id; kunci stabil per potongan). */
-export function readyInfoQueryOptions(ids: readonly string[], enabled = true) {
-  return queryOptions({
-    queryKey: ['serialwh', 'ready-info', ids.join(',')] as const,
-    queryFn: () => api('serialWarehouse.lookup', { ids: [...ids] }),
-    enabled: enabled && ids.length > 0,
-    staleTime: 60_000,
-  });
-}
-
 export function useSetWarehouseOrderLinks() {
   const queryClient = useQueryClient();
   return useMutation({

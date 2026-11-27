@@ -18,7 +18,10 @@ vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn(), message: vi.fn(), warning: vi.fn() },
 }));
 const handOffMock = vi.hoisted(() => vi.fn());
-vi.mock('../lib/hand-off', () => ({ handOffToDispatch: handOffMock }));
+vi.mock('../lib/hand-off', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../lib/hand-off')>()),
+  handOffToDispatch: handOffMock,
+}));
 
 let me: MeDto;
 vi.mock('@/modules/auth/use-me', () => ({ useMe: () => me }));
@@ -51,6 +54,9 @@ function fixture(): ReadyStockBoxDto[] {
       kind: 'full',
       itemId: 'item1',
       itemLabel: 'Tenda AX300',
+      buId: 'bu1',
+      buCode: 'A',
+      buName: 'BU 1',
       serials: [serial('s1', 'bx1', 1), serial('s2', 'bx1', 1), serial('s3', 'bx1', 1, true)],
     },
     {
@@ -61,6 +67,9 @@ function fixture(): ReadyStockBoxDto[] {
       kind: 'full',
       itemId: 'item1',
       itemLabel: 'Tenda AX300',
+      buId: 'bu1',
+      buCode: 'A',
+      buName: 'BU 1',
       serials: [serial('s4', 'bx2', 2), serial('s5', 'bx2', 2), serial('s6', 'bx2', 2)],
     },
     {
@@ -71,6 +80,9 @@ function fixture(): ReadyStockBoxDto[] {
       kind: 'loose',
       itemId: 'item1',
       itemLabel: 'Tenda AX300',
+      buId: 'bu1',
+      buCode: 'A',
+      buName: 'BU 1',
       serials: [serial('s7', 'bx3', 3), serial('s8', 'bx3', 3)],
     },
   ];
@@ -80,6 +92,7 @@ const page = (): ReadyStockPageDto => ({
   boxes,
   nextCursor: null,
   totals: { units: 8, fullBoxes: 2, looseBoxes: 1, maxBoxNumber: 3 },
+  itemFacets: [{ id: 'item1', label: 'Tenda AX300' }],
 });
 
 const listCalls = () =>
@@ -238,6 +251,11 @@ test('pengguna serialwh: view tanpa edit tidak melihat tombol Keluarkan', async 
   await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih SN-s4' }));
   expect(await screen.findByRole('button', { name: /Salin ke clipboard/ })).toBeInTheDocument();
   expect(screen.queryByRole('button', { name: /Keluarkan ke Penjualan/ })).not.toBeInTheDocument();
+  // Kolom BU dan filter Tipe tidak butuh rute edit (lookup/itemOptions).
+  expect(within(rowOf('SN-s1')).getByText('A - BU 1')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /Tipe/ })).toBeInTheDocument();
+  expect(apiMock.mock.calls.some((call) => call[0] === 'serialWarehouse.lookup')).toBe(false);
+  expect(apiMock.mock.calls.some((call) => call[0] === 'serialWarehouse.itemOptions')).toBe(false);
 });
 
 test('kosong: pesan keadaan kosong', async () => {
@@ -259,4 +277,35 @@ test('kotak cari dan filter mengirim query ke rute', async () => {
   await waitFor(() =>
     expect(listCalls().some((call) => (call[1] as { query?: string }).query === 'ABC')).toBe(true),
   );
+});
+
+test('tanpa pilihan, "Salin ke clipboard" menyalin semua serial terfilter (kecuali yang diproses)', async () => {
+  await renderPage();
+  await screen.findByText('SN-s1');
+  await userEvent.click(screen.getByRole('button', { name: /Salin ke clipboard/ }));
+  await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
+  const text = writeText.mock.calls[0]?.[0] as string;
+  expect(text.split('\n')[0]).toBe('Kardus\tSerial');
+  expect(text).toContain('1\tSN-s1');
+  expect(text).toContain('3\tSN-s8');
+  expect(text).not.toContain('SN-s3');
+});
+
+test('ponsel: kotak centang per kardus juga ada', async () => {
+  media.restore();
+  media = mockMatchMedia(false);
+  window.innerWidth = 390;
+  await renderPage();
+  await screen.findByText('SN-s1');
+  expect(screen.getByRole('checkbox', { name: 'Pilih kardus 1' })).toBeInTheDocument();
+  window.innerWidth = 1024;
+});
+
+test('"Pilih N unit" melebihi batas: pesan memuat batasnya dan rute tidak dipanggil', async () => {
+  await renderPage();
+  await screen.findByText('SN-s1');
+  await userEvent.type(screen.getByLabelText('Jumlah unit'), '5001');
+  await userEvent.click(screen.getByRole('button', { name: 'Pilih sesuai urutan' }));
+  expect(await screen.findByText(/Paling banyak 5000 unit/)).toBeInTheDocument();
+  expect(listCalls().some((call) => (call[1] as { pickCount?: number }).pickCount)).toBe(false);
 });

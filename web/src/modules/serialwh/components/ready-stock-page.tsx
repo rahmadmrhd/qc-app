@@ -1,7 +1,7 @@
 import { formatBuLabel } from '@shared/business-units';
 import type { ReadyStockBoxDto, WarehouseSerialDto } from '@shared/contract';
 import { readyStockClipboard, WAREHOUSE_LIMITS } from '@shared/serial-warehouse';
-import { useInfiniteQuery, useQueries } from '@tanstack/react-query';
+import { useInfiniteQuery } from '@tanstack/react-query';
 import { useCallback, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { ActionButton } from '@/components/action-button';
@@ -23,15 +23,11 @@ import { useUrlSyncedText } from '@/modules/access/lib/use-url-synced-text';
 import { buIdsWithLevelOf, canUseWarehouse } from '@/modules/auth/permissions';
 import { useMe } from '@/modules/auth/use-me';
 import { copyLines } from '../lib/clipboard';
-import { type HandOffRow, handOffToDispatch } from '../lib/hand-off';
+import { HAND_OFF_ROWS_MAX, type HandOffRow, handOffToDispatch } from '../lib/hand-off';
+import { capRows } from '../lib/ready-box';
 import { type ReadySearchParams, toReadyStockInput } from '../lib/ready-stock-filter';
-import {
-  lookupWarehouseSerials,
-  readyInfoQueryOptions,
-  readyStockQueryOptions,
-  warehouseItemOptionsQueryOptions,
-} from '../queries';
-import { type ReadyRow, type ReadyRowInfo, ReadyStockTable } from './ready-stock-table';
+import { lookupWarehouseSerials, readyStockQueryOptions } from '../queries';
+import { type ReadyRow, ReadyStockTable } from './ready-stock-table';
 
 export interface ReadyStockPageProps {
   search: ReadySearchParams;
@@ -58,6 +54,7 @@ function flatten(boxes: readonly ReadyStockBoxDto[], startTone: 'a' | 'b'): Read
         tone,
         firstOfBox: index === 0,
         itemLabel: box.itemLabel,
+        buLabel: formatBuLabel({ code: box.buCode, name: box.buName }),
       });
     });
     tone = tone === 'a' ? 'b' : 'a';
@@ -122,23 +119,6 @@ export function ReadyStockPage({ search, onSearchChange }: ReadyStockPageProps) 
   }, [boxes]);
   const allRows = useMemo(() => [...fullRows, ...looseRows], [fullRows, looseRows]);
 
-  // Tipe dan BU per serial: lookup per 200 id, hanya bagi pemegang edit (rute lookup butuh edit).
-  const infoQueries = useQueries({
-    queries: chunksOf(
-      allRows.map((row) => row.id),
-      LOOKUP_CHUNK,
-    ).map((ids) => readyInfoQueryOptions(ids, canEdit)),
-  });
-  const info = useMemo(() => {
-    const map = new Map<string, ReadyRowInfo>();
-    for (const query of infoQueries) {
-      for (const found of query.data?.found ?? []) {
-        map.set(found.id, { itemLabel: found.itemLabel, buCode: found.buCode });
-      }
-    }
-    return map;
-  }, [infoQueries]);
-
   const master = useRowSelection(filterKey);
   usePruneSelection(
     master,
@@ -159,15 +139,22 @@ export function ReadyStockPage({ search, onSearchChange }: ReadyStockPageProps) 
   const selectedRows = allRows.filter((row) => master.selected.has(row.id));
 
   const [pickText, setPickText] = useState('');
+  const [pickError, setPickError] = useState('');
   const [picking, setPicking] = useState(false);
+  const [copyingAll, setCopyingAll] = useState(false);
   const [handingOff, setHandingOff] = useState(false);
 
   async function pickInOrder() {
     const count = Number(pickText);
     if (!Number.isInteger(count) || count < 1) {
-      toast.error('Isi jumlah unit lebih dari 0');
+      setPickError('Isi jumlah unit lebih dari 0');
       return;
     }
+    if (count > HAND_OFF_ROWS_MAX) {
+      setPickError(`Paling banyak ${HAND_OFF_ROWS_MAX} unit sekali pilih`);
+      return;
+    }
+    setPickError('');
     setPicking(true);
     try {
       const output = await api('serialWarehouse.readyStock', {
@@ -191,8 +178,8 @@ export function ReadyStockPage({ search, onSearchChange }: ReadyStockPageProps) 
       master.clear();
       master.setAll(picked, true);
       if (picked.length < count) toast.message(`Hanya ${picked.length} unit yang bisa dipilih.`);
-    } catch {
-      toast.error('Gagal memilih unit. Coba lagi.');
+    } catch (error) {
+      setPickError(error instanceof Error ? error.message : 'Gagal memilih unit. Coba lagi.');
     } finally {
       setPicking(false);
     }
@@ -205,6 +192,53 @@ export function ReadyStockPage({ search, onSearchChange }: ReadyStockPageProps) 
     const ok = await copyLines(text);
     if (ok) toast.success(`${selectedRows.length} serial disalin.`);
     else toast.error('Tidak dapat menyalin ke clipboard.');
+  }
+
+  /** Tanpa pilihan: salin SEMUA serial terfilter (memuat halaman yang belum termuat, maks. `HAND_OFF_ROWS_MAX`). */
+  async function copyAll() {
+    setCopyingAll(true);
+    try {
+      let pages = list.data?.pages ?? [];
+      let hasNext = list.hasNextPage;
+      const count = () =>
+        pages.reduce(
+          (sum, page) => sum + page.boxes.reduce((n, box) => n + box.serials.length, 0),
+          0,
+        );
+      while (hasNext && count() < HAND_OFF_ROWS_MAX) {
+        const next = await list.fetchNextPage();
+        pages = next.data?.pages ?? pages;
+        hasNext = next.hasNextPage;
+      }
+      const loadedBoxes = pages.flatMap((page) => page.boxes);
+      const fullPart = flatten(
+        loadedBoxes.filter((box) => box.kind === 'full'),
+        'a',
+      );
+      const loosePart = flatten(
+        loadedBoxes.filter((box) => box.kind === 'loose'),
+        'a',
+      );
+      const available = [...fullPart, ...loosePart].filter((row) => !row.processing);
+      const { rows, truncated } = capRows(available, HAND_OFF_ROWS_MAX);
+      if (rows.length === 0) {
+        toast.message('Tidak ada serial untuk disalin.');
+        return;
+      }
+      const ok = await copyLines(
+        readyStockClipboard(rows.map((row) => ({ box: row.boxNumber, serial: row.serial }))),
+      );
+      if (!ok) toast.error('Tidak dapat menyalin ke clipboard.');
+      else if (truncated || hasNext) {
+        toast.warning(
+          `Hanya ${rows.length} serial pertama yang disalin (batas ${HAND_OFF_ROWS_MAX}).`,
+        );
+      } else toast.success(`${rows.length} serial disalin.`);
+    } catch {
+      toast.error('Gagal memuat semua serial. Coba lagi.');
+    } finally {
+      setCopyingAll(false);
+    }
   }
 
   async function handOff() {
@@ -251,7 +285,6 @@ export function ReadyStockPage({ search, onSearchChange }: ReadyStockPageProps) 
   }
 
   const tableProps = {
-    info,
     onToggleBox: toggleBox,
     isLoading: list.isPending,
     isError: list.isLoadingError,
@@ -266,7 +299,13 @@ export function ReadyStockPage({ search, onSearchChange }: ReadyStockPageProps) 
   return (
     <ListPage
       title="Stok Ready"
-      filters={<ReadyStockFilters search={search} onChange={onSearchChange} />}
+      filters={
+        <ReadyStockFilters
+          search={search}
+          onChange={onSearchChange}
+          itemFacets={list.data?.pages[0]?.itemFacets ?? []}
+        />
+      }
       bulkBar={
         <BulkBar count={master.count} onClear={master.clear} busy={handingOff}>
           {canEdit ? (
@@ -299,7 +338,10 @@ export function ReadyStockPage({ search, onSearchChange }: ReadyStockPageProps) 
             min={1}
             className="w-24"
             value={pickText}
-            onChange={(event) => setPickText(event.target.value)}
+            onChange={(event) => {
+              setPickText(event.target.value);
+              setPickError('');
+            }}
           />
           <span>unit sesuai urutan</span>
           <Button
@@ -313,7 +355,20 @@ export function ReadyStockPage({ search, onSearchChange }: ReadyStockPageProps) 
           >
             Pilih
           </Button>
+          {master.count === 0 ? (
+            <ActionButton
+              action="copy"
+              label="Salin ke clipboard"
+              disabled={copyingAll || boxes.length === 0}
+              onClick={() => void copyAll()}
+            />
+          ) : null}
         </div>
+        {pickError ? (
+          <p role="alert" className="text-xs text-destructive-text">
+            {pickError}
+          </p>
+        ) : null}
 
         {isEmpty || list.isPending || list.isLoadingError ? (
           <ReadyStockTable
@@ -365,25 +420,19 @@ export function ReadyStockPage({ search, onSearchChange }: ReadyStockPageProps) 
 function ReadyStockFilters({
   search,
   onChange,
+  itemFacets,
 }: {
   search: ReadySearchParams;
   onChange: (patch: Partial<ReadySearchParams>) => void;
+  itemFacets: readonly { id: string; label: string }[];
 }) {
   const me = useMe();
-  const canEdit = canUseWarehouse(me);
-  const [itemTerm, setItemTerm] = useState('');
-  // Pilihan Tipe dari rute pilihan Item (butuh edit); pembaca tanpa edit tidak punya filter Tipe.
-  const itemQuery = useInfiniteQuery({
-    ...warehouseItemOptionsQueryOptions(itemTerm.trim() !== '' ? { query: itemTerm.trim() } : {}),
-    enabled: canEdit,
-  });
-  const itemMap = new Map<string, string>();
-  for (const page of itemQuery.data?.pages ?? []) {
-    for (const item of page.items) itemMap.set(item.id, item.label);
-  }
-  const itemOptions: LinkOption[] = [...itemMap.entries()]
-    .map(([id, label]) => ({ id, label }))
-    .sort((a, b) => a.label.localeCompare(b.label, 'id'));
+  // Pilihan Tipe dari facet stok (terbaca bagi pemegang view); tidak butuh rute pilihan Item.
+  const itemMap = new Map(itemFacets.map((facet) => [facet.id, facet.label]));
+  const itemOptions: LinkOption[] = itemFacets.map((facet) => ({
+    id: facet.id,
+    label: facet.label,
+  }));
   const itemLabel = (id: string) => itemMap.get(id) ?? 'Tipe terpilih';
   const itemIds = search.itemIds ?? [];
   const readableBu = new Set(buIdsWithLevelOf(me, 'serialwh', 'view'));
@@ -424,30 +473,25 @@ function ReadyStockFilters({
           onChange={(next) => onChange({ buIds: next.length > 0 ? next : undefined })}
         />
       </FilterChip>
-      {canEdit ? (
-        <FilterChip
-          label="Tipe"
-          display={multiFilterDisplay(itemIds.map(itemLabel))}
-          onClear={() => onChange({ itemIds: undefined })}
-        >
-          <LinkMultiField
-            maxSelected={FILTER_LIST_MAX}
-            id="wh-ready-item"
-            label="Filter Tipe"
-            hideLabel
-            placeholder="Semua Tipe"
-            highlight
-            value={itemIds}
-            labelOf={itemLabel}
-            options={itemOptions}
-            loading={itemQuery.isFetching && itemQuery.data === undefined}
-            hasMore={itemQuery.hasNextPage}
-            onSearchChange={setItemTerm}
-            searchDebounceMs={200}
-            onChange={(next) => onChange({ itemIds: next.length > 0 ? next : undefined })}
-          />
-        </FilterChip>
-      ) : null}
+      <FilterChip
+        label="Tipe"
+        display={multiFilterDisplay(itemIds.map(itemLabel))}
+        onClear={() => onChange({ itemIds: undefined })}
+      >
+        <LinkMultiField
+          maxSelected={FILTER_LIST_MAX}
+          id="wh-ready-item"
+          label="Filter Tipe"
+          hideLabel
+          placeholder="Semua Tipe"
+          highlight
+          value={itemIds}
+          labelOf={itemLabel}
+          options={itemOptions}
+          localFilter
+          onChange={(next) => onChange({ itemIds: next.length > 0 ? next : undefined })}
+        />
+      </FilterChip>
     </FilterBar>
   );
 }

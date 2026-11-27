@@ -29,3 +29,10 @@ export function boxPlanSummary(input: {
   const range = first.number === last.number ? `${first.number}` : `${first.number}-${last.number}`;
   return `Kardus ${range}: ${parts.join(', ')}`;
 }
+
+/** Memotong daftar ke `max` baris; `truncated` = ada yang terbuang. */
+export function capRows<T>(rows: readonly T[], max: number): { rows: T[]; truncated: boolean } {
+  return rows.length > max
+    ? { rows: rows.slice(0, max), truncated: true }
+    : { rows: [...rows], truncated: false };
+}
