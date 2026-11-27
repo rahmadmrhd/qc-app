@@ -19,10 +19,12 @@ export interface ScanBarProps {
   /** Mengetik menyaring tabel (pemanggil menunda ~350 ms). */
   onFilterChange: (text: string) => void;
   /** Enter/Tab/tempel banyak baris = scan: teks mentah (satu atau banyak baris) diserahkan ke pemanggil. */
-  onScan: (text: string) => void;
+  onScan: (text: string, options?: { silent?: boolean }) => void;
   /** Serial (ternormalisasi) yang sudah ada di pilihan: pemindai kamera tidak mengirimnya lagi. */
   isKnown: IsKnown;
   disabled?: boolean;
+  /** Pengganti placeholder saat kolom dikunci (mis. "Pilih Item dulu"). */
+  lockedPlaceholder?: string;
   /** Umpan balik hasil scan terakhir (satu baris). */
   line: ScanLine | null;
   /** Serial terakhir yang ditolak/ditahan: kolom ikut berkedip. */
@@ -39,6 +41,7 @@ export function ScanBar({
   onScan,
   isKnown,
   disabled = false,
+  lockedPlaceholder,
   line,
   flash,
   sticky = false,
@@ -71,7 +74,8 @@ export function ScanBar({
         <Label htmlFor="wh-scan">Serial Number</Label>
         <CameraScanButton
           onScan={(text) => {
-            onScan(text);
+            // Dialog kamera sudah memberi nada saat membaca; kirim senyap agar Simpan tidak membunyikan N kali.
+            onScan(text, { silent: true });
             return 'added';
           }}
           isKnown={isKnown}
@@ -87,7 +91,9 @@ export function ScanBar({
         autoCapitalize="characters"
         spellCheck={false}
         inputMode="text"
-        placeholder="Scan atau ketik untuk mencari"
+        placeholder={
+          disabled && lockedPlaceholder ? lockedPlaceholder : 'Scan atau ketik untuk mencari'
+        }
         className={cn(
           'font-mono transition-colors touch:h-12 touch:text-base',
           flash !== null && FEEDBACK_FLASH[flash],

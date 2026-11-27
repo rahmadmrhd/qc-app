@@ -51,6 +51,9 @@ export interface ConfirmValues {
   customerName: string;
   note: string;
   handoverIds: string[];
+  /** Lokasi/tanggal uji untuk serial baru yang belum punya (hanya bila ada baris seperti itu). */
+  newLocationId?: string;
+  newTestDate?: string;
 }
 
 export interface ConfirmDialogProps {
@@ -61,6 +64,10 @@ export interface ConfirmDialogProps {
   /** BU form saat ini (chip BU). */
   formBuId: string;
   buOptions: readonly LinkOption[];
+  locationOptions: readonly LinkOption[];
+  /** Nilai awal dari chip Lokasi/Tanggal uji (boleh kosong). */
+  defaultLocationId: string;
+  defaultTestDate: string;
   options: WarehouseOptionsDto | undefined;
   /** Konteks task asal (`?handover`). */
   handoverContext?: WarehouseHandoverContextDto | undefined;
@@ -98,6 +105,9 @@ function ConfirmBody({
   item,
   formBuId,
   buOptions,
+  locationOptions,
+  defaultLocationId,
+  defaultTestDate,
   options,
   handoverContext,
   originHandoverId,
@@ -118,6 +128,11 @@ function ConfirmBody({
   const [touched, setTouched] = useState(false);
   // BU pilihan di dialog ini: baru menggantikan chip BU form saat disimpan (batal tidak mengubah apa pun).
   const [pickedBuId, setPickedBuId] = useState(formBuId);
+  // Serial baru tanpa lokasi/tanggal uji (chip filter kosong saat scan) melengkapinya di sini.
+  const fillLocation = rows.some((row) => row.kind === 'new' && row.locationId === '');
+  const fillTestDate = rows.some((row) => row.kind === 'new' && row.testDate === '');
+  const [newLocationId, setNewLocationId] = useState(defaultLocationId);
+  const [newTestDate, setNewTestDate] = useState(defaultTestDate === '' ? today : defaultTestDate);
 
   const typed = normalizeOrderNumber(orderNumber);
   const orderQuery = useInfiniteQuery({
@@ -216,6 +231,11 @@ function ConfirmBody({
       !isIsoDate(dispatchedOn) || dispatchedOn > today
         ? `${isReady ? 'Tanggal catat' : 'Tanggal keluar'} tidak boleh setelah hari ini`
         : undefined,
+    location: fillLocation && newLocationId === '' ? 'Lokasi wajib dipilih' : undefined,
+    testDate:
+      fillTestDate && (!isIsoDate(newTestDate) || newTestDate > today)
+        ? 'Tanggal uji tidak boleh kosong atau setelah hari ini'
+        : undefined,
     note: [...note].length > WAREHOUSE_LIMITS.noteMax ? 'Catatan terlalu panjang' : undefined,
   };
   const blocked =
@@ -240,6 +260,8 @@ function ConfirmBody({
         customerName: '',
         note: note.trim(),
         handoverIds: [],
+        ...(fillLocation ? { newLocationId } : {}),
+        ...(fillTestDate ? { newTestDate } : {}),
       });
       return;
     }
@@ -252,6 +274,8 @@ function ConfirmBody({
       customerName: effectiveCustomer.trim(),
       note: note.trim(),
       handoverIds,
+      ...(fillLocation ? { newLocationId } : {}),
+      ...(fillTestDate ? { newTestDate } : {}),
     });
   }
 
@@ -362,6 +386,42 @@ function ConfirmBody({
             </p>
           ) : null}
         </div>
+
+        {fillLocation ? (
+          <LinkField
+            id="wh-new-location"
+            label="Lokasi serial baru"
+            required
+            value={newLocationId === '' ? null : newLocationId}
+            onChange={(next) => setNewLocationId(next ?? '')}
+            options={locationOptions}
+            localFilter
+            highlight
+            keyboardless
+            placeholder="Pilih lokasi"
+            {...(touched && errors.location ? { error: errors.location } : {})}
+          />
+        ) : null}
+        {fillTestDate ? (
+          <div className="space-y-1.5">
+            <Label htmlFor="wh-new-test-date" required>
+              Tanggal uji serial baru
+            </Label>
+            <Input
+              id="wh-new-test-date"
+              type="date"
+              max={today}
+              aria-required="true"
+              value={newTestDate}
+              onChange={(event) => setNewTestDate(event.target.value)}
+            />
+            {touched && errors.testDate ? (
+              <p role="alert" className="text-xs text-destructive-text">
+                {errors.testDate}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
 
         {isReady ? null : (
           <>

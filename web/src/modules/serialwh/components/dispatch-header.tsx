@@ -122,7 +122,6 @@ export function DispatchHeader({
             filters.buId === '' ? null : labelIn(buOptions, filters.buId, 'BU tidak dikenal')
           }
           onClear={() => onFiltersChange({ buId: '' })}
-          invalid={missing.includes('bu') && filters.buId === ''}
         >
           <LinkField
             id="wh-filter-bu"
@@ -146,7 +145,6 @@ export function DispatchHeader({
               : labelIn(locationOptions, filters.locationId, 'Lokasi tidak dikenal')
           }
           onClear={() => onFiltersChange({ locationId: '' })}
-          invalid={missing.includes('location') && filters.locationId === ''}
         >
           <LinkField
             id="wh-filter-location"
@@ -165,7 +163,6 @@ export function DispatchHeader({
           label="Tanggal uji"
           display={filters.testDate === '' ? null : formatDay(filters.testDate)}
           onClear={() => onFiltersChange({ testDate: '' })}
-          invalid={missing.includes('testDate') && filters.testDate === ''}
         >
           <TestDateField
             value={filters.testDate}

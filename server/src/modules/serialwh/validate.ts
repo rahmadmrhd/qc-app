@@ -397,6 +397,7 @@ export function validateWarehouseListDispatches(raw: unknown): ListWarehouseDisp
   const kind = reader.str('kind', { max: 10 });
   if (kind !== '' && kind !== 'order' && kind !== 'ready') reader.fail('kind', 'Jenis tidak valid');
   const customerIds = readFilterList(reader, 'customerIds');
+  const itemIds = readFilterList(reader, 'itemIds');
   const buIds = readFilterList(reader, 'buIds');
   const from = reader.str('from', { max: 10 });
   if (from !== '' && !isIsoDate(from)) reader.fail('from', 'Tanggal tidak valid');
@@ -413,6 +414,7 @@ export function validateWarehouseListDispatches(raw: unknown): ListWarehouseDisp
     ...(query !== '' ? { query } : {}),
     ...(kind === 'order' || kind === 'ready' ? { kind } : {}),
     ...(customerIds ? { customerIds } : {}),
+    ...(itemIds ? { itemIds } : {}),
     ...(buIds ? { buIds } : {}),
     ...(from !== '' ? { from } : {}),
     ...(to !== '' ? { to } : {}),

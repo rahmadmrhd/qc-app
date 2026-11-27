@@ -119,6 +119,31 @@ beforeEach(() => {
         inactiveCustomerNames: [],
       });
     }
+    if (id === 'serialWarehouse.itemOptions') {
+      return Promise.resolve({
+        items: [
+          {
+            id: 'i1',
+            label: 'Tenda AX300',
+            brandName: 'Tenda',
+            model: 'AX300',
+            buIds: ['b1'],
+            proofRequired: false,
+            proofMin: 0,
+          },
+          {
+            id: 'i2',
+            label: 'Tenda SG8',
+            brandName: 'Tenda',
+            model: 'SG8',
+            buIds: ['b1'],
+            proofRequired: false,
+            proofMin: 0,
+          },
+        ],
+        nextCursor: null,
+      });
+    }
     return Promise.reject(new Error(`api tak dikenal: ${id}`));
   });
 });
@@ -197,9 +222,27 @@ test('filter customer dan BU jamak dikirim sebagai daftar', async () => {
   await waitFor(() => expect(lastInput()).toEqual({ customerIds: ['c1', 'c2'], buIds: ['b1'] }));
 });
 
+test('filter Tipe jamak dikirim sebagai daftar itemIds', async () => {
+  await renderInRouter(<Harness />);
+  await screen.findByText('OUT/BU1/2611-0001');
+  await userEvent.click(screen.getByRole('button', { name: /^Tipe(:|$)/ }));
+  await pickLink(screen, 'Filter Tipe', 'Tenda AX300');
+  await pickLink(screen, 'Filter Tipe', 'Tenda SG8');
+  await closeFilterChip();
+  await waitFor(() => expect(lastInput()).toEqual({ itemIds: ['i1', 'i2'] }));
+});
+
+test('tombol Catat Serial WH berwarna primary (solid)', async () => {
+  await renderInRouter(<Harness />);
+  await screen.findByText('OUT/BU1/2611-0001');
+  const button = screen.getByRole('button', { name: 'Catat Serial WH' });
+  expect(button).toHaveAttribute('data-color', 'primary');
+  expect(button).toHaveAttribute('data-variant', 'solid');
+});
+
 test('kosong tanpa filter: ajakan', async () => {
   apiMock.mockImplementation((id: string) =>
-    id === 'serialWarehouse.dispatchList'
+    id === 'serialWarehouse.dispatchList' || id === 'serialWarehouse.itemOptions'
       ? Promise.resolve({ items: [], nextCursor: null })
       : Promise.resolve({ locations: [], customers: [], inactiveCustomerNames: [] }),
   );

@@ -8,7 +8,7 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
-import { pickSelect } from '@/test/link-field';
+import { pickLink, pickSelect } from '@/test/link-field';
 import { mockMatchMedia } from '@/test/match-media';
 import { makeExistingRow, makeNewRow } from '../lib/draft';
 import type { WarehouseDraftRow } from '../lib/draft-store';
@@ -89,6 +89,9 @@ function setup(
       { id: 'bu1', label: 'A - BU 1' },
       { id: 'bu2', label: 'B - BU 2' },
     ],
+    locationOptions: [{ id: 'loc1', label: 'Gudang QC' }],
+    defaultLocationId: '',
+    defaultTestDate: '',
     options: {
       locations: [],
       customers: [{ id: 'c1', name: 'PT Maju' }],
@@ -266,4 +269,31 @@ test('Ready Stock tetap mewajibkan BU', async () => {
   await userEvent.click(screen.getByRole('button', { name: 'Simpan & salin' }));
   expect(props.onConfirm).not.toHaveBeenCalled();
   expect(await screen.findByText('BU wajib dipilih')).toBeInTheDocument();
+});
+
+test('serial baru tanpa lokasi dan tanggal uji: dialog meminta keduanya dan mengirimnya', async () => {
+  const props = setup(
+    [makeNewRow({ serial: 'N1', itemId: 'item1', buId: '', locationId: '', testDate: '' })],
+    {
+      defaultTestDate: '2026-11-20',
+    },
+  );
+  await userEvent.type(await screen.findByLabelText('No SO'), 'SO-7');
+  await userEvent.type(screen.getByLabelText('Customer'), 'PT Baru');
+  expect(screen.getByLabelText('Tanggal uji serial baru')).toHaveValue('2026-11-20');
+  await userEvent.click(screen.getByRole('button', { name: 'Simpan & salin' }));
+  expect(props.onConfirm).not.toHaveBeenCalled();
+  expect(await screen.findByText('Lokasi wajib dipilih')).toBeInTheDocument();
+  await pickLink(screen, 'Lokasi serial baru', 'Gudang QC');
+  await userEvent.click(screen.getByRole('button', { name: 'Simpan & salin' }));
+  expect(props.onConfirm).toHaveBeenCalledWith(
+    expect.objectContaining({ newLocationId: 'loc1', newTestDate: '2026-11-20' }),
+  );
+});
+
+test('serial baru yang sudah punya lokasi dan tanggal uji: tidak ada isian tambahan', async () => {
+  setup([newRow('N2')]);
+  await screen.findByLabelText('No SO');
+  expect(screen.queryByLabelText('Tanggal uji serial baru')).toBeNull();
+  expect(screen.queryByLabelText('Lokasi serial baru')).toBeNull();
 });

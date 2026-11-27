@@ -143,6 +143,7 @@ export function OrdersPage({ search, onSearchChange }: OrdersPageProps) {
             q: undefined,
             kind: undefined,
             customerIds: undefined,
+            itemIds: undefined,
             buIds: undefined,
             from: undefined,
             to: undefined,

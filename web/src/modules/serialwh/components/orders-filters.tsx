@@ -1,7 +1,8 @@
 import { formatBuLabel } from '@shared/business-units';
 import type { WarehouseDispatchListItemDto } from '@shared/contract';
 import { WAREHOUSE_KIND_LABEL } from '@shared/serial-warehouse';
-import { useQuery } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
+import { useState } from 'react';
 import { LinkMultiField, type LinkOption } from '@/components/link-field';
 import { FilterBar, FilterChip, multiFilterDisplay } from '@/components/page/filter-bar';
 import { useChipDraft } from '@/components/page/filter-draft';
@@ -14,7 +15,7 @@ import { buIdsWithLevelOf, canUseWarehouse } from '@/modules/auth/permissions';
 import { useMe } from '@/modules/auth/use-me';
 import { formatDay } from '@/modules/serial/lib/labels';
 import type { OrdersSearchParams } from '../lib/orders-filter';
-import { warehouseOptionsQueryOptions } from '../queries';
+import { warehouseItemOptionsQueryOptions, warehouseOptionsQueryOptions } from '../queries';
 
 export interface OrdersFiltersProps {
   search: OrdersSearchParams;
@@ -99,6 +100,22 @@ export function OrdersFilters({ search, onChange, rows }: OrdersFiltersProps) {
   const me = useMe();
   const canOptions = canUseWarehouse(me);
   const options = useQuery({ ...warehouseOptionsQueryOptions(), enabled: canOptions });
+  // Tipe (Item): pilihan dicari di server bagi pengguna `edit`; selain itu dari baris yang sudah dimuat.
+  const [itemTerm, setItemTerm] = useState('');
+  const itemQuery = useInfiniteQuery({
+    ...warehouseItemOptionsQueryOptions(itemTerm.trim() !== '' ? { query: itemTerm.trim() } : {}),
+    enabled: canOptions,
+  });
+  const itemMap = new Map<string, string>();
+  for (const page of itemQuery.data?.pages ?? []) {
+    for (const item of page.items) itemMap.set(item.id, item.label);
+  }
+  for (const row of rows) if (row.itemId !== '') itemMap.set(row.itemId, row.itemLabel);
+  const itemOptions: LinkOption[] = [...itemMap.entries()]
+    .map(([id, label]) => ({ id, label }))
+    .sort((a, b) => a.label.localeCompare(b.label, 'id'));
+  const itemLabel = (id: string) => itemMap.get(id) ?? 'Tipe terpilih';
+  const itemIds = search.itemIds ?? [];
   const readableBu = new Set(buIdsWithLevelOf(me, 'serialwh', 'view'));
   const buOptions: LinkOption[] = (me.businessUnits ?? [])
     .filter((bu) => !bu.deleted && readableBu.has(bu.id))
@@ -171,6 +188,28 @@ export function OrdersFilters({ search, onChange, rows }: OrdersFiltersProps) {
           />
         </FilterChip>
       }
+      <FilterChip
+        label="Tipe"
+        display={multiFilterDisplay(itemIds.map(itemLabel))}
+        onClear={() => onChange({ itemIds: undefined })}
+      >
+        <LinkMultiField
+          maxSelected={FILTER_LIST_MAX}
+          id="wh-orders-item"
+          label="Filter Tipe"
+          hideLabel
+          placeholder="Semua Tipe"
+          highlight
+          value={itemIds}
+          labelOf={itemLabel}
+          options={itemOptions}
+          loading={itemQuery.isFetching && itemQuery.data === undefined}
+          hasMore={itemQuery.hasNextPage}
+          onSearchChange={setItemTerm}
+          searchDebounceMs={200}
+          onChange={(next) => onChange({ itemIds: next.length > 0 ? next : undefined })}
+        />
+      </FilterChip>
       <FilterChip
         label="BU"
         display={multiFilterDisplay(buIds.map(buLabel))}

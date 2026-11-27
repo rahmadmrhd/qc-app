@@ -1761,6 +1761,8 @@ export interface ListWarehouseDispatchesInput {
   query?: string;
   kind?: WarehouseDispatchKind;
   customerIds?: string[];
+  /** Tipe (Item) pengeluaran; jamak, hanya menyempit. */
+  itemIds?: string[];
   buIds?: string[];
   from?: string;
   to?: string;

@@ -654,6 +654,7 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
     query: {
       query: 'string',
       customerIds: 'list',
+      itemIds: 'list',
       buIds: 'list',
       from: 'string',
       to: 'string',
