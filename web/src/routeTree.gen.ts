@@ -67,6 +67,7 @@ import { Route as AppQrcodeDefaultIndexRouteImport } from './routes/_app/qrcode/
 import { Route as AppQrcodeDefaultNewRouteImport } from './routes/_app/qrcode/default/new'
 import { Route as AppSerialSerialIdIndexRouteImport } from './routes/_app/serial/$serialId/index'
 import { Route as AppSerialGudangIndexRouteImport } from './routes/_app/serial/gudang/index'
+import { Route as AppSerialGudangReadyRouteImport } from './routes/_app/serial/gudang/ready'
 import { Route as AppSerialReportsIndexRouteImport } from './routes/_app/serial/reports/index'
 import { Route as AppSerialReportsCaseIdRouteImport } from './routes/_app/serial/reports/$caseId'
 import { Route as AppStickerTypesIndexRouteImport } from './routes/_app/sticker/types/index'
@@ -375,6 +376,11 @@ const AppSerialGudangIndexRoute = AppSerialGudangIndexRouteImport.update({
   path: '/serial/gudang/',
   getParentRoute: () => AppRoute,
 } as any)
+const AppSerialGudangReadyRoute = AppSerialGudangReadyRouteImport.update({
+  id: '/serial/gudang/ready',
+  path: '/serial/gudang/ready',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppSerialReportsIndexRoute = AppSerialReportsIndexRouteImport.update({
   id: '/serial/reports/',
   path: '/serial/reports/',
@@ -482,6 +488,7 @@ export interface FileRoutesByFullPath {
   '/postel/$postelId/edit': typeof AppPostelPostelIdEditRoute
   '/qrcode/$designId/edit': typeof AppQrcodeDesignIdEditRoute
   '/qrcode/default/new': typeof AppQrcodeDefaultNewRoute
+  '/serial/gudang/ready': typeof AppSerialGudangReadyRoute
   '/serial/reports/$caseId': typeof AppSerialReportsCaseIdRoute
   '/sticker/types/$typeId': typeof AppStickerTypesTypeIdRoute
   '/access/business-units/': typeof AppAccessBusinessUnitsIndexRoute
@@ -552,6 +559,7 @@ export interface FileRoutesByTo {
   '/postel/$postelId/edit': typeof AppPostelPostelIdEditRoute
   '/qrcode/$designId/edit': typeof AppQrcodeDesignIdEditRoute
   '/qrcode/default/new': typeof AppQrcodeDefaultNewRoute
+  '/serial/gudang/ready': typeof AppSerialGudangReadyRoute
   '/serial/reports/$caseId': typeof AppSerialReportsCaseIdRoute
   '/sticker/types/$typeId': typeof AppStickerTypesTypeIdRoute
   '/access/business-units': typeof AppAccessBusinessUnitsIndexRoute
@@ -624,6 +632,7 @@ export interface FileRoutesById {
   '/_app/postel/$postelId/edit': typeof AppPostelPostelIdEditRoute
   '/_app/qrcode/$designId/edit': typeof AppQrcodeDesignIdEditRoute
   '/_app/qrcode/default/new': typeof AppQrcodeDefaultNewRoute
+  '/_app/serial/gudang/ready': typeof AppSerialGudangReadyRoute
   '/_app/serial/reports/$caseId': typeof AppSerialReportsCaseIdRoute
   '/_app/sticker/types/$typeId': typeof AppStickerTypesTypeIdRoute
   '/_app/access/business-units/': typeof AppAccessBusinessUnitsIndexRoute
@@ -696,6 +705,7 @@ export interface FileRouteTypes {
     | '/postel/$postelId/edit'
     | '/qrcode/$designId/edit'
     | '/qrcode/default/new'
+    | '/serial/gudang/ready'
     | '/serial/reports/$caseId'
     | '/sticker/types/$typeId'
     | '/access/business-units/'
@@ -766,6 +776,7 @@ export interface FileRouteTypes {
     | '/postel/$postelId/edit'
     | '/qrcode/$designId/edit'
     | '/qrcode/default/new'
+    | '/serial/gudang/ready'
     | '/serial/reports/$caseId'
     | '/sticker/types/$typeId'
     | '/access/business-units'
@@ -837,6 +848,7 @@ export interface FileRouteTypes {
     | '/_app/postel/$postelId/edit'
     | '/_app/qrcode/$designId/edit'
     | '/_app/qrcode/default/new'
+    | '/_app/serial/gudang/ready'
     | '/_app/serial/reports/$caseId'
     | '/_app/sticker/types/$typeId'
     | '/_app/access/business-units/'
@@ -1280,6 +1292,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppSerialGudangIndexRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/serial/gudang/ready': {
+      id: '/_app/serial/gudang/ready'
+      path: '/serial/gudang/ready'
+      fullPath: '/serial/gudang/ready'
+      preLoaderRoute: typeof AppSerialGudangReadyRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/serial/reports/': {
       id: '/_app/serial/reports/'
       path: '/serial/reports'
@@ -1400,6 +1419,7 @@ interface AppRouteChildren {
   AppPostelPostelIdEditRoute: typeof AppPostelPostelIdEditRoute
   AppQrcodeDesignIdEditRoute: typeof AppQrcodeDesignIdEditRoute
   AppQrcodeDefaultNewRoute: typeof AppQrcodeDefaultNewRoute
+  AppSerialGudangReadyRoute: typeof AppSerialGudangReadyRoute
   AppSerialReportsCaseIdRoute: typeof AppSerialReportsCaseIdRoute
   AppStickerTypesTypeIdRoute: typeof AppStickerTypesTypeIdRoute
   AppAccessBusinessUnitsIndexRoute: typeof AppAccessBusinessUnitsIndexRoute
@@ -1468,6 +1488,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppPostelPostelIdEditRoute: AppPostelPostelIdEditRoute,
   AppQrcodeDesignIdEditRoute: AppQrcodeDesignIdEditRoute,
   AppQrcodeDefaultNewRoute: AppQrcodeDefaultNewRoute,
+  AppSerialGudangReadyRoute: AppSerialGudangReadyRoute,
   AppSerialReportsCaseIdRoute: AppSerialReportsCaseIdRoute,
   AppStickerTypesTypeIdRoute: AppStickerTypesTypeIdRoute,
   AppAccessBusinessUnitsIndexRoute: AppAccessBusinessUnitsIndexRoute,

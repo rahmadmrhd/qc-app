@@ -5,6 +5,7 @@ import type { LucideIcon } from 'lucide-react';
 import {
   BellRing,
   BookOpen,
+  Boxes,
   Building2,
   CalendarClock,
   ClipboardList,
@@ -175,11 +176,19 @@ export const NAV_GROUPS: NavGroup[] = [
             ],
           },
           {
+            label: 'Stok Ready',
+            to: '/serial/gudang/ready',
+            icon: Boxes,
+            permission: { module: 'serialwh', level: 'view' },
+          },
+          {
             label: 'Riwayat Gudang',
             to: '/serial/gudang/riwayat',
             icon: History,
-            // Form pencatatan dibuka dari tombol "Catat Serial WH" di daftar ini (bukan menu sendiri).
+            // Form pencatatan dibuka dari tombol "Catat Serial WH" di daftar ini (bukan menu sendiri); Stok Ready punya
+            // butir sendiri.
             alsoActiveOn: ['/serial/gudang'],
+            excludes: ['/serial/gudang/ready'],
             permission: { module: 'serialwh', level: 'view' },
           },
           {
@@ -375,9 +384,10 @@ export function isNavItemActive(
   item: NavItem,
   matches: (to: string, fuzzy: boolean) => boolean,
 ): boolean {
+  // Pengecualian menang atas `alsoActiveOn` (Riwayat Gudang menaungi form pencatatan tetapi bukan Stok Ready).
+  if ((item.excludes ?? []).some((to) => matches(to as string, true))) return false;
   if ((item.alsoActiveOn ?? []).some((to) => matches(to as string, true))) return true;
-  if (!matches(item.to as string, item.to !== '/')) return false;
-  return !(item.excludes ?? []).some((to) => matches(to as string, true));
+  return matches(item.to as string, item.to !== '/');
 }
 
 /** Butir aktif untuk rute saat ini beserta induknya; bila beberapa aktif, `to` terpanjang menang. */

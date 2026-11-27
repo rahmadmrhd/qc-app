@@ -18,6 +18,7 @@ import {
   warehouseDraftWritesBlocked,
   writeWarehouseDraft,
 } from '../lib/draft-store';
+import { handOffToDispatch } from '../lib/hand-off';
 import { whItem, whMe, whSerial } from '../lib/test-support';
 
 const apiMock = vi.hoisted(() => vi.fn());
@@ -729,4 +730,30 @@ test('ponsel: satu bar bawah berisi ✕, kotak centang, N dipilih, Batal, dan Si
   expect(document.querySelector('[data-slot="selection-bar"]')).toBeNull();
   expect(screen.getByRole('button', { name: 'Batal' })).toBeInTheDocument();
   expect(screen.getByRole('button', { name: /Salin ke clipboard \(1\)/ })).toBeInTheDocument();
+});
+
+test('serial oper dari Stok Ready muncul di draf dengan Item terisi dan Tujuan Penjualan', async () => {
+  handOffToDispatch(
+    [
+      {
+        serialId: 'h1',
+        serial: 'OPER1',
+        itemId: 'item1',
+        buId: 'bu1',
+        snapshot: whSerial({ id: 'h1', serial: 'OPER1' }),
+      },
+      {
+        serialId: 'h2',
+        serial: 'OPER2',
+        itemId: 'item1',
+        buId: 'bu1',
+        snapshot: whSerial({ id: 'h2', serial: 'OPER2' }),
+      },
+    ],
+    'wh@x.com',
+  );
+  await renderPage();
+  expect(await screen.findByText('OPER1')).toBeInTheDocument();
+  expect(screen.getByText('OPER2')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /Salin ke clipboard \(2\)/ })).toBeEnabled();
 });

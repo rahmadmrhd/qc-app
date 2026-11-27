@@ -67,6 +67,7 @@ const INDEX = [
   '/qrcode/default',
   '/serial',
   '/serial/reports',
+  '/serial/gudang/ready',
   '/serial/gudang/riwayat',
   '/sticker',
   '/sticker/library',
