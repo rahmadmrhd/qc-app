@@ -1,5 +1,6 @@
 import { CL_TEXT_MAX_BYTES } from '@shared/countrylock-bundle';
 import { useQuery } from '@tanstack/react-query';
+import { Link } from '@tanstack/react-router';
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { useUnsavedChanges } from '@/app/pwa/unsaved-changes';
@@ -197,8 +198,12 @@ export function FileEditorPage({ fileId, onBack }: FileEditorPageProps) {
       {settingsFile ? (
         <Alert color="info">
           <AlertDescription>
-            settings.json diubah lewat halaman Pengaturan Router (form yang divalidasi). Di sini
-            hanya dibaca; tab Riwayat dapat mengembalikan revisi lama.
+            settings.json diubah lewat halaman{' '}
+            <Link to="/countrylock/settings" className="underline">
+              Pengaturan Router
+            </Link>{' '}
+            (form yang divalidasi). Di sini hanya dibaca; tab Riwayat dapat mengembalikan revisi
+            lama.
           </AlertDescription>
         </Alert>
       ) : null}

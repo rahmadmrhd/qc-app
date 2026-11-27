@@ -550,7 +550,21 @@ test('admin bundel Country Lock di Sistem: butuh countrylock edit (view hanya me
       .find((parent) => parent.label === 'Sistem')
       ?.children.map((child) => child.label);
   expect(sistem('view')).toBeUndefined();
-  expect(sistem('edit')).toEqual(['Berkas Country Lock']);
+  expect(sistem('edit')).toEqual([
+    'Berkas Country Lock',
+    'Pengaturan Router',
+    'Firmware',
+    'Bundel',
+    'Impor',
+  ]);
+  for (const to of [
+    '/countrylock/settings',
+    '/countrylock/firmware',
+    '/countrylock/bundles',
+    '/countrylock/import',
+  ]) {
+    expect(itemTo(to)).toMatchObject({ permission: { module: 'countrylock', level: 'edit' } });
+  }
 });
 
 test('butir Dashboard tepat di bawah Beranda; tampil bagi pemegang izin widget mana pun saja', () => {

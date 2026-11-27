@@ -3,6 +3,7 @@ import type { Level, ModuleKey } from '@shared/permissions';
 import type { LinkProps } from '@tanstack/react-router';
 import type { LucideIcon } from 'lucide-react';
 import {
+  Archive,
   BellRing,
   BookOpen,
   Boxes,
@@ -10,6 +11,7 @@ import {
   CalendarClock,
   ClipboardList,
   Contact,
+  Cpu,
   Download,
   FileBadge,
   FileCode,
@@ -24,6 +26,7 @@ import {
   MapPin,
   Package,
   QrCode,
+  Router,
   Settings,
   Settings2,
   Shapes,
@@ -31,6 +34,7 @@ import {
   SlidersHorizontal,
   Sticker,
   Tags,
+  Upload,
   UserCog,
   Users,
   Wrench,
@@ -380,6 +384,30 @@ export const NAV_GROUPS: NavGroup[] = [
             label: 'Berkas Country Lock',
             to: '/countrylock/files',
             icon: FileCode,
+            permission: { module: 'countrylock', level: 'edit' },
+          },
+          {
+            label: 'Pengaturan Router',
+            to: '/countrylock/settings',
+            icon: Router,
+            permission: { module: 'countrylock', level: 'edit' },
+          },
+          {
+            label: 'Firmware',
+            to: '/countrylock/firmware',
+            icon: Cpu,
+            permission: { module: 'countrylock', level: 'edit' },
+          },
+          {
+            label: 'Bundel',
+            to: '/countrylock/bundles',
+            icon: Archive,
+            permission: { module: 'countrylock', level: 'edit' },
+          },
+          {
+            label: 'Impor',
+            to: '/countrylock/import',
+            icon: Upload,
             permission: { module: 'countrylock', level: 'edit' },
           },
         ],
