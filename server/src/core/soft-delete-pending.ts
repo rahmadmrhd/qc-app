@@ -44,7 +44,7 @@ export const SOFT_DELETE_PENDING: Record<string, readonly string[]> = {
  * `"<berkas>#<kunci pemindai>"`, nilai = alasan.
  */
 export const SOFT_DELETE_EXEMPT: Record<string, string> = {
-  'server/src/modules/serialwh/options.ts#brands@1#4f1cc96e':
+  'server/src/modules/serialwh/options.ts#brands@1#91c85afe':
     'Penampil rujukan: opsi Item menampilkan nama merk walau merk terhapus (LEFT JOIN dari item hidup aktif); tak ada keputusan hak atau aturan.',
   'server/src/modules/serialwh/options.ts#item_business_units@1#a82e00c6':
     'Anak dari item yang SUDAH tersaring (daftar id berasal dari kueri item hidup di atasnya); hanya mengambil BU tertaut item untuk label opsi.',
