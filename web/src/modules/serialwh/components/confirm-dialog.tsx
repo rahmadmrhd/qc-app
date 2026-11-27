@@ -1,4 +1,8 @@
-import type { WarehouseHandoverContextDto, WarehouseOptionsDto } from '@shared/contract';
+import type {
+  WarehouseHandoverContextDto,
+  WarehouseItemOptionDto,
+  WarehouseOptionsDto,
+} from '@shared/contract';
 import { customerKey } from '@shared/handover';
 import {
   normalizeOrderNumber,
@@ -29,7 +33,7 @@ import { CustomerCombobox } from '@/modules/handover/components/customer-combobo
 import { todayWib } from '@/modules/serial/lib/locations';
 import { summarizeRows } from '../lib/draft';
 import type { WarehouseDraftRow } from '../lib/draft-store';
-import { boxPlanSummary, parsePositiveInt, type WarehouseItemWithBox } from '../lib/ready-box';
+import { boxPlanSummary, parsePositiveInt } from '../lib/ready-box';
 import { countWarnings } from '../lib/warnings';
 import {
   lookupWarehouseSerials,
@@ -65,7 +69,7 @@ export interface ConfirmDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   rows: readonly WarehouseDraftRow[];
-  item: WarehouseItemWithBox | null;
+  item: WarehouseItemOptionDto | null;
   /** BU form saat ini (chip BU). */
   formBuId: string;
   buOptions: readonly LinkOption[];
@@ -225,8 +229,7 @@ function ConfirmBody({
   const [boxStartText, setBoxStartText] = useState<string | null>(null);
   const [boxSizeText, setBoxSizeText] = useState<string | null>(null);
   const boxStartShown = boxStartText ?? defaultBoxStart;
-  const boxSizeShown =
-    boxSizeText ?? (item?.boxSize && item.boxSize > 0 ? String(item.boxSize) : '');
+  const boxSizeShown = boxSizeText ?? (item && item.boxSize > 0 ? String(item.boxSize) : '');
   const boxStart = parsePositiveInt(boxStartShown);
   const boxSize = parsePositiveInt(boxSizeShown);
   const boxSummary =

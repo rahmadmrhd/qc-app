@@ -1,11 +1,4 @@
-import type { WarehouseItemOptionDto } from '@shared/contract';
 import { assignBoxes } from '@shared/serial-warehouse';
-
-/**
- * Opsi Item Gudang dengan pcs per kardus. `boxSize` belum ada di `WarehouseItemOptionDto` kontrak: dibaca bila server
- * mengirimnya, selain itu isian "Isi per kardus" kosong dan diisi pengguna.
- */
-export type WarehouseItemWithBox = WarehouseItemOptionDto & { boxSize?: number };
 
 /** Bilangan bulat positif dari isian teks, atau `null` bila kosong, bukan bilangan bulat, atau <= 0. */
 export function parsePositiveInt(text: string): number | null {

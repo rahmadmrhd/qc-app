@@ -1,6 +1,5 @@
-import type { MeDto, WarehouseSerialDto } from '@shared/contract';
+import type { MeDto, WarehouseItemOptionDto, WarehouseSerialDto } from '@shared/contract';
 import { makeMe } from '@/test/make-me';
-import type { WarehouseItemWithBox } from './ready-box';
 
 /** Serial gudang contoh untuk tes (lolos, QC, belum pernah keluar). */
 export function whSerial(overrides: Partial<WarehouseSerialDto> = {}): WarehouseSerialDto {
@@ -25,7 +24,7 @@ export function whSerial(overrides: Partial<WarehouseSerialDto> = {}): Warehouse
   };
 }
 
-export function whItem(overrides: Partial<WarehouseItemWithBox> = {}): WarehouseItemWithBox {
+export function whItem(overrides: Partial<WarehouseItemOptionDto> = {}): WarehouseItemOptionDto {
   return {
     id: 'item1',
     label: 'Tenda AX300',
@@ -34,6 +33,7 @@ export function whItem(overrides: Partial<WarehouseItemWithBox> = {}): Warehouse
     buIds: ['bu1'],
     proofRequired: false,
     proofMin: 0,
+    boxSize: 12,
     ...overrides,
   };
 }

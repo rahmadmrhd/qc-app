@@ -661,7 +661,8 @@ test('Ready Stock: header tanpa SO, customer, dan task; hasil membuka detail rea
   const { router } = await renderPage();
   await userEvent.click(await screen.findByRole('button', { name: /Salin ke clipboard \(1\)/ }));
   await pickSelect(screen, 'Tujuan', 'Ready Stock');
-  await userEvent.type(await screen.findByLabelText('Isi per kardus'), '10');
+  // Bawaan isi per kardus = boxSize Item terpilih (whItem: 12).
+  await waitFor(() => expect(screen.getByLabelText('Isi per kardus')).toHaveValue(12));
   await userEvent.click(screen.getByRole('button', { name: 'Simpan & salin' }));
   await waitFor(() => expect(submitCalls).toHaveLength(1));
   const header = submitCalls[0]?.header;
@@ -672,7 +673,7 @@ test('Ready Stock: header tanpa SO, customer, dan task; hasil membuka detail rea
     handoverIds: [],
     buId: 'bu1',
     boxStart: 1,
-    boxSize: 10,
+    boxSize: 12,
   });
   expect(header).not.toHaveProperty('orderId');
   expect(await screen.findByRole('textbox', { name: 'Daftar Serial Number' })).toHaveValue('RDY1');

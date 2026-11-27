@@ -403,6 +403,7 @@ export function DispatchPage({ handoverId, onCancel }: DispatchPageProps) {
                 buIds: [],
                 proofRequired: false,
                 proofMin: 0,
+                boxSize: 0,
               });
             }
             addAcc(makeExistingRow(dto));
@@ -946,6 +947,7 @@ export function DispatchPage({ handoverId, onCancel }: DispatchPageProps) {
             buIds: [],
             proofRequired: false,
             proofMin: 0,
+            boxSize: 0,
           });
           commitRows(addRow(live.current.rows, makeExistingRow(dto)) as WarehouseDraftRow[]);
           setTypeDialog(null);
