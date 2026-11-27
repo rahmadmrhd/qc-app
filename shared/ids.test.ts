@@ -1,13 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import {
-  formatUlid,
-  isUlid,
-  LEGACY_UUID_PATTERN,
-  nextUlidState,
-  ULID_ALPHABET,
-  ULID_TIME_MAX,
-  ulidTime,
-} from './ids';
+import { formatUlid, isUlid, nextUlidState, ULID_ALPHABET, ULID_TIME_MAX, ulidTime } from './ids';
 
 const bytes = (fill: number) => new Uint8Array(10).fill(fill);
 
@@ -38,9 +30,8 @@ describe('isUlid', () => {
     }
   });
 
-  test('UUID lama dikenali pola UUID, bukan ULID', () => {
-    expect(LEGACY_UUID_PATTERN.test('fa8af035-9bb2-59fb-a104-c89f8cfef4ca')).toBe(true);
-    expect(LEGACY_UUID_PATTERN.test('01arz3ndektsv4rrffq69g5fav')).toBe(false);
+  test('UUID lama bukan ULID', () => {
+    expect(isUlid('fa8af035-9bb2-59fb-a104-c89f8cfef4ca')).toBe(false);
   });
 });
 
