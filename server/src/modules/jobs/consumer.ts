@@ -3,6 +3,7 @@ import { nowIso, nowOf } from '@server/core/env';
 import { isAppError } from '@server/core/errors';
 import type { JobKind } from '@shared/contract';
 import { backupHandler } from '../backup/service';
+import { backupVerifyHandler } from '../backup/verify-job';
 import { qrExportHandler } from '../qrcode/export';
 import { serialAlertHandler } from '../serial/alert-job';
 import { serialProofHandler } from '../serial/proof/job';
@@ -53,6 +54,8 @@ function handlerOf(kind: JobKind): JobHandler {
       return cleanupHandler;
     case 'db_backup':
       return backupHandler;
+    case 'backup_verify':
+      return backupVerifyHandler;
     case 'serial_alert':
       return serialAlertHandler;
     case 'serial_proof':

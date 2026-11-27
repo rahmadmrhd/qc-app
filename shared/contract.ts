@@ -2978,6 +2978,7 @@ export type JobKind =
   | 'sheets_export'
   | 'cleanup_qr'
   | 'db_backup'
+  | 'backup_verify'
   | 'serial_alert'
   | 'serial_proof';
 export type JobStatus = 'queued' | 'running' | 'done' | 'failed';

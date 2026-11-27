@@ -13,6 +13,7 @@ import {
   startScheduler,
 } from '@server/jobs/runner';
 import { createMariadbDumpRunner, parseDatabaseUrl } from '@server/modules/backup/dump';
+import { createVerifyPortsFactory } from '@server/modules/backup/verify-ports';
 import { drainVisitRecordings } from '@server/modules/dashboard/share-visits';
 import { closeAllNotificationStreams } from '@server/modules/notification/stream-hub';
 import { createWebPushSender } from '@server/modules/notification/web-push';
@@ -51,6 +52,7 @@ export interface QcServer {
 
 /** Menyusun `Env` aplikasi dari konfigurasi dan sebuah `Db`. */
 export function envFromConfig(config: Config, db: Db): Env {
+  const backupVerify = createVerifyPortsFactory(config.restoreDatabaseUrl);
   const google = {
     GOOGLE_SA_KEY_FILE: config.googleSaKeyFile,
     GOOGLE_ROOT_FOLDER_ID: config.googleRootFolderId,
@@ -84,6 +86,7 @@ export function envFromConfig(config: Config, db: Db): Env {
     PROOF_STAGING_MAX_BYTES: config.proofStagingMaxBytes,
     BACKUP_DUMP: (outputPath) =>
       createMariadbDumpRunner(parseDatabaseUrl(config.databaseUrl))(outputPath),
+    ...(backupVerify === undefined ? {} : { BACKUP_VERIFY: backupVerify }),
     ...(config.smtp === null ? {} : { MAILER: createSmtpMailer(config.smtp) }),
     ALERT_TO: config.alertTo,
     ...(config.vapid === null

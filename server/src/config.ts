@@ -38,6 +38,8 @@ export interface Config {
   proofStagingMaxBytes: number;
   /** Sakelar cadangan terjadwal (`BACKUP_ENABLED`): kosong/`true` = hidup di produksi dengan Google terkonfigurasi, `false` = mati (mis. staging). CLI pemulihan tidak bergantung padanya. */
   backupEnabled: boolean;
+  /** `RESTORE_DATABASE_URL`: pengguna DB berhak terbatas (`qc_restore`) untuk uji pemulihan cadangan otomatis; kosong/tak valid = verifikasi cadangan mati (tidak menggagalkan start). */
+  restoreDatabaseUrl: string;
   /** SMTP untuk email peringatan; `null` = belum dikonfigurasi/tidak dapat dipakai (peringatan dilewati dan dicatat). */
   smtp: SmtpSettings | null;
   /** Penerima peringatan (`ALERT_TO`, dipisah koma; entri yang bukan alamat email dibuang). */
@@ -315,6 +317,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
       get('PROOF_STAGING_DIR') || (production ? PRODUCTION_PROOF_DIR : resolve('./data/proofs')),
     proofStagingMaxBytes,
     backupEnabled: backupEnabledRaw !== 'false',
+    restoreDatabaseUrl: get('RESTORE_DATABASE_URL'),
     smtp,
     alertTo,
     vapid,
