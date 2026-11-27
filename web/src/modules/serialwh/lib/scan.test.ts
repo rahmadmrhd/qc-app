@@ -68,13 +68,13 @@ test('belum ada tanpa Item: ditahan dan menyebut Item', () => {
   expect(outcome.missing).toContain('item');
 });
 
-test('belum ada tanpa BU, Lokasi, Tanggal uji: ditahan dan menyebut yang kurang', () => {
+test('belum ada tanpa BU, Lokasi, Tanggal uji: tetap draf baru (dilengkapi di dialog Simpan)', () => {
   const outcome = classifyScan(
     { ...base, filters: { buId: '', locationId: '', testDate: '' } },
     null,
     'SN9',
   );
-  expect(outcome.missing).toEqual(['bu', 'location', 'testDate']);
+  expect(outcome.kind).toBe('new_draft');
 });
 
 test('sudah ada di pilihan sesi ini: diabaikan', () => {

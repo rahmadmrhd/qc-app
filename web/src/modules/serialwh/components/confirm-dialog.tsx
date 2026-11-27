@@ -7,10 +7,11 @@ import { customerKey } from '@shared/handover';
 import {
   normalizeOrderNumber,
   orderNumberProblem,
+  WAREHOUSE_BOX_LIMITS,
   WAREHOUSE_LIMITS,
 } from '@shared/serial-warehouse';
 import { isIsoDate } from '@shared/serials';
-import { useInfiniteQuery } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
 import { LinkField, type LinkOption } from '@/components/link-field';
 import { Select } from '@/components/select';
@@ -32,8 +33,13 @@ import { CustomerCombobox } from '@/modules/handover/components/customer-combobo
 import { todayWib } from '@/modules/serial/lib/locations';
 import { summarizeRows } from '../lib/draft';
 import type { WarehouseDraftRow } from '../lib/draft-store';
+import { boxPlanSummary, parsePositiveInt } from '../lib/ready-box';
 import { countWarnings } from '../lib/warnings';
-import { lookupWarehouseSerials, warehouseOrderOptionsQueryOptions } from '../queries';
+import {
+  lookupWarehouseSerials,
+  readyMaxBoxQueryOptions,
+  warehouseOrderOptionsQueryOptions,
+} from '../queries';
 import { HandoverLinkPicker } from './handover-link-picker';
 import { findMatchingOrder, OrderNumberCombobox } from './order-number-combobox';
 import { WarningBanners } from './warning-banners';
@@ -51,6 +57,12 @@ export interface ConfirmValues {
   customerName: string;
   note: string;
   handoverIds: string[];
+  /** Lokasi/tanggal uji untuk serial baru yang belum punya (hanya bila ada baris seperti itu). */
+  newLocationId?: string;
+  newTestDate?: string;
+  /** Hanya mode `ready`: nomor kardus pertama dan pcs per kardus. */
+  boxStart?: number;
+  boxSize?: number;
 }
 
 export interface ConfirmDialogProps {
@@ -61,6 +73,10 @@ export interface ConfirmDialogProps {
   /** BU form saat ini (chip BU). */
   formBuId: string;
   buOptions: readonly LinkOption[];
+  locationOptions: readonly LinkOption[];
+  /** Nilai awal dari chip Lokasi/Tanggal uji (boleh kosong). */
+  defaultLocationId: string;
+  defaultTestDate: string;
   options: WarehouseOptionsDto | undefined;
   /** Konteks task asal (`?handover`). */
   handoverContext?: WarehouseHandoverContextDto | undefined;
@@ -72,6 +88,8 @@ export interface ConfirmDialogProps {
   onRemoveRows: (serialIds: readonly string[]) => void;
   /** Dipanggil SINKRON dari klik "Simpan & salin" (gestur untuk clipboard). */
   onConfirm: (values: ConfirmValues) => void;
+  /** Galat server pada nomor kardus awal (mis. "Nomor kardus sudah dipakai") dari kiriman sebelumnya. */
+  boxStartError?: string | undefined;
 }
 
 const CHUNK = WAREHOUSE_LIMITS.lookupMax;
@@ -98,6 +116,9 @@ function ConfirmBody({
   item,
   formBuId,
   buOptions,
+  locationOptions,
+  defaultLocationId,
+  defaultTestDate,
   options,
   handoverContext,
   originHandoverId,
@@ -105,6 +126,7 @@ function ConfirmBody({
   onPurposeChange,
   onRemoveRows,
   onConfirm,
+  boxStartError,
 }: ConfirmDialogProps) {
   const isReady = purpose === 'ready';
   const today = todayWib();
@@ -118,6 +140,11 @@ function ConfirmBody({
   const [touched, setTouched] = useState(false);
   // BU pilihan di dialog ini: baru menggantikan chip BU form saat disimpan (batal tidak mengubah apa pun).
   const [pickedBuId, setPickedBuId] = useState(formBuId);
+  // Serial baru tanpa lokasi/tanggal uji (chip filter kosong saat scan) melengkapinya di sini.
+  const fillLocation = rows.some((row) => row.kind === 'new' && row.locationId === '');
+  const fillTestDate = rows.some((row) => row.kind === 'new' && row.testDate === '');
+  const [newLocationId, setNewLocationId] = useState(defaultLocationId);
+  const [newTestDate, setNewTestDate] = useState(defaultTestDate === '' ? today : defaultTestDate);
 
   const typed = normalizeOrderNumber(orderNumber);
   const orderQuery = useInfiniteQuery({
@@ -193,6 +220,23 @@ function ConfirmBody({
   const { counts } = countWarnings(rows, buId);
   const needsPhotoBanner = rows.some((row) => row.kind === 'new') && item?.proofRequired === true;
 
+  // Kardus (hanya Ready Stock): nomor awal bawaan = kardus tertinggi BU + Tipe ini + 1 (1 bila belum diketahui).
+  const maxBoxQuery = useQuery({
+    ...readyMaxBoxQueryOptions(isReady ? buId : '', item?.id ?? ''),
+    enabled: isReady && buId !== '' && item !== null,
+  });
+  const defaultBoxStart = String((maxBoxQuery.data?.totals?.maxBoxNumber ?? 0) + 1);
+  const [boxStartText, setBoxStartText] = useState<string | null>(null);
+  const [boxSizeText, setBoxSizeText] = useState<string | null>(null);
+  const boxStartShown = boxStartText ?? defaultBoxStart;
+  const boxSizeShown = boxSizeText ?? (item && item.boxSize > 0 ? String(item.boxSize) : '');
+  const boxStart = parsePositiveInt(boxStartShown);
+  const boxSize = parsePositiveInt(boxSizeShown);
+  const boxSummary =
+    isReady && boxStart !== null && boxSize !== null
+      ? boxPlanSummary({ startNumber: boxStart, size: boxSize, count: rows.length })
+      : null;
+
   const needsItemBu = rows.some((row) => row.kind === 'new');
   const orderProblem = orderNumberProblem(typed);
   const errors = {
@@ -216,6 +260,21 @@ function ConfirmBody({
       !isIsoDate(dispatchedOn) || dispatchedOn > today
         ? `${isReady ? 'Tanggal catat' : 'Tanggal keluar'} tidak boleh setelah hari ini`
         : undefined,
+    location: fillLocation && newLocationId === '' ? 'Lokasi wajib dipilih' : undefined,
+    testDate:
+      fillTestDate && (!isIsoDate(newTestDate) || newTestDate > today)
+        ? 'Tanggal uji tidak boleh kosong atau setelah hari ini'
+        : undefined,
+    boxStart:
+      isReady && (boxStart === null || boxStart > WAREHOUSE_BOX_LIMITS.numberMax)
+        ? `Nomor kardus awal harus 1 sampai ${WAREHOUSE_BOX_LIMITS.numberMax}`
+        : undefined,
+    boxSize:
+      isReady && (boxSize === null || boxSize > WAREHOUSE_BOX_LIMITS.sizeMax)
+        ? boxSize === null
+          ? 'Isi per kardus harus lebih dari 0'
+          : `Isi per kardus maksimal ${WAREHOUSE_BOX_LIMITS.sizeMax}`
+        : undefined,
     note: [...note].length > WAREHOUSE_LIMITS.noteMax ? 'Catatan terlalu panjang' : undefined,
   };
   const blocked =
@@ -231,7 +290,7 @@ function ConfirmBody({
   function submit() {
     setTouched(true);
     if (blocked) return;
-    if (isReady) {
+    if (isReady && boxStart !== null && boxSize !== null) {
       onConfirm({
         mode: 'ready',
         dispatchedOn,
@@ -240,6 +299,10 @@ function ConfirmBody({
         customerName: '',
         note: note.trim(),
         handoverIds: [],
+        boxStart,
+        boxSize,
+        ...(fillLocation ? { newLocationId } : {}),
+        ...(fillTestDate ? { newTestDate } : {}),
       });
       return;
     }
@@ -252,6 +315,8 @@ function ConfirmBody({
       customerName: effectiveCustomer.trim(),
       note: note.trim(),
       handoverIds,
+      ...(fillLocation ? { newLocationId } : {}),
+      ...(fillTestDate ? { newTestDate } : {}),
     });
   }
 
@@ -363,6 +428,42 @@ function ConfirmBody({
           ) : null}
         </div>
 
+        {fillLocation ? (
+          <LinkField
+            id="wh-new-location"
+            label="Lokasi serial baru"
+            required
+            value={newLocationId === '' ? null : newLocationId}
+            onChange={(next) => setNewLocationId(next ?? '')}
+            options={locationOptions}
+            localFilter
+            highlight
+            keyboardless
+            placeholder="Pilih lokasi"
+            {...(touched && errors.location ? { error: errors.location } : {})}
+          />
+        ) : null}
+        {fillTestDate ? (
+          <div className="space-y-1.5">
+            <Label htmlFor="wh-new-test-date" required>
+              Tanggal uji serial baru
+            </Label>
+            <Input
+              id="wh-new-test-date"
+              type="date"
+              max={today}
+              aria-required="true"
+              value={newTestDate}
+              onChange={(event) => setNewTestDate(event.target.value)}
+            />
+            {touched && errors.testDate ? (
+              <p role="alert" className="text-xs text-destructive-text">
+                {errors.testDate}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
+
         {isReady ? null : (
           <>
             {matched ? (
@@ -411,6 +512,63 @@ function ConfirmBody({
             </div>
           </>
         )}
+
+        {isReady ? (
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="wh-box-start" required>
+                  Nomor kardus awal
+                </Label>
+                <Input
+                  id="wh-box-start"
+                  type="number"
+                  inputMode="numeric"
+                  min={1}
+                  max={WAREHOUSE_BOX_LIMITS.numberMax}
+                  aria-required="true"
+                  value={boxStartShown}
+                  onChange={(event) => setBoxStartText(event.target.value)}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="wh-box-size" required>
+                  Isi per kardus
+                </Label>
+                <Input
+                  id="wh-box-size"
+                  type="number"
+                  inputMode="numeric"
+                  min={1}
+                  max={WAREHOUSE_BOX_LIMITS.sizeMax}
+                  aria-required="true"
+                  value={boxSizeShown}
+                  onChange={(event) => setBoxSizeText(event.target.value)}
+                />
+              </div>
+            </div>
+            {boxStartError && boxStartText === null ? (
+              <p role="alert" className="text-xs text-destructive-text">
+                {boxStartError}
+              </p>
+            ) : null}
+            {touched && errors.boxStart ? (
+              <p role="alert" className="text-xs text-destructive-text">
+                {errors.boxStart}
+              </p>
+            ) : null}
+            {touched && errors.boxSize ? (
+              <p role="alert" className="text-xs text-destructive-text">
+                {errors.boxSize}
+              </p>
+            ) : null}
+            {boxSummary ? (
+              <p className="text-xs text-muted-foreground" role="status">
+                {boxSummary}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
 
         <div className="space-y-1.5">
           <Label htmlFor="wh-note">Catatan</Label>

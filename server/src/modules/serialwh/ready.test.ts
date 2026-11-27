@@ -27,9 +27,14 @@ beforeEach(async () => {
 const count = async (sql: string): Promise<number> =>
   Number((await env.DB.prepare(sql).first<{ n: number | string }>())?.n ?? 0);
 
+let boxCursor = 1;
+
 function readyHeader(total: number, over: Record<string, unknown> = {}) {
+  boxCursor += 100;
   return {
     mode: 'ready',
+    boxStart: boxCursor,
+    boxSize: 10,
     dispatchedOn: '2026-11-12',
     orderNumber: '',
     buId: 'bu-a',
@@ -107,6 +112,8 @@ describe('Catat ready: simpan', () => {
       chunkIndex: 0,
       header: {
         mode: 'ready',
+        boxStart: 7,
+        boxSize: 10,
         dispatchedOn: '2026-11-12',
         buId: 'bu-a',
         itemId: 'i-a1',
@@ -327,14 +334,16 @@ describe('Catat ready: simpan', () => {
   test('idempoten per clientId: kirim ulang tak menggandakan; mode atau isi beda ditolak', async () => {
     const clientId = crypto.randomUUID();
     const rows = [fresh('IDEM-1')];
-    const first = await submitReady(E, rows, { clientId });
-    const second = await submitReady(E, rows, { clientId });
+    // Header kiriman ulang harus identik, termasuk nomor kardus.
+    const same = { boxStart: 900 };
+    const first = await submitReady(E, rows, { clientId, header: same });
+    const second = await submitReady(E, rows, { clientId, header: same });
     expect(second.ok).toBe(true);
     expect(second.data.dispatchId).toBe(first.data.dispatchId);
     expect(second.data.created).toBe(0);
     expect(await count('SELECT COUNT(*) AS n FROM warehouse_dispatch_serials')).toBe(1);
     expect(await count("SELECT COUNT(*) AS n FROM serial_events WHERE type = 'recorded'")).toBe(1);
-    const changed = await submitReady(E, rows, { clientId, header: { note: 'lain' } });
+    const changed = await submitReady(E, rows, { clientId, header: { ...same, note: 'lain' } });
     expect(changed.ok).toBe(false);
     expect(changed.error.code).toBe('VALIDATION');
     const asOrder = await call(E, 'serialWarehouse.submit', {
@@ -345,7 +354,7 @@ describe('Catat ready: simpan', () => {
     });
     expect(asOrder.ok).toBe(false);
     // Pelaku lain dijawab generik.
-    const foreign = await submitReady(WH_USERS.both, rows, { clientId });
+    const foreign = await submitReady(WH_USERS.both, rows, { clientId, header: same });
     expect(foreign.error.code).toBe('CONFLICT');
   });
 

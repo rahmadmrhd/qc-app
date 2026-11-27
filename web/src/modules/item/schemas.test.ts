@@ -10,6 +10,7 @@ const valid = {
   firmware: '',
   proofRequired: false,
   proofMin: 1,
+  boxSize: 0,
   aliasesText: '',
   stickerPhotos: [],
   accessories: [],
@@ -194,6 +195,7 @@ test('toSaveItemInput merapikan teks dan mengubah nama lain menjadi daftar; id h
     firmware: '',
     proofRequired: false,
     proofMin: 1,
+    boxSize: 0,
     aliases: ['ES24', 'AirFiber'],
     stickerPhotos: [
       {
@@ -222,6 +224,7 @@ const baseItem = {
   firmware: '',
   proofRequired: false,
   proofMin: 1,
+  boxSize: 0,
   status: 'active',
   aliases: ['ES24', 'AirFiber'],
   imageCount: 1,
@@ -272,6 +275,7 @@ test('toItemFormDefaults: kosong tanpa item; dari item menggabungkan nama lain p
     firmware: '',
     proofRequired: false,
     proofMin: 1,
+    boxSize: 0,
     aliasesText: '',
     stickerPhotos: [],
     accessories: [],
@@ -330,6 +334,7 @@ test('toSaveItemInput menyertakan expectedUpdatedAt hanya untuk ubah', () => {
     firmware: '',
     proofRequired: false,
     proofMin: 1,
+    boxSize: 0,
     aliasesText: '',
     stickerPhotos: [],
     accessories: [],
@@ -369,4 +374,15 @@ test('wajib foto: proofMin di luar 1-5, pecahan, atau NaN ditolak hanya bila waj
 test('toItemFormDefaults mengisi wajib foto dari ItemDto', () => {
   const defaults = toItemFormDefaults({ ...baseItem, proofRequired: true, proofMin: 3 });
   expect(defaults).toMatchObject({ proofRequired: true, proofMin: 3 });
+});
+
+test('pcs per kardus: 0 sampai 1000 bilangan bulat, dikirim apa adanya', () => {
+  expect(messages({ boxSize: 12 })).toEqual([]);
+  expect(toSaveItemInput(itemFormSchema.parse({ ...valid, boxSize: 12 }))).toMatchObject({
+    boxSize: 12,
+  });
+  for (const boxSize of [-1, 1001, 1.5, Number.NaN]) {
+    expect(messages({ boxSize }).length).toBeGreaterThan(0);
+  }
+  expect(toItemFormDefaults({ ...baseItem, boxSize: 24 })).toMatchObject({ boxSize: 24 });
 });

@@ -98,6 +98,7 @@ function ListPageInner({
                 <ActionButton
                   action={headerAction.kind ?? 'create'}
                   label={headerAction.label}
+                  emphasis="primary"
                   onClick={headerAction.onClick}
                   data-tour={headerAction.tour}
                 />

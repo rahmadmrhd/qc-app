@@ -33,6 +33,7 @@ export function whItem(overrides: Partial<WarehouseItemOptionDto> = {}): Warehou
     buIds: ['bu1'],
     proofRequired: false,
     proofMin: 0,
+    boxSize: 12,
     ...overrides,
   };
 }

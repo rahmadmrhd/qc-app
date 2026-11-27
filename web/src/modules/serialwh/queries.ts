@@ -1,4 +1,5 @@
 import type {
+  ListReadyStockInput,
   ListWarehouseDispatchesInput,
   ListWarehouseDispatchSerialsInput,
   ListWarehouseHandoverCandidatesInput,
@@ -27,6 +28,32 @@ export type WarehouseSerialsFilter = Omit<ListWarehouseSerialsInput, 'cursor'>;
 export type WarehouseOrderOptionsFilter = Omit<ListWarehouseOrderOptionsInput, 'cursor'>;
 export type WarehouseCandidatesFilter = Omit<ListWarehouseHandoverCandidatesInput, 'cursor'>;
 export type WarehouseDispatchesFilter = Omit<ListWarehouseDispatchesInput, 'cursor'>;
+export type ReadyStockFilter = Omit<ListReadyStockInput, 'cursor'>;
+
+/** Stok Ready per kardus (berkursor; kardus utuh per halaman). */
+export function readyStockQueryOptions(filter: ReadyStockFilter = {}) {
+  return infiniteQueryOptions({
+    queryKey: serialwhKeys.readyStock(filter),
+    queryFn: ({ pageParam }) =>
+      api('serialWarehouse.readyStock', {
+        ...filter,
+        ...(pageParam ? { cursor: pageParam } : {}),
+      }),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (last) => last.nextCursor ?? undefined,
+    placeholderData: keepPreviousData,
+  });
+}
+
+/** Nomor kardus tertinggi untuk BU dan Tipe (bawaan nomor awal di dialog simpan ready); hanya `totals` yang dipakai. */
+export function readyMaxBoxQueryOptions(buId: string, itemId: string) {
+  const filter: ReadyStockFilter = { buIds: [buId], itemIds: [itemId], limit: 1 };
+  return queryOptions({
+    queryKey: [...serialwhKeys.readyStock(filter), 'max'] as const,
+    queryFn: () => api('serialWarehouse.readyStock', filter),
+    enabled: buId !== '' && itemId !== '',
+  });
+}
 
 /** Pilihan Item pada BU ber-`serialwh: edit` (cari di server, berkursor). */
 export function warehouseItemOptionsQueryOptions(filter: WarehouseItemOptionsFilter = {}) {

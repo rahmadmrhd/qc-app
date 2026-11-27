@@ -165,6 +165,7 @@ export function toItemDto(
     firmware: item.firmware,
     proofRequired: item.proofRequired,
     proofMin: item.proofMin,
+    boxSize: item.boxSize,
     createdAt: item.createdAt,
     updatedBy: item.updatedBy,
   };
@@ -183,6 +184,7 @@ export function itemSnapshot(item: ItemView, detailHash?: string): Record<string
     firmware: item.firmware,
     proofRequired: item.proofRequired,
     proofMin: item.proofMin,
+    boxSize: item.boxSize,
     status: item.status,
     aliases: [...item.aliases],
     // Skalar teks (bukan objek) agar terbaca di UI Log Audit.
@@ -656,6 +658,7 @@ type ComparableItem = {
   firmware: string;
   proofRequired: boolean;
   proofMin: number;
+  boxSize: number;
   attachments: readonly string[];
   detail: string;
   accessories: readonly ItemAccessoryDto[];
@@ -674,6 +677,7 @@ export function itemContentEquals(a: ComparableItem, b: ComparableItem): boolean
     a.firmware !== b.firmware ||
     a.proofRequired !== b.proofRequired ||
     a.proofMin !== b.proofMin ||
+    a.boxSize !== b.boxSize ||
     a.status !== b.status ||
     a.detail !== b.detail ||
     a.attachments.length !== b.attachments.length ||
@@ -993,6 +997,7 @@ export async function planItemWrite(
     firmware,
     proofRequired: proof.proofRequired,
     proofMin: proof.proofMin,
+    boxSize: input.boxSize ?? existing?.boxSize ?? 0,
     aliases: [...input.aliases],
     accessories: input.accessories.map((accessory) => ({ ...accessory })),
     attachments: [...input.attachments],

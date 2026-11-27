@@ -1,4 +1,5 @@
 import type {
+  ListReadyStockInput,
   ListWarehouseDispatchesInput,
   ListWarehouseDispatchSerialsInput,
   ListWarehouseHandoverCandidatesInput,
@@ -26,5 +27,7 @@ export const serialwhKeys = {
   order: (id: string) => ['serialwh', 'order', id] as const,
   dispatchSerials: (id: string, input: Omit<ListWarehouseDispatchSerialsInput, 'id' | 'cursor'>) =>
     ['serialwh', 'dispatch-serials', id, input] as const,
+  readyStock: (input: Omit<ListReadyStockInput, 'cursor'>) =>
+    ['serialwh', 'ready-stock', input] as const,
   copyText: (id: string) => ['serialwh', 'copy-text', id] as const,
 };

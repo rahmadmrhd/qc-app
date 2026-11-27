@@ -110,6 +110,10 @@ export async function listWarehouseDispatches(
     where.push(`o.customer_id IN (${placeholders(input.customerIds.length)})`);
     binds.push(...input.customerIds);
   }
+  if (input.itemIds !== undefined) {
+    where.push(`d.item_id IN (${placeholders(input.itemIds.length)})`);
+    binds.push(...input.itemIds);
+  }
   if (input.from !== undefined) {
     where.push('d.dispatched_on >= ?');
     binds.push(input.from);

@@ -160,3 +160,18 @@ test('INTERNAL pada potongan terakhir juga putus; VALIDATION tetap gagal', async
   });
   expect(rejected.status).toBe('failed');
 });
+
+test('freezeSubmission meneruskan boxStart/boxSize mode ready ke header, mode order tidak membawanya', () => {
+  const ready = freezeSubmission(rows(2), {
+    ...fields,
+    mode: 'ready',
+    orderNumber: '',
+    customerName: '',
+    boxStart: 12,
+    boxSize: 10,
+  });
+  expect(ready.header).toMatchObject({ mode: 'ready', boxStart: 12, boxSize: 10, total: 2 });
+  const order = freezeSubmission(rows(2), fields);
+  expect(order.header).not.toHaveProperty('boxStart');
+  expect(order.header).not.toHaveProperty('boxSize');
+});

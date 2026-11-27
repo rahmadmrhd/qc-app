@@ -67,6 +67,8 @@ const EXPECTED_TABLES = [
   'warehouse_dispatches',
   'warehouse_order_handovers',
   'warehouse_orders',
+  'warehouse_ready_boxes',
+  'warehouse_ready_serials',
 ];
 
 let admin: Db;
@@ -310,7 +312,7 @@ describe('skema baseline', () => {
     await db.close();
   });
 
-  test('51 tabel aplikasi + schema_migrations; terapan dua kali tak mengubah apa pun', async () => {
+  test('53 tabel aplikasi + schema_migrations; terapan dua kali tak mengubah apa pun', async () => {
     const before = await tableNames(db);
     expect(before).toEqual(EXPECTED_TABLES);
     expect(await applyMigrations(db)).toEqual([]);
@@ -365,6 +367,7 @@ describe('skema baseline', () => {
       { name: '0040_serial_keluar_gudang.sql' },
       { name: '0041_serial_ready_wh.sql' },
       { name: '0042_serial_wh_nomor_riwayat.sql' },
+      { name: '0043_stok_ready_kardus.sql' },
     ]);
   });
 
@@ -598,6 +601,11 @@ describe('skema baseline', () => {
         'warehouse_orders.warehouse_orders_bu_updated',
         'warehouse_orders.warehouse_orders_customer',
         'warehouse_orders.warehouse_orders_key',
+        'warehouse_ready_boxes.warehouse_ready_boxes_dispatch',
+        'warehouse_ready_boxes.warehouse_ready_boxes_open',
+        'warehouse_ready_serials.warehouse_ready_serials_box',
+        'warehouse_ready_serials.warehouse_ready_serials_dispatch',
+        'warehouse_ready_serials.warehouse_ready_serials_released',
       ].sort(),
     );
     const pk = await db

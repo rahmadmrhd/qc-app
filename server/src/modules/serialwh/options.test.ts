@@ -32,6 +32,14 @@ describe('pilihan Keluar Gudang', () => {
     expect(viewer.ok).toBe(false);
   });
 
+  test('itemOptions: boxSize dari master Item (0 bila belum diisi)', async () => {
+    await env.DB.prepare("UPDATE items SET box_size = 12 WHERE id = 'i-a1'").run();
+    const out = await call(WH_USERS.edit, 'serialWarehouse.itemOptions', {});
+    const size = (id: string) => out.data.items.find((i: Json) => i.id === id).boxSize;
+    expect(size('i-a1')).toBe(12);
+    expect(size('i-a2')).toBe(0);
+  });
+
   test('orderOptions: kecocokan persis No SO paling depan; kursor liar dijepit', async () => {
     for (const number of ['SO-1', 'SO-10', 'SO-11']) {
       await submitDispatch(env, WH_USERS.edit, { orderNumber: number, fresh: [`E-${number}`] });

@@ -134,6 +134,7 @@ export const EXPORT_TABLES: readonly ExportTableSpec[] = [
     'firmware',
     'proof_required',
     'proof_min',
+    'box_size',
     'status',
     'created_at',
     'updated_at',

@@ -9,6 +9,7 @@ import type {
 } from '@shared/contract';
 import { firmwareOptionsFor, isValidFirmware } from '@shared/firmware';
 import { normalizeKey } from '@shared/items';
+import { WAREHOUSE_BOX_LIMITS } from '@shared/serial-warehouse';
 import { SERIAL_PROOF_LIMITS } from '@shared/serials';
 import { useForm, useStore } from '@tanstack/react-form';
 import { useEffect, useRef, useState } from 'react';
@@ -58,7 +59,16 @@ const TAB_LABEL: Record<ItemFormTab, string> = {
 
 /** Field form milik tiap tab (dasar titik galat dan pembukaan tab bergalat). */
 const TAB_FIELDS: Record<ItemFormTab, readonly (keyof ItemFieldErrors)[]> = {
-  detail: ['brandId', 'businessUnitIds', 'model', 'firmware', 'proofMin', 'aliases', 'accessories'],
+  detail: [
+    'brandId',
+    'businessUnitIds',
+    'model',
+    'firmware',
+    'proofMin',
+    'boxSize',
+    'aliases',
+    'accessories',
+  ],
   gambar: ['attachments'],
   instruksi: ['stickerPhotos'],
   spesifikasi: ['detail'],
@@ -497,6 +507,34 @@ export function ItemForm({
             ) : null
           }
         </form.Subscribe>
+        <form.Field name="boxSize">
+          {(field) => (
+            <div className="space-y-1.5">
+              <Label htmlFor="item-box-size">Pcs per kardus</Label>
+              <Input
+                id="item-box-size"
+                type="number"
+                inputMode="numeric"
+                min={0}
+                max={WAREHOUSE_BOX_LIMITS.sizeMax}
+                step={1}
+                className="w-28"
+                value={Number.isNaN(field.state.value) ? '' : field.state.value}
+                onBlur={field.handleBlur}
+                onChange={(event) => {
+                  field.handleChange(
+                    event.target.value === '' ? Number.NaN : Number(event.target.value),
+                  );
+                  clear('boxSize');
+                }}
+              />
+              <p className="text-xs text-muted-foreground">
+                Isi kardus untuk Stok Ready di Gudang (0 = belum diisi).
+              </p>
+              <FieldError errors={[...field.state.meta.errors, serverError('boxSize')]} />
+            </div>
+          )}
+        </form.Field>
         <form.Subscribe
           selector={(state) => ({
             lock: state.values.isCountryLock,

@@ -654,6 +654,7 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
     query: {
       query: 'string',
       customerIds: 'list',
+      itemIds: 'list',
       buIds: 'list',
       from: 'string',
       to: 'string',
@@ -701,6 +702,18 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
       status: 'string',
       cursor: 'string',
       limit: 'number',
+    },
+  },
+  'serialWarehouse.readyStock': {
+    verb: 'GET',
+    path: '/serial-warehouse/ready-stock',
+    query: {
+      buIds: 'list',
+      itemIds: 'list',
+      query: 'string',
+      cursor: 'string',
+      limit: 'number',
+      pickCount: 'number',
     },
   },
   'serialWarehouse.dispatchGet': { verb: 'GET', path: '/serial-warehouse/dispatches/{id}' },

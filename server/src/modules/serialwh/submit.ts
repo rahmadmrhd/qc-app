@@ -37,6 +37,15 @@ import {
   type WarehouseAuditTarget,
   warehouseAuditStmt,
 } from './audit';
+import {
+  BOX_TAKEN_MESSAGE,
+  boxStatements,
+  dropEmptyBoxesStatement,
+  readyHeldInOtherPending,
+  readyInOtherBu,
+  readyInPendingReady,
+  releaseStatements,
+} from './boxes';
 import { addOrderLinksStmts, assertLinkableHandovers } from './handover-links';
 import { reserveDispatchNumber } from './number';
 import {
@@ -63,7 +72,9 @@ const RACE_MESSAGE = 'Data berubah saat disimpan. Coba lagi';
 export function headerHash(header: WarehouseSubmitHeader): string {
   const canonical = JSON.stringify({
     // `mode` hanya ikut pada ready: sidik pengeluaran SO yang sedang berjalan sebelum fitur ini tetap sama.
-    ...(header.mode === 'ready' ? { mode: 'ready' } : {}),
+    ...(header.mode === 'ready'
+      ? { mode: 'ready', boxStart: header.boxStart, boxSize: header.boxSize }
+      : {}),
     dispatchedOn: header.dispatchedOn,
     orderKey: orderKey(header.orderNumber),
     buId: header.buId,
@@ -91,6 +102,9 @@ const fieldError = (field: string, message: string) =>
 function mapFinalError(error: unknown): unknown {
   if (isGuardFailure(error)) return appError('CONFLICT', RACE_MESSAGE);
   if (error instanceof DbError && error.kind === 'duplicate') {
+    if (error.key?.includes('warehouse_ready_boxes_open')) {
+      return fieldError('boxStart', BOX_TAKEN_MESSAGE);
+    }
     return appError('CONFLICT', RACE_MESSAGE);
   }
   // Jumlah/potongan di luar rentang kolom INT (spek: tanpa batas buatan): galat validasi yang rapi, bukan 500.
@@ -150,6 +164,7 @@ const SKIP_REASONS = {
   futureTestDate: 'Tanggal uji tidak boleh di masa depan',
   noLocation: 'Lokasi tidak ditemukan',
   alreadyRecorded: 'Sudah tercatat WH',
+  inOtherPending: 'Sudah ada di pengeluaran lain yang belum selesai',
 } as const;
 
 function parseSkipped(json: string | undefined): WarehouseSkippedRowDto[] {
@@ -421,6 +436,39 @@ async function submitOnce(
     });
   }
 
+  if (!ready && plans.length > 0) {
+    // Serial yang masih di stok ready dan sedang ada di Penjualan pending LAIN dilewati (spek Stok Ready §9).
+    const held = await readyHeldInOtherPending(
+      env,
+      plans.filter((plan) => !plan.createdNew).map((plan) => plan.serialId),
+      existing?.id.trim() ?? '',
+    );
+    // Tiap BU punya data serial sendiri: stok ready BU lain dilewati sebagai tidak ditemukan (tanpa membocorkan BU).
+    const otherBu = await readyInOtherBu(
+      env,
+      plans.filter((plan) => !plan.createdNew).map((plan) => plan.serialId),
+      buId,
+    );
+    // Serial yang masih di pencatatan ready PENDING belum sah sebagai stok: dilewati seperti aturan pending lain.
+    const inPendingReady = await readyInPendingReady(
+      env,
+      plans.filter((plan) => !plan.createdNew).map((plan) => plan.serialId),
+    );
+    plans = plans.filter((plan) => {
+      if (inPendingReady.has(plan.serialId)) {
+        skip(plan.serial, SKIP_REASONS.alreadyRecorded);
+        return false;
+      }
+      if (otherBu.has(plan.serialId)) {
+        skip(plan.serial, SKIP_REASONS.notFound);
+        return false;
+      }
+      if (!held.has(plan.serialId)) return true;
+      skip(plan.serial, SKIP_REASONS.inOtherPending);
+      return false;
+    });
+  }
+
   const locationNames = new Map<string, string>();
   let stickers: Awaited<ReturnType<typeof applicableStickersOf>> = [];
   if (plans.some((plan) => plan.createdNew)) {
@@ -550,6 +598,9 @@ async function submitOnce(
                 itemId: header.itemId,
                 dispatchedOn: header.dispatchedOn,
                 serialTotal: header.total,
+                boxFrom: header.boxStart,
+                boxToPlanned:
+                  (header.boxStart ?? 0) + Math.ceil(header.total / (header.boxSize ?? 1)) - 1,
               },
             }
           : {
@@ -613,8 +664,12 @@ async function submitOnce(
       statements.push(
         env.DB.prepare(
           // Ready: juga gagal bila serial itu kini tercatat pada pengeluaran selesai atau pending mana pun (balapan).
-          `UPDATE serials SET id = CASE WHEN status = 'good' AND custody = 'qc' AND deleted_at = '' AND item_id = ?${ready ? " AND NOT EXISTS (SELECT 1 FROM warehouse_dispatch_serials rg JOIN warehouse_dispatches rd ON rd.id = rg.dispatch_id WHERE rg.serial_id = serials.id AND rd.status IN ('done', 'pending'))" : ''} THEN id ELSE ${CAS_FAIL_SQL} END WHERE id = ?`,
-        ).bind(header.itemId, plan.serialId),
+          `UPDATE serials SET id = CASE WHEN status = 'good' AND custody = 'qc' AND deleted_at = '' AND item_id = ?${ready ? " AND NOT EXISTS (SELECT 1 FROM warehouse_dispatch_serials rg JOIN warehouse_dispatches rd ON rd.id = rg.dispatch_id WHERE rg.serial_id = serials.id AND rd.status IN ('done', 'pending'))" : " AND NOT EXISTS (SELECT 1 FROM warehouse_ready_serials rr JOIN warehouse_ready_boxes rc ON rc.id = rr.box_id AND rc.closed_key = '' JOIN warehouse_dispatch_serials wd ON wd.serial_id = rr.serial_id JOIN warehouse_dispatches pd ON pd.id = wd.dispatch_id WHERE rr.serial_id = serials.id AND rr.released_dispatch_id = '' AND pd.kind = 'order' AND pd.status = 'pending' AND pd.id <> ?) AND NOT EXISTS (SELECT 1 FROM warehouse_ready_serials rx JOIN warehouse_ready_boxes rb ON rb.id = rx.box_id WHERE rx.serial_id = serials.id AND rx.released_dispatch_id = '' AND rb.closed_key = '' AND rb.bu_id <> ?) AND NOT EXISTS (SELECT 1 FROM warehouse_dispatch_serials wp JOIN warehouse_dispatches rp ON rp.id = wp.dispatch_id WHERE wp.serial_id = serials.id AND rp.kind = 'ready' AND rp.status = 'pending')"} THEN id ELSE ${CAS_FAIL_SQL} END WHERE id = ?`,
+        ).bind(
+          ...(ready
+            ? [header.itemId, plan.serialId]
+            : [header.itemId, dispatchId, buId, plan.serialId]),
+        ),
       );
     }
     statements.push(
@@ -628,6 +683,20 @@ async function submitOnce(
       }),
     );
   }
+  if (ready && header.boxStart !== undefined && header.boxSize !== undefined) {
+    statements.push(
+      ...(await boxStatements(env, {
+        dispatchId,
+        buId,
+        itemId: header.itemId,
+        header: { boxStart: header.boxStart, boxSize: header.boxSize, total: header.total },
+        serialIds: plans.map((plan) => plan.serialId),
+        firstSeq: input.chunkIndex * header.chunkSize,
+        user: user.email,
+        now,
+      })),
+    );
+  }
   // Selesai bila ini potongan terakhir. Urutan penetapan penting: kolom dihitung dari nilai LAMA lebih dulu. Dijaga CAS
   // status `pending` (penyapu yang membatalkan serentak membuat batch ini batal, bukan campur).
   statements.push(
@@ -635,6 +704,10 @@ async function submitOnce(
       `UPDATE warehouse_dispatches SET completed_at = CASE WHEN status <> 'pending' THEN ${CAS_FAIL_SQL} WHEN chunks_received + 1 = chunk_count THEN ? ELSE completed_at END, status = CASE WHEN chunks_received + 1 = chunk_count THEN 'done' ELSE status END, created_count = created_count + ?, chunks_received = chunks_received + 1 WHERE id = ?`,
     ).bind(now, created, dispatchId),
   );
+  // Pencatatan ready selesai: kardus pesanan yang tetap kosong (serial dilewati) dihapus.
+  if (ready) statements.push(dropEmptyBoxesStatement(env, dispatchId));
+  // Penjualan selesai melepas serial ready dari stok dan menutup kardus yang kosong (no-op bila bukan `done`).
+  if (!ready) statements.push(...releaseStatements(env, dispatchId));
   // Audit penyelesaian: bersyarat di SQL (status `done` dan belum tercatat), aman untuk potongan serentak.
   statements.push(
     dispatchDoneAuditStmt(env.DB, {

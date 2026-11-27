@@ -1,5 +1,5 @@
 import type { WarehouseItemOptionDto, WarehouseSerialDto } from '@shared/contract';
-import { useEffect, useMemo, useState } from 'react';
+import { type MutableRefObject, useEffect, useMemo, useRef, useState } from 'react';
 import { type DataColumn, DataTable } from '@/components/data-table';
 import type { RowSelection } from '@/components/data-table/use-row-selection';
 import {
@@ -75,6 +75,10 @@ export interface DispatchTableProps {
   onLoadMore: () => void;
   empty: string;
   filtered: boolean;
+  /** Ponsel: bar bawah halaman memakai ini untuk kotak centang pilih semua / lepas semua. */
+  onAllSelectedChange?: (allSelected: boolean) => void;
+  /** Diisi tabel dengan aksi "pilih semua" terkini (ref, bukan state: tak memicu render ulang halaman). */
+  selectAllRef?: MutableRefObject<(() => void) | null>;
 }
 
 function ineligibleReason(dto: WarehouseSerialDto): string {
@@ -159,6 +163,8 @@ export function DispatchTable({
   onLoadMore,
   empty,
   filtered,
+  onAllSelectedChange,
+  selectAllRef,
 }: DispatchTableProps) {
   const phone = useIsMobile();
   const [visible, setVisible] = useState(DRAFT_PAGE);
@@ -302,6 +308,21 @@ export function DispatchTable({
       clear: () => setSelectMode(false),
     };
   }, [byKey, selectedKeys, onAdd, onRemove, phone, selectMode, item]);
+
+  // Kotak centang bar bawah ponsel: semua baris yang boleh dipilih sudah terpilih = centang; selain itu mengklik memilih
+  // semuanya (setAll hanya menambah yang belum terpilih dan memuat Item yang sama).
+  const selectableKeys = useMemo(
+    () => tableRows.filter((row) => row.selectable).map((row) => row.key),
+    [tableRows],
+  );
+  const allSelected =
+    selectableKeys.length > 0 && selectableKeys.every((key) => selectedKeys.has(key));
+  const selectionRef = useRef(selection);
+  selectionRef.current = selection;
+  if (selectAllRef) selectAllRef.current = () => selectionRef.current.setAll(selectableKeys, true);
+  useEffect(() => {
+    onAllSelectedChange?.(allSelected);
+  }, [allSelected, onAllSelectedChange]);
 
   const columns: DataColumn<TableRow>[] = [
     {

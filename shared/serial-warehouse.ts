@@ -96,3 +96,72 @@ export function dispatchNumber(
 ): string {
   return `${dispatchNumberPrefix(kind)}/${buCode}/${period}-${String(sequence).padStart(4, '0')}`;
 }
+
+/** Batas Stok Ready per kardus: pcs per kardus (`items.box_size`) dan nomor kardus. */
+/** `pickMax` = batas "Pilih N unit" (`pickCount`) dan batas oper ke draf form Catat Serial WH. */
+export const WAREHOUSE_BOX_LIMITS = { sizeMax: 1000, numberMax: 999999, pickMax: 5000 } as const;
+
+/**
+ * Membagi `count` serial berurutan ke kardus: lebih dulu mengisi kardus terbuka `carry` (sudah berisi `used` unit),
+ * lalu kardus baru bernomor naik mulai `startNumber`. `take` = jumlah serial per kardus.
+ */
+export function assignBoxes(input: {
+  startNumber: number;
+  size: number;
+  carry?: { number: number; used: number };
+  count: number;
+}): { number: number; take: number }[] {
+  const { startNumber, size, carry, count } = input;
+  const out: { number: number; take: number }[] = [];
+  let left = count;
+  if (left <= 0 || size <= 0) return out;
+  if (carry && carry.used < size) {
+    const take = Math.min(left, size - carry.used);
+    out.push({ number: carry.number, take });
+    left -= take;
+  }
+  let number = startNumber;
+  while (left > 0) {
+    const take = Math.min(left, size);
+    out.push({ number, take });
+    left -= take;
+    number += 1;
+  }
+  return out;
+}
+
+/** `full` = kardus terisi penuh (sisa >= kapasitas), selain itu `loose` (ecer). */
+export function boxKindOf(remaining: number, capacity: number): 'full' | 'loose' {
+  return remaining >= capacity ? 'full' : 'loose';
+}
+
+/** Memilih `count` serial menurut nomor kardus naik; kardus `full` lebih dulu, lalu `loose`. */
+export function pickByOrder(
+  boxes: readonly {
+    id: string;
+    number: number;
+    kind: 'full' | 'loose';
+    serialIds: readonly string[];
+  }[],
+  count: number,
+): string[] {
+  const ordered = [...boxes].sort((a, b) => {
+    if (a.kind !== b.kind) return a.kind === 'full' ? -1 : 1;
+    return a.number - b.number;
+  });
+  const out: string[] = [];
+  for (const box of ordered) {
+    for (const id of box.serialIds) {
+      if (out.length >= count) return out;
+      out.push(id);
+    }
+  }
+  return out;
+}
+
+/** Teks clipboard Stok Ready: `Kardus<TAB>Serial` per baris (`\n`, tanpa CRLF). */
+export function readyStockClipboard(rows: readonly { box: number; serial: string }[]): string {
+  // Serial berawalan rumus (`=`, `+`, `-`, `@`) diberi apostrof agar tidak dijalankan sebagai rumus di spreadsheet.
+  const safe = (serial: string): string => (/^[=+\-@]/.test(serial) ? `'${serial}` : serial);
+  return ['Kardus\tSerial', ...rows.map((r) => `${r.box}\t${safe(r.serial)}`)].join('\n');
+}

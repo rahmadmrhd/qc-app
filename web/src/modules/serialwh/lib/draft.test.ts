@@ -54,14 +54,12 @@ test('ringkasan: jumlah, baru, rentang tanggal uji', () => {
   });
 });
 
-test('isian bawaan yang kurang menyebut yang kosong', () => {
-  const filters = { buId: '', locationId: 'l', testDate: '', hideRecorded: true };
-  expect(missingDefaults('i', filters)).toEqual(['bu', 'testDate']);
-  expect(missingMessage(['bu', 'testDate'])).toBe('Isi BU dan Tanggal uji dulu');
-  expect(missingMessage(['bu', 'location', 'testDate'])).toBe(
-    'Isi BU, Lokasi dan Tanggal uji dulu',
-  );
-  expect(missingMessage(['item', 'bu'])).toBe('Pilih Item dulu');
+test('hanya Item yang menahan scan; BU, Lokasi, dan Tanggal uji adalah filter', () => {
+  const empty = { buId: '', locationId: '', testDate: '', hideRecorded: true };
+  expect(missingDefaults('i', empty)).toEqual([]);
+  expect(missingDefaults('', empty)).toEqual(['item']);
+  expect(missingMessage(['item'])).toBe('Pilih Item dulu');
+  expect(missingMessage([])).toBe('');
 });
 
 test('kiriman beku saat submission ada', () => {

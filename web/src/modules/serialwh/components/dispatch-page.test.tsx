@@ -1,6 +1,6 @@
 import type { MeDto, WarehouseSerialDto, WarehouseSubmitInput } from '@shared/contract';
 import { QueryClient } from '@tanstack/react-query';
-import { act, screen, waitFor } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { ApiError } from '@/lib/api/api-error';
@@ -18,6 +18,7 @@ import {
   warehouseDraftWritesBlocked,
   writeWarehouseDraft,
 } from '../lib/draft-store';
+import { handOffToDispatch } from '../lib/hand-off';
 import { whItem, whMe, whSerial } from '../lib/test-support';
 
 const apiMock = vi.hoisted(() => vi.fn());
@@ -145,7 +146,8 @@ test('tabel kosong sebelum Item terisi', async () => {
   expect(screen.getByRole('button', { name: /Salin ke clipboard \(0\)/ })).toBeDisabled();
 });
 
-test('scan serial yang ada: dipilih, Item terisi lalu terkunci dengan pesan', async () => {
+test('scan serial yang ada: dipilih, lalu Item terkunci dengan pesan', async () => {
+  seedDraft({ itemId: 'item1', rows: [] });
   lookupResult = [whSerial()];
   await renderPage();
   await scan('sn1');
@@ -172,7 +174,7 @@ test('scan beda Tipe dengan pilihan: dialog error, tidak dipilih', async () => {
   ).toBeInTheDocument();
 });
 
-test('scan belum ada tanpa BU, Lokasi, Tanggal uji: ditahan dan menyebut yang kurang', async () => {
+test('scan belum ada tanpa BU, Lokasi, Tanggal uji: tetap jadi draf baru', async () => {
   seedDraft({
     itemId: 'item1',
     rows: [],
@@ -180,8 +182,16 @@ test('scan belum ada tanpa BU, Lokasi, Tanggal uji: ditahan dan menyebut yang ku
   });
   await renderPage();
   await scan('baru1');
-  expect(await screen.findByText('Isi BU, Lokasi dan Tanggal uji dulu')).toBeInTheDocument();
-  expect(screen.getByRole('button', { name: /Salin ke clipboard \(0\)/ })).toBeDisabled();
+  expect(await screen.findByText('Draf baru')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /Salin ke clipboard \(1\)/ })).toBeEnabled();
+});
+
+test('kolom Serial Number terkunci sampai Item terisi', async () => {
+  seedDraft({ itemId: '', rows: [] });
+  await renderPage();
+  const input = screen.getByRole('textbox', { name: 'Serial Number' });
+  expect(input).toBeDisabled();
+  expect(input).toHaveAttribute('placeholder', 'Pilih Item dulu');
 });
 
 test('scan belum ada dengan isian lengkap: jadi draf baru', async () => {
@@ -203,6 +213,7 @@ test('dua scan cepat satu SN tidak menjadi dua draf', async () => {
 });
 
 test('draf tahan muat ulang', async () => {
+  seedDraft({ itemId: 'item1', rows: [] });
   lookupResult = [whSerial()];
   const first = await renderPage();
   await scan('sn1');
@@ -319,53 +330,50 @@ function usePhone() {
   window.innerWidth = 375;
 }
 
-const modeExit = () => screen.queryByRole('button', { name: 'Keluar dari mode pilih' });
 const copyButton = (count: number) =>
   screen.getByRole('button', {
     name: new RegExp(`Salin ke clipboard \\(${count}\\)`),
     hidden: true,
   });
 
-test('ponsel: draf tidak memicu mode pilih; tekan lama masuk, X keluar tanpa menghapus draf', async () => {
+test('ponsel: tekan lama tidak memunculkan bar di atas kartu dan draf tetap utuh', async () => {
   usePhone();
   seedDraft({ itemId: 'item1', rows: [draftRow('AAA'), draftRow('BBB')] });
   await renderPage();
   const card = (await screen.findByText('AAA')).closest('li') as HTMLElement;
-  expect(modeExit()).toBeNull();
+  expect(document.querySelector('[data-slot="selection-bar"]')).toBeNull();
   await longPress(card);
-  const exit = await screen.findByRole('button', { name: 'Keluar dari mode pilih' });
-  // Tekan lama pada baris draf hanya masuk mode: baris tidak keluar dari pilihan.
-  expect(copyButton(2)).toBeEnabled();
-  await userEvent.click(exit);
-  await waitFor(() => expect(modeExit()).toBeNull());
+  expect(document.querySelector('[data-slot="selection-bar"]')).toBeNull();
+  // Satu-satunya bar pilihan ada di bawah (bersama Batal dan Simpan form).
+  expect(screen.getByText('2 dipilih')).toBeInTheDocument();
   expect(copyButton(2)).toBeEnabled();
 });
 
-test('ponsel: tombol kembali saat mode pilih hanya menutup mode, bukan terjebak dan bukan menghapus draf', async () => {
+test('ponsel: tombol kembali setelah tekan lama tidak terjebak dan tidak menghapus draf', async () => {
   usePhone();
   seedDraft({ itemId: 'item1', rows: [draftRow('AAA')] });
   await renderPage();
   await longPress((await screen.findByText('AAA')).closest('li') as HTMLElement);
-  await screen.findByRole('button', { name: 'Keluar dari mode pilih' });
   act(() => window.history.back());
-  await waitFor(() => expect(modeExit()).toBeNull());
-  expect(copyButton(1)).toBeEnabled();
+  await waitFor(() => expect(copyButton(1)).toBeEnabled());
+  expect(screen.getByText('1 dipilih')).toBeInTheDocument();
 });
 
-test('ponsel: Pilih semua yang mengeluarkan draf baru meminta konfirmasi', async () => {
+test('ponsel: ✕ dan kotak centang bar bawah meminta konfirmasi saat mengosongkan draf baru', async () => {
   usePhone();
   seedDraft({ itemId: 'item1', rows: [draftRow('AAA'), draftRow('BBB')] });
   await renderPage();
-  await longPress((await screen.findByText('AAA')).closest('li') as HTMLElement);
-  await userEvent.click(await screen.findByRole('checkbox', { name: 'Pilih semua' }));
-  expect(await screen.findByText('Keluarkan dari pilihan?')).toBeInTheDocument();
+  await screen.findByText('AAA');
+  // Semua terpilih: kotak centang berlabel "Lepas semua" dan sama dengan ✕ (membatalkan seluruh pilihan).
+  await userEvent.click(await screen.findByRole('checkbox', { name: 'Lepas semua' }));
+  expect(await screen.findByText('Batalkan pilihan?')).toBeInTheDocument();
   expect(copyButton(2)).toBeEnabled();
   await userEvent.click(screen.getByRole('button', { name: 'Kembali' }));
-  await waitFor(() => expect(screen.queryByText('Keluarkan dari pilihan?')).toBeNull());
+  await waitFor(() => expect(screen.queryByText('Batalkan pilihan?')).toBeNull());
   expect(copyButton(2)).toBeEnabled();
-  await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih semua' }));
-  await userEvent.click(await screen.findByRole('button', { name: 'Keluarkan' }));
-  await waitFor(() => expect(copyButton(0)).toBeDisabled());
+  const summary = document.querySelector('[data-slot="selection-summary"]') as HTMLElement;
+  await userEvent.click(within(summary).getByRole('button', { name: 'Batalkan pilihan' }));
+  expect(await screen.findByText('Batalkan pilihan?')).toBeInTheDocument();
 });
 
 test('ponsel: lebih dari satu halaman menampilkan serial TERBARU di atas', async () => {
@@ -442,23 +450,6 @@ test('klip dimulai sinkron dari klik Simpan & salin (sebelum menunggu server)', 
     vi.unstubAllGlobals();
     Reflect.deleteProperty(navigator, 'clipboard');
   }
-});
-
-test('scan ditahan karena isian kosong: chip yang kurang diberi bingkai merah', async () => {
-  seedDraft({
-    itemId: 'item1',
-    rows: [],
-    filters: { buId: 'bu1', locationId: '', testDate: '', hideRecorded: true },
-  });
-  await renderPage();
-  await scan('baru1');
-  await screen.findByText('Isi Lokasi dan Tanggal uji dulu');
-  const invalid = Array.from(document.querySelectorAll('[data-invalid]')).map(
-    (node) => node.textContent ?? '',
-  );
-  expect(invalid).toHaveLength(2);
-  expect(invalid.some((text) => text.includes('Lokasi'))).toBe(true);
-  expect(invalid.some((text) => text.includes('Tanggal uji'))).toBe(true);
 });
 
 test('banner peringatan dapat dibuka untuk melihat serialnya; baris menyebut SO dan tanggal pengeluaran lama', async () => {
@@ -670,6 +661,8 @@ test('Ready Stock: header tanpa SO, customer, dan task; hasil membuka detail rea
   const { router } = await renderPage();
   await userEvent.click(await screen.findByRole('button', { name: /Salin ke clipboard \(1\)/ }));
   await pickSelect(screen, 'Tujuan', 'Ready Stock');
+  // Bawaan isi per kardus = boxSize Item terpilih (whItem: 12).
+  await waitFor(() => expect(screen.getByLabelText('Isi per kardus')).toHaveValue(12));
   await userEvent.click(screen.getByRole('button', { name: 'Simpan & salin' }));
   await waitFor(() => expect(submitCalls).toHaveLength(1));
   const header = submitCalls[0]?.header;
@@ -679,6 +672,8 @@ test('Ready Stock: header tanpa SO, customer, dan task; hasil membuka detail rea
     customerName: '',
     handoverIds: [],
     buId: 'bu1',
+    boxStart: 1,
+    boxSize: 12,
   });
   expect(header).not.toHaveProperty('orderId');
   expect(await screen.findByRole('textbox', { name: 'Daftar Serial Number' })).toHaveValue('RDY1');
@@ -709,4 +704,57 @@ test('tujuan Ready Stock mengubah arti filter Sembunyikan yang sudah tercatat (f
   await userEvent.click(await screen.findByRole('button', { name: /Salin ke clipboard \(1\)/ }));
   await pickSelect(screen, 'Tujuan', 'Ready Stock');
   await waitFor(() => expect(serialsCalls().at(-1)?.[1]).toMatchObject({ forMode: 'ready' }));
+});
+
+test('desktop: bar pilihan di atas tabel (Batalkan pilihan + jumlah), tanpa menu Riwayat/Kosongkan di header', async () => {
+  seedDraft({ itemId: 'item1', rows: [makeExistingRow(whSerial())] });
+  await renderPage();
+  const bar = await screen.findByRole('region', { name: 'Aksi massal' });
+  expect(within(bar).getByText('1 dipilih')).toBeInTheDocument();
+  expect(within(bar).getByRole('button', { name: 'Batalkan pilihan' })).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Aksi lainnya' })).toBeNull();
+  await userEvent.click(within(bar).getByRole('button', { name: 'Batalkan pilihan' }));
+  await waitFor(() => expect(screen.queryByRole('region', { name: 'Aksi massal' })).toBeNull());
+});
+
+test('ponsel: satu bar bawah berisi ✕, kotak centang, N dipilih, Batal, dan Simpan; tanpa bar di atas kartu', async () => {
+  media.set(false);
+  window.innerWidth = 390;
+  seedDraft({ itemId: 'item1', rows: [makeExistingRow(whSerial())] });
+  await renderPage();
+  const summary = await screen.findByText('1 dipilih');
+  const bar = summary.closest('[data-slot="selection-summary"]') as HTMLElement;
+  expect(bar).not.toBeNull();
+  expect(within(bar).getByRole('button', { name: 'Batalkan pilihan' })).toBeInTheDocument();
+  expect(within(bar).getByRole('checkbox')).toBeInTheDocument();
+  expect(screen.queryByRole('region', { name: 'Aksi massal' })).toBeNull();
+  expect(document.querySelector('[data-slot="selection-bar"]')).toBeNull();
+  expect(screen.getByRole('button', { name: 'Batal' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /Salin ke clipboard \(1\)/ })).toBeInTheDocument();
+});
+
+test('serial oper dari Stok Ready muncul di draf dengan Item terisi dan Tujuan Penjualan', async () => {
+  handOffToDispatch(
+    [
+      {
+        serialId: 'h1',
+        serial: 'OPER1',
+        itemId: 'item1',
+        buId: 'bu1',
+        snapshot: whSerial({ id: 'h1', serial: 'OPER1' }),
+      },
+      {
+        serialId: 'h2',
+        serial: 'OPER2',
+        itemId: 'item1',
+        buId: 'bu1',
+        snapshot: whSerial({ id: 'h2', serial: 'OPER2' }),
+      },
+    ],
+    'wh@x.com',
+  );
+  await renderPage();
+  expect(await screen.findByText('OPER1')).toBeInTheDocument();
+  expect(screen.getByText('OPER2')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /Salin ke clipboard \(2\)/ })).toBeEnabled();
 });

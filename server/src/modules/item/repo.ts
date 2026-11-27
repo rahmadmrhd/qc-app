@@ -25,6 +25,7 @@ export interface ItemRecord {
   firmware: string;
   proofRequired: boolean;
   proofMin: number;
+  boxSize: number;
   aliases: string[];
   accessories: ItemAccessoryDto[];
   attachments: string[];
@@ -47,6 +48,7 @@ export interface ItemRow {
   firmware: string;
   proof_required: number | string;
   proof_min: number | string;
+  box_size: number | string;
   aliases: string;
   accessories: string;
   attachments: string;
@@ -69,6 +71,7 @@ const ITEM_COLUMN_LIST = [
   'firmware',
   'proof_required',
   'proof_min',
+  'box_size',
   'aliases',
   'accessories',
   'attachments',
@@ -130,6 +133,7 @@ export function toItem(row: ItemRow): ItemRecord {
     firmware: row.firmware.trim(),
     proofRequired: Number(row.proof_required) === 1,
     proofMin: Number(row.proof_min),
+    boxSize: Number(row.box_size),
     aliases: parseStrings(row.aliases),
     accessories: parseAccessories(row.accessories),
     attachments: parseStrings(row.attachments),
@@ -571,6 +575,7 @@ export function insertItemStmts(db: Db, item: ItemRecord): DbStatement[] {
     item.firmware,
     item.proofRequired ? 1 : 0,
     item.proofMin,
+    item.boxSize,
     JSON.stringify(item.aliases),
     aliasKeysOf(item.aliases),
     JSON.stringify(item.accessories),
@@ -584,7 +589,7 @@ export function insertItemStmts(db: Db, item: ItemRecord): DbStatement[] {
   statements.push(
     db
       .prepare(
-        `INSERT INTO items (id, brand_id, model, \`key\`, is_country_lock, firmware, proof_required, proof_min, aliases, alias_keys, accessories, attachments, detail_md, status, created_at, updated_at, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO items (id, brand_id, model, \`key\`, is_country_lock, firmware, proof_required, proof_min, box_size, aliases, alias_keys, accessories, attachments, detail_md, status, created_at, updated_at, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .bind(...binds),
   );
@@ -609,7 +614,7 @@ export function updateItemStmts(
   statements.push(
     db
       .prepare(
-        `UPDATE items SET brand_id = ?, model = ?, \`key\` = ?, is_country_lock = ?, firmware = ?, proof_required = ?, proof_min = ?, aliases = ?, alias_keys = ?, accessories = ?, attachments = ?, detail_md = ?, status = ?, ${CAS_UPDATED_AT_SET}, updated_by = ? WHERE id = ?`,
+        `UPDATE items SET brand_id = ?, model = ?, \`key\` = ?, is_country_lock = ?, firmware = ?, proof_required = ?, proof_min = ?, box_size = ?, aliases = ?, alias_keys = ?, accessories = ?, attachments = ?, detail_md = ?, status = ?, ${CAS_UPDATED_AT_SET}, updated_by = ? WHERE id = ?`,
       )
       .bind(
         item.brandId,
@@ -619,6 +624,7 @@ export function updateItemStmts(
         item.firmware,
         item.proofRequired ? 1 : 0,
         item.proofMin,
+        item.boxSize,
         JSON.stringify(item.aliases),
         aliasKeysOf(item.aliases),
         JSON.stringify(item.accessories),

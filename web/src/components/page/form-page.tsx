@@ -28,6 +28,7 @@ export function FormPage({
   actionsTour,
   saveTour,
   hideMobileBar,
+  selectionBar,
 }: {
   formId: string;
   title: ReactNode;
@@ -51,6 +52,11 @@ export function FormPage({
    * aksi pilihan pada tabel draft. Tak berpengaruh di desktop.
    */
   hideMobileBar?: boolean;
+  /**
+   * Ponsel: kontrol pilihan di sisi KIRI bar bawah, sebelum Batal dan Simpan (mis. ✕ batalkan pilihan, kotak centang
+   * pilih semua, "N dipilih"); satu bar saja untuk pilihan dan aksi form. Kosong = bar Batal + Simpan biasa.
+   */
+  selectionBar?: ReactNode;
 }) {
   const desktop = useIsDesktop();
   // SATU gerbang ponsel (viewport < 768, sama dengan judul navbar): judul tak tampil ganda pada 704-767 px.
@@ -70,7 +76,7 @@ export function FormPage({
       busyLabel={busyText}
       disabled={submitDisabled}
       data-tour={saveTour}
-      className={desktop ? undefined : 'flex-[2]'}
+      className={desktop || selectionBar ? undefined : 'flex-[2]'}
     />
   );
   return (
@@ -113,6 +119,11 @@ export function FormPage({
         // Ponsel: Batal + Simpan pindah ke bar bawah `fixed` (Simpan lebih lebar).
         <StickyActionBar label="Aksi form">
           <div data-tour={actionsTour} className="flex w-full items-center gap-2">
+            {selectionBar ? (
+              <div data-slot="form-selection" className="flex min-w-0 flex-1 items-center">
+                {selectionBar}
+              </div>
+            ) : null}
             {cancel}
             {extra}
             {save}

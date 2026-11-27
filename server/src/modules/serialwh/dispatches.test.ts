@@ -123,6 +123,9 @@ describe('riwayat gabungan: daftar dan detail', () => {
       .filter((item: Json) => item.customerName === 'PT Maju')
       .map((item: Json) => item.customerId);
     expect(await kinds({ customerIds: customers })).toEqual(['OUT/A/2611-0001']);
+    const itemId = (await call(E, 'serialWarehouse.dispatchList', {})).data.items[0].itemId;
+    expect(await kinds({ itemIds: [itemId] })).toHaveLength(3);
+    expect(await kinds({ itemIds: ['i-tidak-ada'] })).toEqual([]);
     const bad = await call(E, 'serialWarehouse.dispatchList', { kind: 'lain' });
     expect(bad.ok).toBe(false);
   });

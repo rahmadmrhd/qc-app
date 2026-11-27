@@ -1306,6 +1306,7 @@
       "cursor": "string",
       "customerIds": "list",
       "from": "string",
+      "itemIds": "list",
       "limit": "number",
       "query": "string",
       "status": "string",
@@ -1355,6 +1356,20 @@
       "limit": "number",
       "status": "string",
       "to": "string"
+    },
+    "status": 200
+  },
+  {
+    "id": "serialWarehouse.readyStock",
+    "verb": "GET",
+    "path": "/serial-warehouse/ready-stock",
+    "query": {
+      "buIds": "list",
+      "cursor": "string",
+      "itemIds": "list",
+      "limit": "number",
+      "pickCount": "number",
+      "query": "string"
     },
     "status": 200
   },
