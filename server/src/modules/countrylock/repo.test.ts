@@ -3,7 +3,6 @@ import { isGuardFailure } from '@server/core/cas';
 import { DbError } from '@server/core/db';
 import { newId } from '@server/core/id';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
-import { FIRMWARE_BY_BRAND } from '@shared/firmware';
 import {
   advanceHeadStmt,
   type ClFileRecord,
@@ -59,7 +58,31 @@ async function insertFirmware(code: string, removedAt = ''): Promise<void> {
 }
 
 describe('seedCountryLockFirmwares', () => {
-  const EXPECTED = Object.values(FIRMWARE_BY_BRAND).reduce((sum, list) => sum + list.length, 0);
+  // Daftar awal sama dengan `config.QC` lama (sumber: `shared/firmware.ts` yang sudah dihapus; kode dan label).
+  const INITIAL = {
+    mikrotik: [
+      ['AC', 'AC'],
+      ['5Ghz', '5GHz'],
+      ['2Ghz', '2GHz'],
+      ['AC2', 'AC2'],
+      ['ARM', 'ARM'],
+      ['Mantbox 19s', 'Mantbox 19s'],
+      ['AX', 'AX'],
+      ['AX2', 'AX2'],
+    ],
+    ubiquiti: [
+      ['WA', 'WA Firmware'],
+      ['2WA', '2WA Firmware'],
+      ['LAP120', 'LAP120 Firmware'],
+      ['XC', 'XC Firmware'],
+      ['2XC', '2XC Firmware'],
+      ['M', 'airMAX M'],
+      ['af5xhd', 'AF-5XHD'],
+      ['XW', 'XW Firmware'],
+      ['XM', 'XM Firmware'],
+    ],
+  } as const;
+  const EXPECTED = Object.values(INITIAL).reduce((sum, list) => sum + list.length, 0);
 
   test('memasukkan 17 firmware awal, idempoten bila dipanggil berulang', async () => {
     expect(EXPECTED).toBe(17);
@@ -72,10 +95,10 @@ describe('seedCountryLockFirmwares', () => {
     expect(rows.every((row) => row.removedAt === '' && row.parallel === false)).toBe(true);
     expect(rows.every((row) => row.scriptPath === null)).toBe(true);
     expect(rows.filter((row) => row.brand === 'mikrotik').map((row) => row.code)).toEqual(
-      FIRMWARE_BY_BRAND.mikrotik.map((option) => option.code),
+      INITIAL.mikrotik.map(([code]) => code),
     );
     expect(rows.filter((row) => row.brand === 'ubiquiti').map((row) => row.label)).toEqual(
-      FIRMWARE_BY_BRAND.ubiquiti.map((option) => option.label),
+      INITIAL.ubiquiti.map(([, label]) => label),
     );
   });
 

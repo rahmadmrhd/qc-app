@@ -10,6 +10,15 @@ import {
   saveClFile,
 } from './files-service';
 import {
+  listClFirmwares,
+  listFirmwareOptions,
+  removeClFirmware,
+  saveClFirmware,
+  validateListFirmwareOptions,
+  validateRemoveClFirmware,
+  validateSaveClFirmware,
+} from './firmware-service';
+import {
   finishClUpload,
   putClUploadChunk,
   startClUpload,
@@ -32,6 +41,10 @@ type CountryLockMethod =
   | 'clFiles.history'
   | 'clFiles.revision'
   | 'clFiles.revert'
+  | 'clFirmwares.list'
+  | 'clFirmwares.options'
+  | 'clFirmwares.save'
+  | 'clFirmwares.remove'
   | 'clUploads.start'
   | 'clUploads.chunk'
   | 'clUploads.finish';
@@ -76,6 +89,26 @@ export function countryLockRoutes(): Pick<RouteTable, CountryLockMethod> {
       permission: { module: 'countrylock', level: 'edit' },
       validate: validateRevertClFile,
       handler: (input, ctx) => revertClFile(ctx.env, input, ctx.user),
+    },
+    'clFirmwares.list': {
+      permission: { module: 'countrylock', level: 'edit' },
+      validate: expectNull,
+      handler: (_input, ctx) => listClFirmwares(ctx.env),
+    },
+    // Tanpa `permission` modul (cukup login): form Data Item memuat pilihan firmware di sini.
+    'clFirmwares.options': {
+      validate: validateListFirmwareOptions,
+      handler: (input, ctx) => listFirmwareOptions(ctx.env, input),
+    },
+    'clFirmwares.save': {
+      permission: { module: 'countrylock', level: 'edit' },
+      validate: validateSaveClFirmware,
+      handler: (input, ctx) => saveClFirmware(ctx.env, input, ctx.user),
+    },
+    'clFirmwares.remove': {
+      permission: { module: 'countrylock', level: 'manage' },
+      validate: validateRemoveClFirmware,
+      handler: (input, ctx) => removeClFirmware(ctx.env, input, ctx.user),
     },
     'clUploads.start': {
       permission: { module: 'countrylock', level: 'edit' },

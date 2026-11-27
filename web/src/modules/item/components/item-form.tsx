@@ -7,7 +7,7 @@ import type {
   StickerDto,
   StickerTypeDto,
 } from '@shared/contract';
-import { firmwareOptionsFor, isValidFirmware } from '@shared/firmware';
+import { countryLockBrandOf } from '@shared/countrylock-bundle';
 import { normalizeKey } from '@shared/items';
 import { WAREHOUSE_BOX_LIMITS } from '@shared/serial-warehouse';
 import { SERIAL_PROOF_LIMITS } from '@shared/serials';
@@ -41,6 +41,7 @@ import {
 import type { StickerTypeSaveInput } from '@/modules/sticker/components/sticker-type-form-dialog';
 import { defaultBusinessUnitIds } from '../lib/default-business-units';
 import { errorText, errorTexts } from '../lib/row-error';
+import { type FirmwareOptionsByBrand, firmwareOptionsOf } from '../queries';
 import type { ItemFieldErrors, ItemFormInput, ItemFormOutput } from '../schemas';
 import { itemFormSchema } from '../schemas';
 import { AccessoryListField } from './accessory-list-field';
@@ -89,6 +90,8 @@ export interface ItemFormProps {
   onTabErrorsChange?: (errors: Record<ItemFormTab, boolean>) => void;
   /** Merk yang sudah ada (pilihan field Merk). */
   brands?: readonly BrandDto[];
+  /** Pilihan firmware Country Lock per merk (daftar dinamis server); kosong = field Firmware tanpa pilihan. */
+  firmwareOptions?: FirmwareOptionsByBrand;
   /** Semua BU (nama, kode, status) untuk label chip dan pilihan. */
   businessUnits?: readonly BusinessUnitOptionDto[];
   /** Id BU yang boleh diisi user (level `edit` ke atas); BU nonaktif tetap tidak ditawarkan. */
@@ -147,6 +150,7 @@ export function ItemForm({
   onActiveTabChange,
   onTabErrorsChange,
   brands = [],
+  firmwareOptions: firmwareOptionsByBrand,
   businessUnits = [],
   editableBusinessUnitIds = [],
   onCreateBrand,
@@ -199,6 +203,11 @@ export function ItemForm({
   const [brandTerm, setBrandTerm] = useState('');
   const allBrands = [...brands, ...createdBrands.filter((c) => !brands.some((b) => b.id === c.id))];
   const brandById = (id: string) => allBrands.find((brand) => brand.id === id);
+  const selectedBrandId = useStore(form.store, (state) => state.values.brandId);
+  const firmwareOptions = firmwareOptionsOf(
+    firmwareOptionsByBrand,
+    brandById(selectedBrandId)?.name ?? '',
+  );
   const brandLabel = (id: string) => {
     const brand = brandById(id);
     if (!brand) return undefined;
@@ -293,8 +302,9 @@ export function ItemForm({
     form.setFieldValue('brandId', id ?? '');
     clear('brandId');
     // Kode firmware hanya berlaku untuk merk tertentu: kosongkan bila tak berlaku bagi merk baru.
-    const brandName = id === null ? '' : (known ?? brandById(id))?.name;
-    if (!isValidFirmware(brandName ?? '', form.getFieldValue('firmware'))) {
+    const brandName = id === null ? '' : ((known ?? brandById(id))?.name ?? '');
+    const previousName = brandById(form.getFieldValue('brandId'))?.name ?? '';
+    if (countryLockBrandOf(brandName) !== countryLockBrandOf(previousName)) {
       form.setFieldValue('firmware', '');
       clear('firmware');
     }
@@ -541,8 +551,7 @@ export function ItemForm({
             brandId: state.values.brandId,
           })}
         >
-          {({ lock, brandId }) => {
-            const options = lock ? firmwareOptionsFor(brandById(brandId)?.name ?? '') : [];
+          {({ lock }) => {
             if (!lock) return null;
             return (
               <form.Field name="firmware">
@@ -552,12 +561,12 @@ export function ItemForm({
                       id="item-firmware"
                       label="Firmware"
                       placeholder={
-                        options.length > 0
+                        firmwareOptions.length > 0
                           ? 'Pilih firmware'
                           : 'Merk ini tak punya firmware Country lock'
                       }
                       value={field.state.value}
-                      options={options.map((option) => ({
+                      options={firmwareOptions.map((option) => ({
                         value: option.code,
                         label: option.label,
                       }))}
@@ -566,7 +575,7 @@ export function ItemForm({
                         clear('firmware');
                       }}
                       clearable
-                      disabled={options.length === 0}
+                      disabled={firmwareOptions.length === 0}
                     />
                     <p className="text-xs text-muted-foreground">
                       Dipakai aplikasi desktop untuk memilih skrip Country Lock otomatis.

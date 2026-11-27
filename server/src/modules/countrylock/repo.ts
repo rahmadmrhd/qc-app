@@ -358,3 +358,68 @@ export async function getBundleByNumber(
     .first<Row>();
   return row === null ? null : toBundle(row);
 }
+
+// --- Firmware: akses dan penjaga terhadap Item -----------------------------------------------------------------------
+
+/** Firmware menurut id (hidup atau terhapus); pemanggil menilai `removedAt`. */
+export async function getFirmwareById(db: Preparer, id: string): Promise<ClFirmwareRecord | null> {
+  const row = await db
+    .prepare(`SELECT ${FIRMWARE_COLUMNS} FROM cl_firmwares WHERE id = ?`)
+    .bind(id)
+    .first<Row>();
+  return row === null ? null : toFirmware(row);
+}
+
+/** Apakah ada firmware HIDUP `brand`/`code`? (Pembacaan biasa: kepastian saat komit dijaga `firmwareKeyGuardStmt`.) */
+export async function firmwareExists(
+  db: Preparer,
+  brand: ClBrandKey,
+  code: string,
+): Promise<boolean> {
+  const row = await db
+    .prepare("SELECT 1 AS ok FROM cl_firmwares WHERE brand = ? AND code = ? AND removed_at = ''")
+    .bind(brand, code)
+    .first<Row>();
+  return row !== null;
+}
+
+/**
+ * Penjaga atomik penulisan item yang menyetel `firmware`: pernyataan di dalam `batch()` yang MENGUNCI baris firmware
+ * hidup (`COUNT(*) ... FOR UPDATE`: menunggu transaksi hapus/ubah yang sedang berjalan sampai COMMIT, dan menahan
+ * penghapusan sampai batch ini selesai) lalu gagal dengan `CAS_FAIL_SQL` (batch batal, `runCas` memuat ulang dan
+ * `resolveItemFirmware` menolak dengan `VALIDATION`) bila firmware itu tak ada atau sudah dihapus. Pola `brandKeyGuardStmt`.
+ */
+export function firmwareKeyGuardStmt(db: Preparer, brand: ClBrandKey, code: string): DbStatement {
+  return db
+    .prepare(
+      `SELECT CASE WHEN COUNT(*) = 1 THEN 1 ELSE ${CAS_FAIL_SQL} END AS guard_ok FROM cl_firmwares WHERE brand = ? AND code = ? AND removed_at = '' FOR UPDATE`,
+    )
+    .bind(brand, code);
+}
+
+/** Jumlah item HIDUP yang memakai firmware `code` pada merk `brand` (kunci merk = nama merk ternormalisasi). */
+export async function countItemsUsingFirmware(
+  db: Preparer,
+  brand: ClBrandKey,
+  code: string,
+): Promise<number> {
+  const row = await db
+    .prepare(
+      `SELECT COUNT(*) AS n FROM items i JOIN brands b ON b.id = i.brand_id WHERE i.deleted_at = '' AND i.firmware = ? AND b.\`key\` = ?`,
+    )
+    .bind(code, brand)
+    .first<Row>();
+  return Number(row?.n ?? 0);
+}
+
+/** Pemakaian firmware oleh item hidup: kunci `"<brand>:<code>"` -> jumlah item. */
+export async function firmwareUseCounts(db: Preparer): Promise<Map<string, number>> {
+  const result = await db
+    .prepare(
+      `SELECT b.\`key\` AS brand_key, i.firmware AS code, COUNT(*) AS n FROM items i JOIN brands b ON b.id = i.brand_id WHERE i.deleted_at = '' AND i.firmware <> '' GROUP BY b.\`key\`, i.firmware`,
+    )
+    .all<Row>();
+  return new Map(
+    result.results.map((row) => [`${text(row.brand_key)}:${text(row.code)}`, Number(row.n)]),
+  );
+}

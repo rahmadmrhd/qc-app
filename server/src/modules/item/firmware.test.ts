@@ -3,9 +3,10 @@ import { seedBusinessUnit } from '@server-test/access-fixtures';
 import { brandIdOf, DEFAULT_TEST_BU_ID, seedBrand } from '@server-test/item-fixtures';
 import { jsonOf, restClient } from '@server-test/rest-client';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
+import { seedCountryLockFirmwares } from '../countrylock/seed';
 
 // Kode firmware Country Lock per item (spek desktop §6.6, keputusan pemilik 2026-11-18): pilihan tetap per merk
-// (`shared/firmware.ts`), hanya untuk item Country lock; tidak dikirim = tak diubah.
+// (daftar dinamis `cl_firmwares`, di sini diisi seed awal), hanya untuk item Country lock; tidak dikirim = tak diubah.
 
 let env: TestEnv;
 let rest: ReturnType<typeof restClient>;
@@ -30,6 +31,7 @@ beforeEach(async () => {
   await seedBrand(env, 'Ubiquiti');
   await seedBrand(env, 'Mikrotik');
   await seedBrand(env, 'Cambium');
+  await seedCountryLockFirmwares(env);
 });
 
 async function create(body: Record<string, unknown>) {

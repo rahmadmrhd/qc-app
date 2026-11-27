@@ -2,7 +2,12 @@ import { describe, expect, test } from 'bun:test';
 import { API_ROUTES, toRequestParts } from '@shared/api';
 import { BATCH_MAX } from '@shared/batch';
 import type { ApiId, ApiInput } from '@shared/contract';
-import { CL_BINARY_MAX_BYTES, CL_PATH_MAX, CL_TEXT_MAX_BYTES } from '@shared/countrylock-bundle';
+import {
+  CL_BINARY_MAX_BYTES,
+  CL_PATH_MAX,
+  CL_TEXT_MAX_BYTES,
+  FIRMWARE_CODE_MAX,
+} from '@shared/countrylock-bundle';
 import { MARKDOWN_MAX_LENGTH, MAX_IMAGE_BYTES } from '@shared/files';
 import { HANDOVER_LIMITS } from '@shared/handover';
 import { ITEM_LIMITS } from '@shared/items';
@@ -63,6 +68,16 @@ const WORST: Inputs = {
     sha256: 'f'.repeat(64),
   },
   'clUploads.finish': { id: UUID },
+  'clFirmwares.save': {
+    id: UUID,
+    brand: 'ubiquiti',
+    code: 'c'.repeat(FIRMWARE_CODE_MAX),
+    label: text(120),
+    scriptPath: 'p'.repeat(CL_PATH_MAX),
+    parallel: true,
+    sort: 999_999_999,
+    expectedUpdatedAt: STAMP,
+  },
   'access.roles.save': {
     id: UUID,
     name: text(60),

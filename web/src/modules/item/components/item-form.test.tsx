@@ -94,11 +94,24 @@ const STICKER_TYPES: StickerTypeDto[] = [
 // bu-x tidak boleh diisi user ini; bu-old nonaktif jadi tak pernah ditawarkan.
 const editableBusinessUnitIds = ['bu-a', 'bu-b', 'bu-old'];
 
+/** Pilihan firmware dari server (`clFirmwares.options`), seperti hasil seed awal. */
+const firmwareOptions = {
+  mikrotik: [
+    { code: 'AC', label: 'AC' },
+    { code: '5Ghz', label: '5GHz' },
+  ],
+  ubiquiti: [
+    { code: 'WA', label: 'WA Firmware' },
+    { code: 'af5xhd', label: 'AF-5XHD' },
+  ],
+};
+
 function renderForm(props: Partial<ItemFormProps> = {}) {
   const onSubmit = vi.fn(async () => undefined);
   render(
     <Harness
       brands={brands}
+      firmwareOptions={firmwareOptions}
       businessUnits={businessUnits}
       editableBusinessUnitIds={editableBusinessUnitIds}
       defaultValues={toItemFormDefaults()}
@@ -663,6 +676,13 @@ test('firmware dikosongkan saat Country lock dimatikan atau merk diganti ke merk
       expect.objectContaining({ brandId: 'b3', isCountryLock: false, firmware: '' }),
     ),
   );
+});
+
+test('firmware: tanpa pilihan dari server field nonaktif; firmware merk lain tak ditawarkan', async () => {
+  renderForm({ firmwareOptions: { mikrotik: [], ubiquiti: [] } });
+  await pickBrand('Ubiquiti');
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Country lock (wajib)' }));
+  expect(screen.getByRole('combobox', { name: 'Firmware' })).toBeDisabled();
 });
 
 test('wajib foto bukti: kolom Minimum foto hanya muncul saat dicentang (bawaan 1) dan ikut terkirim', async () => {

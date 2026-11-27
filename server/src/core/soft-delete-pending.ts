@@ -44,6 +44,10 @@ export const SOFT_DELETE_PENDING: Record<string, readonly string[]> = {
  * `"<berkas>#<kunci pemindai>"`, nilai = alasan.
  */
 export const SOFT_DELETE_EXEMPT: Record<string, string> = {
+  'server/src/modules/countrylock/repo.ts#brands@1#d38af334':
+    'Hitungan pemakaian firmware: kunci merk (Mikrotik/Ubiquiti) hanya mengidentifikasi merk item hidup; item hidup bermerk terhapus tetap memakai firmware (rujukan tersimpan dipertahankan), jadi merk terhapus HARUS ikut terhitung agar firmware itu tak dapat dihapus.',
+  'server/src/modules/countrylock/repo.ts#brands@2#77a507ea':
+    'Hitungan pemakaian firmware per daftar admin: alasan sama dengan kueri hitungan tunggal (merk hanya identitas, item hidup bermerk terhapus tetap pemakai).',
   'server/src/modules/serialwh/stock.ts#business_units@1#8c10bf2f':
     'Stok Ready menampilkan kode/nama BU pemilik kardus walau BU terhapus (BU terhapus tetap memberi hak); kardus dibatasi `bu_id` hak pemanggil.',
   'server/src/modules/serialwh/options.ts#brands@1#91c85afe':

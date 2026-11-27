@@ -398,6 +398,35 @@
     "ifMatch": "expectedUpdatedAt"
   },
   {
+    "id": "clFirmwares.list",
+    "verb": "GET",
+    "path": "/countrylock/firmwares",
+    "status": 200
+  },
+  {
+    "id": "clFirmwares.options",
+    "verb": "GET",
+    "path": "/countrylock/firmware-options",
+    "query": {
+      "brand": "string"
+    },
+    "status": 200
+  },
+  {
+    "id": "clFirmwares.remove",
+    "verb": "DELETE",
+    "path": "/countrylock/firmwares/{id}",
+    "status": 200
+  },
+  {
+    "id": "clFirmwares.save",
+    "verb": "PUT",
+    "path": "/countrylock/firmwares",
+    "status": 200,
+    "etag": "updatedAt",
+    "ifMatch": "expectedUpdatedAt"
+  },
+  {
     "id": "clUploads.chunk",
     "verb": "PUT",
     "path": "/countrylock/uploads/{id}/chunks/{idx}",

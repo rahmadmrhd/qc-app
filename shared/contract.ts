@@ -10,7 +10,7 @@ import type {
   StatusBatchInput,
 } from './batch';
 import type { BuAssignment, BuPermissionMap } from './business-units';
-import type { ClFileRole } from './countrylock-bundle';
+import type { ClBrand, ClFileRole } from './countrylock-bundle';
 import type {
   DashboardOptionsDto,
   DashboardOptionsInput,
@@ -2016,6 +2016,45 @@ export interface FinishClUploadInput {
   id: string;
 }
 
+/** Satu firmware Country Lock (daftar dinamis, spek §5.2); `inUseCount` = item hidup yang memakainya. */
+export interface ClFirmwareDto {
+  id: string;
+  brand: ClBrand;
+  code: string;
+  label: string;
+  /** Jalur berkas skrip (role `script`) di draf; `null` = belum punya skrip. */
+  scriptPath: string | null;
+  parallel: boolean;
+  sort: number;
+  inUseCount: number;
+  updatedAt: string;
+}
+
+export interface ClFirmwareOptionDto {
+  code: string;
+  label: string;
+}
+
+export interface ListClFirmwareOptionsInput {
+  brand: ClBrand;
+}
+
+export interface SaveClFirmwareInput {
+  /** Tanpa `id` = firmware baru. */
+  id?: string;
+  brand: ClBrand;
+  code: string;
+  label: string;
+  scriptPath: string | null;
+  parallel: boolean;
+  sort: number;
+  expectedUpdatedAt?: string;
+}
+
+export interface RemoveClFirmwareInput {
+  id: string;
+}
+
 export interface ApiContract {
   'auth.me': { input: null; output: MeDto };
   'access.users.list': { input: ListUsersInput | null; output: UserDto[] };
@@ -2334,6 +2373,10 @@ export interface ApiContract {
   'clFiles.history': { input: ListClFileHistoryInput; output: ClRevisionDto[] };
   'clFiles.revision': { input: GetClRevisionInput; output: ClRevisionDetailDto };
   'clFiles.revert': { input: RevertClFileInput; output: ClFileDetailDto };
+  'clFirmwares.list': { input: null; output: ClFirmwareDto[] };
+  'clFirmwares.options': { input: ListClFirmwareOptionsInput; output: ClFirmwareOptionDto[] };
+  'clFirmwares.save': { input: SaveClFirmwareInput; output: ClFirmwareDto };
+  'clFirmwares.remove': { input: RemoveClFirmwareInput; output: null };
   'clUploads.start': { input: StartClUploadInput; output: ClUploadSessionDto };
   'clUploads.chunk': { input: ChunkClUploadInput; output: { received: number } };
   'clUploads.finish': { input: FinishClUploadInput; output: ClFileDto };

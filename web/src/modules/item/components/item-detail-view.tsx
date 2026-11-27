@@ -1,6 +1,5 @@
 import { formatBuLabel } from '@shared/business-units';
 import type { ItemDto, ItemPostelDto } from '@shared/contract';
-import { firmwareOptionsFor } from '@shared/firmware';
 import { DetailList, ViewMeta, ViewPage, ViewSection } from '@/components/page/view-page';
 import { DeletedBadge } from '@/components/soft-delete/deleted-badge';
 import { DeletedBanner } from '@/components/soft-delete/deleted-banner';
@@ -11,6 +10,7 @@ import { MarkdownView } from '@/modules/markdown/markdown-view';
 import { PostelConditionBadge } from '@/modules/postel/components/postel-condition-badge';
 import { formatPostelDate } from '@/modules/postel/lib/condition';
 import { STICKER_STATUS_LABEL } from '@/modules/sticker/lib/status';
+import { type FirmwareOptionsByBrand, firmwareOptionsOf } from '../queries';
 import { ImageThumb } from './image-thumb';
 import { NoManualBookNote } from './manual-book-note';
 import { NoPostelNote } from './no-postel-note';
@@ -29,6 +29,8 @@ export interface ItemDetailViewProps {
   canViewSerial?: boolean;
   statusPending: boolean;
   restorePending?: boolean;
+  /** Pilihan firmware per merk untuk label firmware; tanpa ini kode firmware tampil apa adanya. */
+  firmwareOptions?: FirmwareOptionsByBrand | undefined;
   /** Tautan ke View merk / BU; tidak diberikan bila user tak berhak membukanya. */
   openBrandHref?: ((brandId: string) => string) | undefined;
   openBusinessUnitHref?: ((buId: string) => string) | undefined;
@@ -61,6 +63,7 @@ export function ItemDetailView({
   canViewSerial = false,
   statusPending,
   restorePending = false,
+  firmwareOptions,
   openBrandHref,
   openBusinessUnitHref,
   openManualBookHref,
@@ -80,8 +83,8 @@ export function ItemDetailView({
   const firmwareLabel =
     item.firmware === ''
       ? ''
-      : (firmwareOptionsFor(item.brand).find((o) => o.code === item.firmware)?.label ??
-        item.firmware);
+      : (firmwareOptionsOf(firmwareOptions, item.brand).find((o) => o.code === item.firmware)
+          ?.label ?? item.firmware);
 
   const detailTab = (
     <div className="space-y-6">

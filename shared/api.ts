@@ -855,6 +855,19 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
   'clFiles.history': { verb: 'GET', path: '/countrylock/files/{id}/history' },
   'clFiles.revision': { verb: 'GET', path: '/countrylock/files/{id}/revisions/{seq}' },
   'clFiles.revert': { verb: 'POST', path: '/countrylock/files/{id}/revert', etag: 'updatedAt' },
+  'clFirmwares.list': { verb: 'GET', path: '/countrylock/firmwares' },
+  'clFirmwares.options': {
+    verb: 'GET',
+    path: '/countrylock/firmware-options',
+    query: { brand: 'string' },
+  },
+  'clFirmwares.save': {
+    verb: 'PUT',
+    path: '/countrylock/firmwares',
+    ifMatch: 'expectedUpdatedAt',
+    etag: 'updatedAt',
+  },
+  'clFirmwares.remove': { verb: 'DELETE', path: '/countrylock/firmwares/{id}' },
   'clUploads.start': { verb: 'POST', path: '/countrylock/uploads', status: 201 },
   'clUploads.chunk': {
     verb: 'PUT',
