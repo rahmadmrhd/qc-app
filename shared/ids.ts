@@ -21,14 +21,6 @@ const RANDOM_MAX = (1n << 80n) - 1n;
 /** Karakter pertama paling banyak `7` karena 26 x 5 = 130 bit sedangkan ID hanya 128 bit. */
 export const ULID_PATTERN = /^[0-7][0-9a-hjkmnp-tv-z]{25}$/;
 
-/**
- * UUID lama (v4 buatan aplikasi dan v5 hasil migrasi data lama): dipakai tes, pemeriksaan sisa, dan lapisan terjemahan ID lama
- * sementara (`server/src/core/legacy-ids.ts`, satu-satunya pemakai pola ini di repo selain tes). Migrasi UUID -> ULID dikerjakan
- * skrip operator LOKAL milik pemilik di luar repo (keputusan pemilik 2026-11-22); kesamaan pola dengan skrip itu dijaga
- * manual, tak ada tes paritas.
- */
-export const LEGACY_UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-
 /** True bila `value` ULID huruf kecil yang sah (huruf besar ditolak). */
 export function isUlid(value: unknown): value is string {
   return typeof value === 'string' && ULID_PATTERN.test(value);

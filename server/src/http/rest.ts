@@ -1,6 +1,5 @@
 import { appError, isAppError } from '@server/core/errors';
-import { translateLegacyIds } from '@server/core/legacy-ids';
-import { logLegacyIds, logRequest } from '@server/core/log';
+import { logRequest } from '@server/core/log';
 import {
   authorize,
   credentialOf,
@@ -239,12 +238,6 @@ function innerHandlerFor(operation: Operation, routes: RouteTable) {
           throw appError('VALIDATION', 'Input tidak valid', { [issue.field]: issue.message });
         }
         throw issue;
-      }
-      // ID lama (UUID) dari klien yang belum memuat ulang diganti ID baru SEBELUM validasi dan izin berlokasi
-      // (lapisan sementara pasca migrasi ID ULID; tanpa tabel peta atau tanpa UUID di input = tanpa pekerjaan).
-      const translated = await translateLegacyIds(c.env, input);
-      if (translated > 0) {
-        logLegacyIds({ requestId: meta.requestId, method: id, count: translated });
       }
       const output = await execute(authorized, input);
       logRequest({
