@@ -704,6 +704,18 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
       limit: 'number',
     },
   },
+  'serialWarehouse.readyStock': {
+    verb: 'GET',
+    path: '/serial-warehouse/ready-stock',
+    query: {
+      buIds: 'list',
+      itemIds: 'list',
+      query: 'string',
+      cursor: 'string',
+      limit: 'number',
+      pickCount: 'number',
+    },
+  },
   'serialWarehouse.dispatchGet': { verb: 'GET', path: '/serial-warehouse/dispatches/{id}' },
   // Bukti foto QC Serial Number. `serialProofs.get` TANPA `etag` dan memakai `cache: 'revalidate'` (`private, no-cache`): isi pada
   // id yang sama berubah dari foto asli (draft/antre) menjadi hasil bercap (selesai), jadi ETag `id` atau `immutable`

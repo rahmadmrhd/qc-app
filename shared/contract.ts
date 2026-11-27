@@ -904,6 +904,8 @@ export interface ItemDto extends ItemSummaryDto {
   proofRequired: boolean;
   /** Jumlah foto bukti minimum (1 sampai `SERIAL_PROOF_LIMITS.perEntryMax`). */
   proofMin: number;
+  /** Pcs per kardus untuk Stok Ready Gudang; 0 = belum diisi. */
+  boxSize: number;
   createdAt: string;
   updatedBy: string;
 }
@@ -926,6 +928,8 @@ export interface SaveItemInput {
   proofRequired?: boolean;
   /** Minimum foto (1 sampai 5); tidak dikirim = tak diubah, item baru = 1; disimpan 1 bila `proofRequired` salah. */
   proofMin?: number;
+  /** Pcs per kardus (0 sampai `WAREHOUSE_BOX_LIMITS.sizeMax`); tidak dikirim = tak diubah, item baru = 0. */
+  boxSize?: number;
   aliases: string[];
   /** Instruksi stiker; PUT utuh (daftar kosong = tanpa instruksi). */
   stickerPhotos: ItemStickerPhotoInput[];
@@ -1601,10 +1605,46 @@ export interface WarehouseSubmitHeader {
   handoverIds: string[];
   total: number;
   chunkSize: number;
+  /** Mode ready: nomor kardus pertama dan pcs per kardus (wajib bersama); ditolak pada mode `order`. */
+  boxStart?: number;
+  boxSize?: number;
 }
 export type WarehouseSubmitRow =
   | { kind: 'existing'; serialId: string; serial: string }
   | { kind: 'new'; clientId: string; serial: string; locationId: string; testDate: string };
+export interface ReadyStockSerialDto {
+  id: string;
+  serial: string;
+  boxId: string;
+  boxNumber: number;
+  capacity: number;
+  recordedOn: string;
+  /** Sedang di pengeluaran Penjualan yang belum selesai. */
+  processing: boolean;
+}
+export interface ReadyStockBoxDto {
+  id: string;
+  number: number;
+  capacity: number;
+  remaining: number;
+  kind: 'full' | 'loose';
+  serials: ReadyStockSerialDto[];
+}
+export interface ListReadyStockInput {
+  buIds?: string[];
+  itemIds?: string[];
+  query?: string;
+  cursor?: string;
+  limit?: number;
+  /** Bila diisi, `picked` memuat id serial pilihan otomatis (kardus penuh dulu) atas seluruh stok terfilter. */
+  pickCount?: number;
+}
+export interface ReadyStockPageDto {
+  boxes: ReadyStockBoxDto[];
+  nextCursor: string | null;
+  totals: { units: number; fullBoxes: number; looseBoxes: number; maxBoxNumber: number };
+  picked?: string[];
+}
 export interface WarehouseSubmitInput {
   clientId: string;
   chunkIndex: number;
@@ -2126,6 +2166,7 @@ export interface ApiContract {
     input: ListWarehouseDispatchesInput;
     output: WarehouseDispatchesPageDto;
   };
+  'serialWarehouse.readyStock': { input: ListReadyStockInput; output: ReadyStockPageDto };
   'serialWarehouse.dispatchGet': {
     input: GetWarehouseDispatchInput;
     output: WarehouseDispatchDetailDto;
