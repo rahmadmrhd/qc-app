@@ -45,7 +45,7 @@ produksi dan dibahas terpisah.
    kode di repo. Alasan: operasi sekali pakai yang tak perlu dipelihara, diuji CI, atau dibawa ke produksi; permukaan repo
    lebih kecil. Risiko yang diterima pemilik: skrip tak ikut tinjauan dan riwayat repo, dan hilang bila folder lokal hilang
    (cadangkan sendiri); salinan penurun isi QR dapat basi bila aplikasi mengubah isi label sebelum skrip dijalankan (tes
-   lokal menangkapnya). **Satu-satunya pengecualian: lapisan terjemahan ID lama di server (butir 10, 2026-11-23)**; skrip,
+   lokal menangkapnya). **Satu-satunya pengecualian: lapisan terjemahan ID lama di server (butir 10, 2026-11-23; dicabut 2026-11-27, butir 13)**; skrip,
    pembuatan tabel peta, dan penulisan ulang data tetap di luar repo.
 
 8. **Keputusan pemilik produk 2026-11-22 atas bagian 6b, 6c, dan 6d** (semua mengikuti rekomendasi perancang kecuali masa
@@ -83,6 +83,7 @@ produksi dan dibahas terpisah.
 
 11. **Masa pantau produksi diperpendek dari satu minggu menjadi DUA HARI** (keputusan pemilik produk 2026-11-23, mengubah butir 8c dan bagian 6d). Masa pantau berjalan 2026-11-23 sampai 2026-11-25 (migrasi produksi selesai 2026-11-23 04:28 WIB, verifikasi lolos tanpa masalah). Pemilik tidak menyebut alasan tertulis; konteks: migrasi produksi lolos verifikasi penuh tanpa insiden dan log aplikasi bersih. Dampak yang dicatat perancang: (a) lapisan terjemahan (bagian 4a) dan tabel `id_ulid_map` dicabut lebih cepat, jadi state klien ber-ID lama yang bertahan lebih dari dua hari (draf lokal desktop, antrean offline, berkas `.qcsn`, bookmark) akan ditolak setelah pencabutan; (b) sapu akhir skrip tetap dijalankan sebelum `DROP TABLE id_ulid_map`; (c) syarat lain tahap 2 tidak berubah (semua lingkungan lolos verifikasi, tak ada kode yang mengharapkan UUID). Butir yang bertentangan (8c, bagian 4 prosedur butir 6, bagian 4a "Pencabutan", bagian 6d) sudah diubah menjadi dua hari.
 12. **Jalur migrasi skema tahap 2 dan ringkas migrasi saat pindah server** (keputusan pemilik produk 2026-11-23). Perubahan skema tahap 2 (bila dikerjakan) memakai file migrasi BARU berpenanda `-- qc:contract` seperti aturan umum, bukan menyunting migrasi lama dan bukan DDL langsung. Saat pindah ke server kantor, atas permintaan pemilik, seluruh migrasi diringkas menjadi migrasi dasar `CREATE`-saja, tetap per tabel atau fitur (bukan satu file tunggal; koreksi pemilik 2026-11-23), yang sudah memuat skema akhir (termasuk tahap 2 bila sudah dilakukan). Rincian dan syarat: spek migrasi VPS §19 butir 25 dan `docs/deploy-vps.md` bagian 14.
+13. **Lapisan terjemahan ID lama DICABUT dari repo** (keputusan pemilik produk 2026-11-27, melaksanakan butir 10 dan bagian 4a "Pencabutan"; alasan pemilik: migrasi produksi sudah lebih dari satu minggu lalu, jauh melewati masa pantau dua hari butir 11). Yang dihapus: `server/src/core/legacy-ids.ts` dan `legacy-ids.test.ts` (termasuk pagar kontrak `NON_ID_CONTRACT_KEYS`), pemasangan di `server/src/http/rest.ts`, `logLegacyIds` di `core/log.ts`, tiga entri `SOFT_DELETE_PENDING` milik probe arah, dan `LEGACY_UUID_PATTERN` di `shared/ids.ts` (tak ada pemakai lain; skrip operator lokal memakai pola sendiri). Dampak yang dicatat perancang: klien yang masih membawa UUID lama (antrean offline, draf lokal, berkas `.qcsn`, bookmark) kini ditolak sebagai ID tak dikenal (`NOT_FOUND` atau `VALIDATION`), bukan diterjemahkan; ini risiko yang sudah diterima pada butir 11 (a). Bukti masa pantau terbatas: log Docker produksi hanya mencakup umur kontainer saat itu (sejak 2026-11-27 06:33 UTC, sekitar 6,5 jam) dan tidak memuat satu pun `evt: legacy-id`; log minggu sebelumnya sudah hilang bersama kontainer lama. Tidak ada migrasi dan tidak ada data yang berubah; tabel `id_ulid_map` tidak dibaca kode mana pun lagi. **Pelaksanaan operator 2026-11-27 (atas persetujuan pemilik di chat):** (1) sapu akhir dry-run di produksi (hanya SELECT): 0 baris ber-UUID, 0 kolom ID murni, dan semua token UUID tersisa di kolom teks (`audit_log.before/after` kunci `logo`, `items.detail_md`) tidak ada di peta, jadi `--apply` sapu akhir tidak akan mengubah apa pun dan TIDAK dijalankan; (2) `id_ulid_map` (428.980 baris) di-dump dulu ke VPS (`/root/apps/qc-app/backup/id_ulid_map-20261127-135811.sql.gz`, izin 600, `gzip -t` ok, baris penutup ada, 428.980 tuple = jumlah baris), lalu `DROP TABLE qc_production.id_ulid_map` dijalankan langsung oleh operator, TANPA file migrasi (tabel ini tak pernah dibuat migrasi, dan migrasi `-- qc:contract` akan ikut deploy otomatis serta mengganggu ringkas migrasi saat pindah server), setelah dipastikan hanya ada satu tabel itu di server, tak ada sesi atau transaksi yang memakainya, dan tak ada kunci asing; (3) aplikasi produksi tetap sehat (ping 200, `healthy`, tanpa galat tabel). Akibatnya `--revert` skrip operator tak lagi dapat memakai peta; jalan pulang tinggal dump pra-migrasi `production-pra-ulid-20261122-205347.sql.gz`. Tabel serupa di `qc_dev` dan staging belum dibuang. Tersisa: skrip lokal `server/ops-lokal` dan kedua dump di VPS dapat dihapus sesuai kebijakan retensi pemilik.
 
 ## 2. Yang TIDAK diubah (sengaja)
 
@@ -157,7 +158,7 @@ Fakta produksi (diukur read-only 2026-11-22, `qc_production`, MariaDB 11.8.9): `
 Hanya 6 kunci asing nyata; sekitar 77 kolom `*_id` lain tidak dijaga kunci asing, sebab itu penulisan ulang berbasis nilai dan
 verifikasi jumlah rujukan per kolom adalah jaring pengaman utama.
 
-### 4a. Lapisan terjemahan ID lama di server (keputusan 2026-11-23, bagian 1 butir 10)
+### 4a. Lapisan terjemahan ID lama di server (keputusan 2026-11-23, bagian 1 butir 10) — DICABUT 2026-11-27 (butir 13); tinggal catatan sejarah
 
 Kode: `server/src/core/legacy-ids.ts` (tes `legacy-ids.test.ts`), dipasang SATU kali di kernel REST (`server/src/http/rest.ts`,
 `innerHandlerFor`) tepat setelah `fromRequestParts` merakit input (parameter jalur, query, dan badan) dan sebelum `execute`
@@ -195,7 +196,9 @@ proksi desktop, dan impor `.qcsn`, tanpa mengubah modul mana pun.
   (`UNAVAILABLE` seperti rute lain), kecuali "tabel tak ada" yang berarti tak ada pekerjaan.
 - **Pencabutan:** setelah masa pantau dua hari (butir 11 bagian 1) dan sebelum tahap 2: (1) jalankan ulang skrip migrasi sekali sebagai sapu akhir
   (menulis ulang sisa ID lama yang masuk lewat teks bebas), (2) `DROP TABLE id_ulid_map` (lapisan otomatis tanpa pekerjaan),
-  (3) PR yang menghapus `legacy-ids.ts`, pemasangannya, dan butir 10 ini menjadi catatan sejarah.
+  (3) PR yang menghapus `legacy-ids.ts`, pemasangannya, dan butir 10 ini menjadi catatan sejarah. Status 2026-11-27: langkah (3)
+  dikerjakan lebih dulu (butir 13 bagian 1; aman karena lapisan tanpa pekerjaan bila tabel peta tak ada, dan sebaliknya
+  tabel peta yang masih ada tak berbahaya tanpa lapisan); langkah (1) dan (2) menunggu persetujuan operator.
 
 ### Prosedur jendela pemeliharaan (rencana; belum dijalankan di mana pun)
 
@@ -232,7 +235,8 @@ proksi desktop, dan impor `.qcsn`, tanpa mengubah modul mana pun.
    (b) hanya bila ada draf desktop yang tak bisa dikosongkan. **DITUTUP 2026-11-23: pemilik produk memilih (b), lapisan
    terjemahan ID sementara di server** (bagian 1 butir 10; rancangan di bagian 4a). Kolom "Pulih sendiri?" di bawah menggambarkan
    keadaan TANPA lapisan; dengan lapisan, butir 4 sampai 10 diterjemahkan di server saat dikirim, dengan batas yang
-   tercantum di bagian 4a.
+   tercantum di bagian 4a. Lapisan dicabut 2026-11-27 (bagian 1 butir 13): sejak itu kolom "Pulih sendiri?" berlaku apa
+   adanya untuk state klien yang masih ber-ID lama.
 
    | # | State klien (kode) | Pulih sendiri? | Akibat bila tak dibereskan |
    |---|---|---|---|

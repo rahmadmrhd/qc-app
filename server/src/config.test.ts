@@ -396,6 +396,16 @@ describe('loadConfig: cadangan dan peringatan (T30/T32)', () => {
     }
   });
 
+  test('RESTORE_DATABASE_URL: opsional (uji pemulihan cadangan), tak pernah menggagalkan start', () => {
+    expect(loadConfig({ ...VALID }).restoreDatabaseUrl).toBe('');
+    const url = 'mysql://qc_restore:abc123@qc-db:3306/';
+    expect(loadConfig({ ...VALID, RESTORE_DATABASE_URL: url }).restoreDatabaseUrl).toBe(url);
+    // Nilai rusak diteruskan apa adanya; pabrik koneksi (verify-ports) yang menonaktifkan verifikasi dengan log.
+    expect(
+      loadConfig({ ...VALID, RESTORE_DATABASE_URL: 'ISI_OLEH_PEMILIK' }).restoreDatabaseUrl,
+    ).toBe('ISI_OLEH_PEMILIK');
+  });
+
   test('QUOTA_ALERT_PERCENT: 1-99 atau ConfigError dengan nama variabel saja', () => {
     expect(loadConfig({ ...VALID, QUOTA_ALERT_PERCENT: '70' }).quotaAlertPercent).toBe(70);
     for (const bad of ['0', '100', 'banyak', '8.5']) {

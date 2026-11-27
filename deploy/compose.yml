@@ -104,6 +104,11 @@ services:
       PROOF_STAGING_MAX_BYTES: ${PROOF_STAGING_MAX_BYTES:-}
       # Sakelar cadangan terjadwal: kosong = hidup; `false` di staging (data uji; folder Drive dipakai bersama production, retensi satu berkas per hari).
       BACKUP_ENABLED: ${BACKUP_ENABLED:-}
+      # Uji pemulihan cadangan otomatis (sesudah cadangan malam): pengguna DB berhak TERBATAS qc_restore (docs/setup-google.md S8);
+      # Di .env dipecah (QC_RESTORE_DB_USER/PASSWORD/HOST/PORT, seperti QC_DB_*) dan URL-nya disusun di sini; kata sandi KOSONG
+      # = RESTORE_DATABASE_URL kosong = verifikasi mati dan peringatan "cadangan belum diverifikasi" berbunyi. Kata sandi dipasang
+      # apa adanya di URL (tanpa persen-enkode): pakai heksa. Rahasia: isi di .env VPS, jangan di Git.
+      RESTORE_DATABASE_URL: ${QC_RESTORE_DB_PASSWORD:+mysql://${QC_RESTORE_DB_USER:-qc_restore}:${QC_RESTORE_DB_PASSWORD}@${QC_RESTORE_DB_HOST:-qc-db}:${QC_RESTORE_DB_PORT:-3306}/}
       # Peringatan email (T32): cadangan basi > 36 jam dan pemakaian kuota Drive di atas ambang (bawaan 80%).
       QUOTA_ALERT_PERCENT: ${QUOTA_ALERT_PERCENT:-}
       SMTP_HOST: ${SMTP_HOST:-}
