@@ -28,6 +28,7 @@ import {
   validateRemoveClFirmware,
   validateSaveClFirmware,
 } from './firmware-service';
+import { importCountryLock, validateImportCl } from './import-service';
 import {
   finishClUpload,
   putClUploadChunk,
@@ -62,7 +63,8 @@ type CountryLockMethod =
   | 'clBundles.publish'
   | 'clBundles.list'
   | 'clBundles.get'
-  | 'clBundles.reactivate';
+  | 'clBundles.reactivate'
+  | 'clImport.run';
 
 /**
  * Country Lock admin (draf bundel). Modul izin global `countrylock`: `view` = memakai Country Lock desktop (tidak membuka
@@ -164,6 +166,11 @@ export function countryLockRoutes(): Pick<RouteTable, CountryLockMethod> {
       permission: { module: 'countrylock', level: 'manage' },
       validate: validateReactivateClBundle,
       handler: (input, ctx) => reactivateClBundle(ctx.env, input, ctx.user),
+    },
+    'clImport.run': {
+      permission: { module: 'countrylock', level: 'edit' },
+      validate: validateImportCl,
+      handler: (input, ctx) => importCountryLock(ctx.env, input, ctx.user),
     },
   };
 }

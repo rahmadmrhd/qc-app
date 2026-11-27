@@ -886,6 +886,7 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
   'clBundles.list': { verb: 'GET', path: '/countrylock/bundles' },
   'clBundles.get': { verb: 'GET', path: '/countrylock/bundles/{number}' },
   'clBundles.reactivate': { verb: 'POST', path: '/countrylock/bundles/{number}/reactivate' },
+  'clImport.run': { verb: 'POST', path: '/countrylock/import' },
 };
 
 export interface RequestParts {

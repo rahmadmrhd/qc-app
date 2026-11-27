@@ -10,7 +10,7 @@ import type {
   StatusBatchInput,
 } from './batch';
 import type { BuAssignment, BuPermissionMap } from './business-units';
-import type { ClBrand, ClFileRole, ClIssue } from './countrylock-bundle';
+import type { ClBrand, ClFileRole, ClIssue, ClSettings } from './countrylock-bundle';
 import type {
   DashboardOptionsDto,
   DashboardOptionsInput,
@@ -2107,6 +2107,25 @@ export interface ReactivateClBundleInput {
   note: string;
 }
 
+/**
+ * Impor sekali pakai dari `config.QC` dan folder skrip lama (diparse di web). Seluruh JSON permintaan dibatasi
+ * `CL_IMPORT_MAX_JSON_BYTES`; impor lebih besar dipecah klien ke beberapa panggilan (idempoten: berkas yang sudah ada dilewati).
+ */
+export interface ImportClInput {
+  settings: ClSettings;
+  scripts: { path: string; text: string; brand: ClBrand }[];
+  firmwares: { brand: ClBrand; code: string; label: string; scriptPath: string | null }[];
+}
+
+export interface ImportClResult {
+  filesCreated: number;
+  /** Berkas yang tidak dibuat (sudah ada: isinya sama, atau berbeda dan dilaporkan di `issues`). */
+  filesSkipped: number;
+  /** Firmware yang `scriptPath`-nya baru dikaitkan pada panggilan ini. */
+  firmwaresLinked: number;
+  issues: ClIssue[];
+}
+
 export interface ApiContract {
   'auth.me': { input: null; output: MeDto };
   'access.users.list': { input: ListUsersInput | null; output: UserDto[] };
@@ -2437,6 +2456,7 @@ export interface ApiContract {
   'clBundles.list': { input: null; output: ClBundleDto[] };
   'clBundles.get': { input: GetClBundleInput; output: ClBundleDetailDto };
   'clBundles.reactivate': { input: ReactivateClBundleInput; output: ClBundleDto };
+  'clImport.run': { input: ImportClInput; output: ImportClResult };
 }
 
 export type ApiId = keyof ApiContract;

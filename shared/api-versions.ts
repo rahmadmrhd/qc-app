@@ -46,6 +46,7 @@ export const API_GROUP_VERSIONS: Record<string, GroupVersions> = {
   clUploads: { latest: 1, deprecated: [] },
   clFirmwares: { latest: 1, deprecated: [] },
   clBundles: { latest: 1, deprecated: [] },
+  clImport: { latest: 1, deprecated: [] },
   customers: { latest: 1, deprecated: [] },
   dashboard: { latest: 1, deprecated: [] },
   dashboardReports: { latest: 1, deprecated: [] },

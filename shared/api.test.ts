@@ -658,6 +658,57 @@ const EXAMPLES: { [M in ApiId]: ApiInput<M> } = {
   'clBundles.list': null,
   'clBundles.get': { number: '1' },
   'clBundles.reactivate': { number: '1', note: 'kembali' },
+  'clImport.run': {
+    settings: {
+      schema: 1,
+      router: { ip: '10.0.0.1', username: 'admin', password: 'x', interfaceBridge: 'bridge1' },
+      network: { computerIp: '10.0.0.5', prefixLength: 24 },
+      brands: {
+        mikrotik: {
+          label: 'Mikrotik',
+          username: 'admin',
+          password: '',
+          web: 'http://{ip}',
+          modes: {
+            single: {
+              ip: '192.168.1.20',
+              ipServer: '10.0.0.1',
+              connectVia: 'Target',
+              interfaceBridge: 'bridge1',
+            },
+            multi: {
+              ip: '',
+              ipServer: '10.0.0.1',
+              connectVia: 'Target',
+              interfaceBridge: 'bridge1',
+            },
+          },
+        },
+        ubiquiti: {
+          label: 'Ubiquiti',
+          username: 'ubnt',
+          password: 'ubnt',
+          web: 'http://{ip}',
+          modes: {
+            single: {
+              ip: '192.168.1.20',
+              ipServer: '10.0.0.1',
+              connectVia: 'Server',
+              interfaceBridge: 'bridge1',
+            },
+            multi: {
+              ip: '',
+              ipServer: '10.0.0.1',
+              connectVia: 'Server',
+              interfaceBridge: 'bridge1',
+            },
+          },
+        },
+      },
+    },
+    scripts: [{ path: 'mikrotik/AC.rsc', text: ':put 1', brand: 'mikrotik' }],
+    firmwares: [{ brand: 'mikrotik', code: 'AC', label: 'AC', scriptPath: 'mikrotik/AC.rsc' }],
+  },
 };
 
 const ROUNDTRIP_IDS = IDS;

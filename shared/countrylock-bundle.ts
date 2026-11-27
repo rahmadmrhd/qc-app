@@ -18,6 +18,11 @@ export const CL_PATH_MAX = 200;
 export const CL_FILES_MAX = 400;
 /** Panjang maksimum kode firmware. */
 export const FIRMWARE_CODE_MAX = 40;
+/**
+ * Batas ukuran JSON satu panggilan impor (byte UTF-8). Di bawah 1 MB agar muatan terburuk tetap jauh di bawah batas JSON
+ * REST 2 MB (invarian `body.test.ts`); klien memecah impor yang lebih besar.
+ */
+export const CL_IMPORT_MAX_JSON_BYTES = 900_000;
 
 /** Tujuh placeholder yang dikenal skrip (dijaga sama dengan `countrylock/src/script-template.ts` oleh tes paritas). */
 export const PLACEHOLDER_NAMES: readonly string[] = [

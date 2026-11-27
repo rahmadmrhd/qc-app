@@ -278,6 +278,7 @@ export const ALL_API_IDS: Record<ApiId, true> = {
   'clBundles.list': true,
   'clBundles.get': true,
   'clBundles.reactivate': true,
+  'clImport.run': true,
 };
 
 /**

@@ -457,6 +457,12 @@
     "ifMatch": "expectedUpdatedAt"
   },
   {
+    "id": "clImport.run",
+    "verb": "POST",
+    "path": "/countrylock/import",
+    "status": 200
+  },
+  {
     "id": "clUploads.chunk",
     "verb": "PUT",
     "path": "/countrylock/uploads/{id}/chunks/{idx}",

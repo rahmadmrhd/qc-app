@@ -18,7 +18,7 @@ const SEQ_MAX = 1_000_000_000;
 const ROLES = ['settings', 'script', 'router'] as const;
 
 /** Karakter kontrol yang ditolak di isi teks: semua C0 kecuali tab, LF, dan CR. */
-function hasForbiddenControl(text: string): boolean {
+export function hasForbiddenControl(text: string): boolean {
   for (let i = 0; i < text.length; i++) {
     const code = text.charCodeAt(i);
     if (code < 0x20 && code !== 0x09 && code !== 0x0a && code !== 0x0d) return true;
