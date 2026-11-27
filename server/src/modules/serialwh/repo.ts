@@ -46,6 +46,8 @@ export const loadOrderRowByKey = (db: Preparer, key: string): Promise<OrderRow |
 
 export interface DispatchRow {
   id: string;
+  /** Nomor riwayat `OUT|RS/<kode BU>/<YYMM>-<urutan>` (migrasi 0042). */
+  number: string;
   order_id: string;
   client_id: string;
   item_id: string;
@@ -70,7 +72,7 @@ export interface DispatchRow {
 }
 
 const DISPATCH_COLUMNS =
-  'd.id, d.order_id, d.client_id, d.item_id, d.dispatched_on, d.note, d.mode, d.kind, d.bu_id, d.status, d.header_hash, d.chunk_size, d.chunk_count, d.chunks_received, d.serial_total, d.created_count, d.created_at, d.created_by, d.completed_at, d.cancelled_at';
+  'd.id, d.number, d.order_id, d.client_id, d.item_id, d.dispatched_on, d.note, d.mode, d.kind, d.bu_id, d.status, d.header_hash, d.chunk_size, d.chunk_count, d.chunks_received, d.serial_total, d.created_count, d.created_at, d.created_by, d.completed_at, d.cancelled_at';
 
 export const loadDispatchRowByClientId = (
   db: Preparer,

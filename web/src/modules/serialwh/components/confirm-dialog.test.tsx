@@ -215,7 +215,7 @@ test('No SO atau customer kosong tidak dikirim', async () => {
   expect(await screen.findByText('No SO wajib diisi')).toBeInTheDocument();
 });
 
-test('tujuan bawaan Keluar ke SO mengirim mode order dan field SO', async () => {
+test('tujuan bawaan Penjualan mengirim mode order dan field SO', async () => {
   const props = setup([makeExistingRow(whSerial())]);
   await userEvent.type(await screen.findByLabelText('No SO'), 'SO-7');
   await userEvent.type(screen.getByLabelText('Customer'), 'PT Baru');
@@ -225,10 +225,10 @@ test('tujuan bawaan Keluar ke SO mengirim mode order dan field SO', async () => 
   );
 });
 
-test('Catat ready menyembunyikan No SO, customer, dan tautan task; mengirim mode ready tanpa SO', async () => {
+test('Ready Stock menyembunyikan No SO, customer, dan tautan task; mengirim mode ready tanpa SO', async () => {
   const props = setup([makeExistingRow(whSerial())]);
   await userEvent.type(await screen.findByLabelText('Catatan'), '  stok ready ');
-  await pickSelect(screen, 'Tujuan', 'Catat ready');
+  await pickSelect(screen, 'Tujuan', 'Ready Stock');
   expect(screen.queryByLabelText('No SO')).not.toBeInTheDocument();
   expect(screen.queryByLabelText('Customer')).not.toBeInTheDocument();
   expect(screen.queryByTestId('picker')).not.toBeInTheDocument();
@@ -246,23 +246,23 @@ test('Catat ready menyembunyikan No SO, customer, dan tautan task; mengirim mode
   });
 });
 
-test('Catat ready: label Tanggal catat, tanpa peringatan SO, dengan keterangan serial Tercatat WH', async () => {
+test('Ready Stock: label Tanggal catat, tanpa peringatan SO, dengan keterangan serial Tercatat WH', async () => {
   setup([
     makeExistingRow(
       whSerial({ recorded: true, dispatches: [{ buCode: 'Z', dispatchedOn: '2026-11-10' }] }),
     ),
   ]);
   expect(await screen.findByLabelText('Tanggal keluar')).toBeInTheDocument();
-  await pickSelect(screen, 'Tujuan', 'Catat ready');
+  await pickSelect(screen, 'Tujuan', 'Ready Stock');
   expect(screen.getByLabelText('Tanggal catat')).toBeInTheDocument();
   expect(screen.queryByLabelText('Tanggal keluar')).not.toBeInTheDocument();
   expect(screen.queryByText(/pernah keluar/i)).not.toBeInTheDocument();
   expect(screen.getByText(/sudah Tercatat WH akan dilewati/)).toBeInTheDocument();
 });
 
-test('Catat ready tetap mewajibkan BU', async () => {
+test('Ready Stock tetap mewajibkan BU', async () => {
   const props = setup([makeExistingRow(whSerial())], { formBuId: '' });
-  await pickSelect(screen, 'Tujuan', 'Catat ready');
+  await pickSelect(screen, 'Tujuan', 'Ready Stock');
   await userEvent.click(screen.getByRole('button', { name: 'Simpan & salin' }));
   expect(props.onConfirm).not.toHaveBeenCalled();
   expect(await screen.findByText('BU wajib dipilih')).toBeInTheDocument();

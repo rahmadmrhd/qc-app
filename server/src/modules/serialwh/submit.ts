@@ -27,6 +27,7 @@ import {
   type WarehouseDispatchStatus,
   warehouseRecordedNote,
 } from '@shared/serial-warehouse';
+import { caseNumberPeriod } from '@shared/serials';
 import { assertWhBu, canWh, whLiveBuIds } from './access';
 import {
   dispatchDoneAuditStmt,
@@ -37,6 +38,7 @@ import {
   warehouseAuditStmt,
 } from './audit';
 import { addOrderLinksStmts, assertLinkableHandovers } from './handover-links';
+import { reserveDispatchNumber } from './number';
 import {
   type DispatchRow,
   insertDispatchSerialStmt,
@@ -496,11 +498,24 @@ async function submitOnce(
         ),
       );
     }
+    // Nomor riwayat `OUT|RS/<kode BU>/<YYMM>-<urutan>`: penghitung CAS ikut batch yang sama dengan pengeluarannya.
+    const buRow = await env.DB.prepare('SELECT code FROM business_units WHERE id = ?')
+      .bind(buId)
+      .first<{ code: string }>();
+    if (!buRow) throw fieldError('buId', 'BU tidak ditemukan');
+    const reservation = await reserveDispatchNumber(
+      env,
+      ready ? 'ready' : 'order',
+      buRow.code.trim(),
+      caseNumberPeriod(today),
+    );
+    statements.push(...reservation.statements);
     statements.push(
       env.DB.prepare(
-        "INSERT INTO warehouse_dispatches (id, order_id, client_id, item_id, dispatched_on, note, mode, kind, bu_id, status, header_hash, chunk_size, chunk_count, chunks_received, serial_total, created_count, created_at, created_by, completed_at, cancelled_at) VALUES (?, ?, ?, ?, ?, ?, 'clipboard', ?, ?, 'pending', ?, ?, ?, 0, ?, 0, ?, ?, '', '')",
+        "INSERT INTO warehouse_dispatches (id, number, order_id, client_id, item_id, dispatched_on, note, mode, kind, bu_id, status, header_hash, chunk_size, chunk_count, chunks_received, serial_total, created_count, created_at, created_by, completed_at, cancelled_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'clipboard', ?, ?, 'pending', ?, ?, ?, 0, ?, 0, ?, ?, '', '')",
       ).bind(
         dispatchId,
+        reservation.number,
         orderId,
         input.clientId,
         header.itemId,

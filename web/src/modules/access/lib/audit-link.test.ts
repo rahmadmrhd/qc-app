@@ -133,7 +133,7 @@ test('serah terima menaut bila handover: view atau qc: edit di salah satu lokasi
 
 test('catatan SO Keluar Gudang menaut ke detail Riwayat bila serialwh: view pada minimal satu BU', () => {
   expect(auditTargetLink(entry('warehouseOrder', 'o1'), whMe(['bu1']))).toEqual({
-    to: '/serial/gudang/riwayat/$orderId',
+    to: '/serial/gudang/riwayat/so/$orderId',
     params: { orderId: 'o1' },
   });
   expect(auditTargetLink(entry('warehouseOrder', 'o1'), me())).toBeUndefined();

@@ -89,8 +89,8 @@ const VIEW = [
   '/qrcode/default/$presetId',
   '/serial/$serialId',
   '/serial/reports/$caseId',
-  '/serial/gudang/riwayat/$orderId',
-  '/serial/gudang/riwayat/ready/$readyId',
+  '/serial/gudang/riwayat/$dispatchId',
+  '/serial/gudang/riwayat/so/$orderId',
   '/sticker/$stickerId',
   '/sticker/types/$typeId',
 ];

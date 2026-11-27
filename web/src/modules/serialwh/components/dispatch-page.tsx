@@ -731,7 +731,7 @@ export function DispatchPage({ handoverId, onCancel }: DispatchPageProps) {
     <>
       <FormPage
         formId="warehouse-dispatch-form"
-        title="Keluar Gudang"
+        title="Catat Serial WH"
         onCancel={onCancel}
         submitLabel={`Salin ke clipboard (${selectedCount})`}
         submitDisabled={selectedCount === 0 || frozen}
@@ -927,16 +927,9 @@ export function DispatchPage({ handoverId, onCancel }: DispatchPageProps) {
         onOpenHistory={
           result && canReadWarehouse(me)
             ? () => {
-                const { orderId, dispatchId } = result;
+                const { dispatchId } = result;
                 setResult(null);
-                if (orderId) {
-                  stack.push({ to: '/serial/gudang/riwayat/$orderId', params: { orderId } });
-                } else {
-                  stack.push({
-                    to: '/serial/gudang/riwayat/ready/$readyId',
-                    params: { readyId: dispatchId },
-                  });
-                }
+                stack.push({ to: '/serial/gudang/riwayat/$dispatchId', params: { dispatchId } });
               }
             : undefined
         }

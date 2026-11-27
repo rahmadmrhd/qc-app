@@ -76,8 +76,8 @@ import { Route as AppDashboardLaporanReportIdEditRouteImport } from './routes/_a
 import { Route as AppQrcodeDefaultPresetIdIndexRouteImport } from './routes/_app/qrcode/default/$presetId/index'
 import { Route as AppQrcodeDefaultPresetIdEditRouteImport } from './routes/_app/qrcode/default/$presetId/edit'
 import { Route as AppSerialGudangRiwayatIndexRouteImport } from './routes/_app/serial/gudang/riwayat/index'
-import { Route as AppSerialGudangRiwayatOrderIdRouteImport } from './routes/_app/serial/gudang/riwayat/$orderId'
-import { Route as AppSerialGudangRiwayatReadyReadyIdRouteImport } from './routes/_app/serial/gudang/riwayat/ready/$readyId'
+import { Route as AppSerialGudangRiwayatDispatchIdRouteImport } from './routes/_app/serial/gudang/riwayat/$dispatchId'
+import { Route as AppSerialGudangRiwayatSoOrderIdRouteImport } from './routes/_app/serial/gudang/riwayat/so/$orderId'
 
 const AppRoute = AppRouteImport.update({
   id: '/_app',
@@ -425,16 +425,16 @@ const AppSerialGudangRiwayatIndexRoute =
     path: '/serial/gudang/riwayat/',
     getParentRoute: () => AppRoute,
   } as any)
-const AppSerialGudangRiwayatOrderIdRoute =
-  AppSerialGudangRiwayatOrderIdRouteImport.update({
-    id: '/serial/gudang/riwayat/$orderId',
-    path: '/serial/gudang/riwayat/$orderId',
+const AppSerialGudangRiwayatDispatchIdRoute =
+  AppSerialGudangRiwayatDispatchIdRouteImport.update({
+    id: '/serial/gudang/riwayat/$dispatchId',
+    path: '/serial/gudang/riwayat/$dispatchId',
     getParentRoute: () => AppRoute,
   } as any)
-const AppSerialGudangRiwayatReadyReadyIdRoute =
-  AppSerialGudangRiwayatReadyReadyIdRouteImport.update({
-    id: '/serial/gudang/riwayat/ready/$readyId',
-    path: '/serial/gudang/riwayat/ready/$readyId',
+const AppSerialGudangRiwayatSoOrderIdRoute =
+  AppSerialGudangRiwayatSoOrderIdRouteImport.update({
+    id: '/serial/gudang/riwayat/so/$orderId',
+    path: '/serial/gudang/riwayat/so/$orderId',
     getParentRoute: () => AppRoute,
   } as any)
 
@@ -502,11 +502,11 @@ export interface FileRoutesByFullPath {
   '/sticker/types/': typeof AppStickerTypesIndexRoute
   '/dashboard/laporan/$reportId/edit': typeof AppDashboardLaporanReportIdEditRoute
   '/qrcode/default/$presetId/edit': typeof AppQrcodeDefaultPresetIdEditRoute
-  '/serial/gudang/riwayat/$orderId': typeof AppSerialGudangRiwayatOrderIdRoute
+  '/serial/gudang/riwayat/$dispatchId': typeof AppSerialGudangRiwayatDispatchIdRoute
   '/dashboard/laporan/$reportId/': typeof AppDashboardLaporanReportIdIndexRoute
   '/qrcode/default/$presetId/': typeof AppQrcodeDefaultPresetIdIndexRoute
   '/serial/gudang/riwayat/': typeof AppSerialGudangRiwayatIndexRoute
-  '/serial/gudang/riwayat/ready/$readyId': typeof AppSerialGudangRiwayatReadyReadyIdRoute
+  '/serial/gudang/riwayat/so/$orderId': typeof AppSerialGudangRiwayatSoOrderIdRoute
 }
 export interface FileRoutesByTo {
   '/country-lock': typeof CountryLockRoute
@@ -572,11 +572,11 @@ export interface FileRoutesByTo {
   '/sticker/types': typeof AppStickerTypesIndexRoute
   '/dashboard/laporan/$reportId/edit': typeof AppDashboardLaporanReportIdEditRoute
   '/qrcode/default/$presetId/edit': typeof AppQrcodeDefaultPresetIdEditRoute
-  '/serial/gudang/riwayat/$orderId': typeof AppSerialGudangRiwayatOrderIdRoute
+  '/serial/gudang/riwayat/$dispatchId': typeof AppSerialGudangRiwayatDispatchIdRoute
   '/dashboard/laporan/$reportId': typeof AppDashboardLaporanReportIdIndexRoute
   '/qrcode/default/$presetId': typeof AppQrcodeDefaultPresetIdIndexRoute
   '/serial/gudang/riwayat': typeof AppSerialGudangRiwayatIndexRoute
-  '/serial/gudang/riwayat/ready/$readyId': typeof AppSerialGudangRiwayatReadyReadyIdRoute
+  '/serial/gudang/riwayat/so/$orderId': typeof AppSerialGudangRiwayatSoOrderIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -644,11 +644,11 @@ export interface FileRoutesById {
   '/_app/sticker/types/': typeof AppStickerTypesIndexRoute
   '/_app/dashboard/laporan/$reportId/edit': typeof AppDashboardLaporanReportIdEditRoute
   '/_app/qrcode/default/$presetId/edit': typeof AppQrcodeDefaultPresetIdEditRoute
-  '/_app/serial/gudang/riwayat/$orderId': typeof AppSerialGudangRiwayatOrderIdRoute
+  '/_app/serial/gudang/riwayat/$dispatchId': typeof AppSerialGudangRiwayatDispatchIdRoute
   '/_app/dashboard/laporan/$reportId/': typeof AppDashboardLaporanReportIdIndexRoute
   '/_app/qrcode/default/$presetId/': typeof AppQrcodeDefaultPresetIdIndexRoute
   '/_app/serial/gudang/riwayat/': typeof AppSerialGudangRiwayatIndexRoute
-  '/_app/serial/gudang/riwayat/ready/$readyId': typeof AppSerialGudangRiwayatReadyReadyIdRoute
+  '/_app/serial/gudang/riwayat/so/$orderId': typeof AppSerialGudangRiwayatSoOrderIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -716,11 +716,11 @@ export interface FileRouteTypes {
     | '/sticker/types/'
     | '/dashboard/laporan/$reportId/edit'
     | '/qrcode/default/$presetId/edit'
-    | '/serial/gudang/riwayat/$orderId'
+    | '/serial/gudang/riwayat/$dispatchId'
     | '/dashboard/laporan/$reportId/'
     | '/qrcode/default/$presetId/'
     | '/serial/gudang/riwayat/'
-    | '/serial/gudang/riwayat/ready/$readyId'
+    | '/serial/gudang/riwayat/so/$orderId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/country-lock'
@@ -786,11 +786,11 @@ export interface FileRouteTypes {
     | '/sticker/types'
     | '/dashboard/laporan/$reportId/edit'
     | '/qrcode/default/$presetId/edit'
-    | '/serial/gudang/riwayat/$orderId'
+    | '/serial/gudang/riwayat/$dispatchId'
     | '/dashboard/laporan/$reportId'
     | '/qrcode/default/$presetId'
     | '/serial/gudang/riwayat'
-    | '/serial/gudang/riwayat/ready/$readyId'
+    | '/serial/gudang/riwayat/so/$orderId'
   id:
     | '__root__'
     | '/_app'
@@ -857,11 +857,11 @@ export interface FileRouteTypes {
     | '/_app/sticker/types/'
     | '/_app/dashboard/laporan/$reportId/edit'
     | '/_app/qrcode/default/$presetId/edit'
-    | '/_app/serial/gudang/riwayat/$orderId'
+    | '/_app/serial/gudang/riwayat/$dispatchId'
     | '/_app/dashboard/laporan/$reportId/'
     | '/_app/qrcode/default/$presetId/'
     | '/_app/serial/gudang/riwayat/'
-    | '/_app/serial/gudang/riwayat/ready/$readyId'
+    | '/_app/serial/gudang/riwayat/so/$orderId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -1343,18 +1343,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppSerialGudangRiwayatIndexRouteImport
       parentRoute: typeof AppRoute
     }
-    '/_app/serial/gudang/riwayat/$orderId': {
-      id: '/_app/serial/gudang/riwayat/$orderId'
-      path: '/serial/gudang/riwayat/$orderId'
-      fullPath: '/serial/gudang/riwayat/$orderId'
-      preLoaderRoute: typeof AppSerialGudangRiwayatOrderIdRouteImport
+    '/_app/serial/gudang/riwayat/$dispatchId': {
+      id: '/_app/serial/gudang/riwayat/$dispatchId'
+      path: '/serial/gudang/riwayat/$dispatchId'
+      fullPath: '/serial/gudang/riwayat/$dispatchId'
+      preLoaderRoute: typeof AppSerialGudangRiwayatDispatchIdRouteImport
       parentRoute: typeof AppRoute
     }
-    '/_app/serial/gudang/riwayat/ready/$readyId': {
-      id: '/_app/serial/gudang/riwayat/ready/$readyId'
-      path: '/serial/gudang/riwayat/ready/$readyId'
-      fullPath: '/serial/gudang/riwayat/ready/$readyId'
-      preLoaderRoute: typeof AppSerialGudangRiwayatReadyReadyIdRouteImport
+    '/_app/serial/gudang/riwayat/so/$orderId': {
+      id: '/_app/serial/gudang/riwayat/so/$orderId'
+      path: '/serial/gudang/riwayat/so/$orderId'
+      fullPath: '/serial/gudang/riwayat/so/$orderId'
+      preLoaderRoute: typeof AppSerialGudangRiwayatSoOrderIdRouteImport
       parentRoute: typeof AppRoute
     }
   }
@@ -1420,11 +1420,11 @@ interface AppRouteChildren {
   AppStickerTypesIndexRoute: typeof AppStickerTypesIndexRoute
   AppDashboardLaporanReportIdEditRoute: typeof AppDashboardLaporanReportIdEditRoute
   AppQrcodeDefaultPresetIdEditRoute: typeof AppQrcodeDefaultPresetIdEditRoute
-  AppSerialGudangRiwayatOrderIdRoute: typeof AppSerialGudangRiwayatOrderIdRoute
+  AppSerialGudangRiwayatDispatchIdRoute: typeof AppSerialGudangRiwayatDispatchIdRoute
   AppDashboardLaporanReportIdIndexRoute: typeof AppDashboardLaporanReportIdIndexRoute
   AppQrcodeDefaultPresetIdIndexRoute: typeof AppQrcodeDefaultPresetIdIndexRoute
   AppSerialGudangRiwayatIndexRoute: typeof AppSerialGudangRiwayatIndexRoute
-  AppSerialGudangRiwayatReadyReadyIdRoute: typeof AppSerialGudangRiwayatReadyReadyIdRoute
+  AppSerialGudangRiwayatSoOrderIdRoute: typeof AppSerialGudangRiwayatSoOrderIdRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
@@ -1488,12 +1488,11 @@ const AppRouteChildren: AppRouteChildren = {
   AppStickerTypesIndexRoute: AppStickerTypesIndexRoute,
   AppDashboardLaporanReportIdEditRoute: AppDashboardLaporanReportIdEditRoute,
   AppQrcodeDefaultPresetIdEditRoute: AppQrcodeDefaultPresetIdEditRoute,
-  AppSerialGudangRiwayatOrderIdRoute: AppSerialGudangRiwayatOrderIdRoute,
+  AppSerialGudangRiwayatDispatchIdRoute: AppSerialGudangRiwayatDispatchIdRoute,
   AppDashboardLaporanReportIdIndexRoute: AppDashboardLaporanReportIdIndexRoute,
   AppQrcodeDefaultPresetIdIndexRoute: AppQrcodeDefaultPresetIdIndexRoute,
   AppSerialGudangRiwayatIndexRoute: AppSerialGudangRiwayatIndexRoute,
-  AppSerialGudangRiwayatReadyReadyIdRoute:
-    AppSerialGudangRiwayatReadyReadyIdRoute,
+  AppSerialGudangRiwayatSoOrderIdRoute: AppSerialGudangRiwayatSoOrderIdRoute,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)

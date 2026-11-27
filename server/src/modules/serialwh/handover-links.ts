@@ -249,3 +249,37 @@ export async function handoverContext(
     detected,
   };
 }
+
+/**
+ * Task tertaut (hidup) untuk beberapa SO sekaligus (daftar riwayat), satu kueri; aturan keterbacaan sama dengan
+ * `loadOrderHandovers`. SO tanpa task tak punya entri.
+ */
+export async function loadHandoversByOrder(
+  env: Env,
+  user: UserContext,
+  orderIds: readonly string[],
+): Promise<Map<string, WarehouseLinkedHandoverDto[]>> {
+  const result = new Map<string, WarehouseLinkedHandoverDto[]>();
+  const ids = [...new Set(orderIds.filter((id) => id !== ''))];
+  if (ids.length === 0) return result;
+  const rows = await env.DB.prepare(
+    `SELECT w.order_id, h.id, h.number, h.board_status, h.customer_name, h.created_at, h.location_id FROM warehouse_order_handovers w JOIN handovers h ON h.id = w.handover_id WHERE w.order_id IN (${placeholders(ids.length)}) AND ${liveWhere('h')} ORDER BY h.created_at DESC, h.id DESC`,
+  )
+    .bind(...ids)
+    .all<LinkedRow & { order_id: string }>();
+  const readable = new Set(readableHandoverLocationIds(user));
+  for (const row of rows.results) {
+    const canRead = readable.has(row.location_id);
+    const list = result.get(row.order_id) ?? [];
+    list.push({
+      id: row.id,
+      number: row.number,
+      status: row.board_status as HandoverStatus,
+      customerName: canRead ? row.customer_name : '',
+      createdAt: canRead ? row.created_at : '',
+      readable: canRead,
+    });
+    result.set(row.order_id, list);
+  }
+  return result;
+}

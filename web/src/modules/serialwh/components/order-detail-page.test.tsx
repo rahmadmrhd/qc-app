@@ -59,6 +59,7 @@ const baseOrder = (over: Partial<WarehouseOrderDto> = {}): WarehouseOrderDto => 
   dispatches: [
     {
       id: 'd1',
+      number: 'OUT/SPC/2611-0001',
       itemId: 'i1',
       itemLabel: 'Tenda AX300',
       dispatchedOn: '2026-11-20',
@@ -76,6 +77,7 @@ const baseOrder = (over: Partial<WarehouseOrderDto> = {}): WarehouseOrderDto => 
     },
     {
       id: 'd2',
+      number: 'OUT/SPC/2611-0002',
       itemId: 'i1',
       itemLabel: 'Tenda AX300',
       dispatchedOn: '2026-11-21',
@@ -243,6 +245,6 @@ test('panel samping memuat Log aktivitas catatan SO dengan label aksi', async ()
   activityCalls.length = 0;
   mockOrder(baseOrder());
   await renderInRouter(<OrderDetailPage orderId="o1" />);
-  expect(await screen.findByText('Keluar Gudang selesai')).toBeInTheDocument();
+  expect(await screen.findByText('Penjualan Gudang selesai')).toBeInTheDocument();
   expect(activityCalls[0]).toMatchObject({ kind: 'warehouseOrder', id: 'o1' });
 });

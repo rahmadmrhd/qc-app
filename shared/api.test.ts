@@ -430,6 +430,8 @@ const EXAMPLES: { [M in ApiId]: ApiInput<M> } = {
     limit: 50,
   },
   'serialWarehouse.ready': { id: 'd1' },
+  'serialWarehouse.dispatchList': { query: 'OUT', kind: 'order', buIds: ['b1'], limit: 10 },
+  'serialWarehouse.dispatchGet': { id: 'd1' },
   'serials.itemOptions': { query: 'm5', cursor: 'k', limit: 20, itemIds: ['i1', 'i2'] },
   'serials.creatorOptions': { query: 'ra', ids: ['a@x.com'], cursor: 'a@x.com', limit: 20 },
   'serials.stickerOptions': { itemId: 'i1', buId: 'b1', serialId: 's1' },

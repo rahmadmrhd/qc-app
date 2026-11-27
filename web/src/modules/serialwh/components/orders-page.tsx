@@ -1,19 +1,18 @@
 import { formatBuLabel } from '@shared/business-units';
-import type { WarehouseOrderSummaryDto } from '@shared/contract';
+import type { WarehouseDispatchListItemDto } from '@shared/contract';
 import { useInfiniteQuery } from '@tanstack/react-query';
+import { Link } from '@tanstack/react-router';
 import { type DataColumn, DataTable, LinkCell } from '@/components/data-table';
 import { ListPage } from '@/components/page/list-page';
 import { Badge } from '@/components/ui/badge';
+import { useStackNavigation } from '@/hooks/use-stack-navigation';
+import { canUseWarehouse } from '@/modules/auth/permissions';
+import { useMe } from '@/modules/auth/use-me';
 import { formatDay } from '@/modules/serial/lib/labels';
-import {
-  type OrdersSearchParams,
-  ordersFilterOfSearch,
-  tabSwitchPatch,
-} from '../lib/orders-filter';
-import { warehouseOrdersQueryOptions } from '../queries';
-import { HistoryTabs } from './history-tabs';
+import { dispatchFilterOfSearch, type OrdersSearchParams } from '../lib/orders-filter';
+import { warehouseDispatchesQueryOptions } from '../queries';
+import { DISPATCH_STATUS } from './dispatch-section';
 import { OrdersFilters } from './orders-filters';
-import { ReadyListPage } from './ready-list-page';
 
 export type OrdersSearch = OrdersSearchParams;
 
@@ -22,64 +21,91 @@ export interface OrdersPageProps {
   onSearchChange: (patch: Partial<OrdersSearch>) => void;
 }
 
-/**
- * Riwayat Gudang (kit CRUD): satu baris per catatan SO. Kolom No SO (tautan ke detail), BU, Customer, jumlah
- * pengeluaran, jumlah Serial Number, tanggal keluar terakhir, status ("Belum selesai" bila ada pengeluaran yang belum
- * semua potongannya terkirim), dan jumlah task Serah Terima tertaut. Tanpa pilihan massal.
- */
-export function OrdersPage({ search, onSearchChange }: OrdersPageProps) {
-  if (search.tab === 'ready') {
-    return <ReadyListPage search={search} onSearchChange={onSearchChange} />;
-  }
-  return <OrdersListPage search={search} onSearchChange={onSearchChange} />;
+/** Task Serah Terima tertaut: nomor menaut ke task hanya bila terbaca; selain itu hanya teks. */
+function HandoverNumbers({ handovers }: { handovers: WarehouseDispatchListItemDto['handovers'] }) {
+  if (handovers.length === 0) return <>—</>;
+  return (
+    <span className="flex flex-wrap gap-x-2 gap-y-0.5">
+      {handovers.map((handover) =>
+        handover.readable ? (
+          <Link
+            key={handover.id}
+            to="/handover/$handoverId"
+            params={{ handoverId: handover.id }}
+            className="text-info-text underline-offset-4 hover:underline"
+          >
+            {handover.number}
+          </Link>
+        ) : (
+          <span key={handover.id} title="Tidak ada akses ke task ini">
+            {handover.number}
+          </span>
+        ),
+      )}
+    </span>
+  );
 }
 
-function OrdersListPage({ search, onSearchChange }: OrdersPageProps) {
-  const filter = ordersFilterOfSearch(search);
-  const list = useInfiniteQuery(warehouseOrdersQueryOptions(filter));
+/**
+ * Riwayat Gudang (kit CRUD): satu baris per pengeluaran, Penjualan dan Ready Stock digabung. No Riwayat menaut ke
+ * detail pengeluaran, No SO (hanya Penjualan) tetap menaut ke detail SO. Tombol "Catat Serial WH" membuka form
+ * pencatatan bagi pemegang `serialwh: edit`. Tanpa pilihan massal.
+ */
+export function OrdersPage({ search, onSearchChange }: OrdersPageProps) {
+  const me = useMe();
+  const stack = useStackNavigation();
+  const filter = dispatchFilterOfSearch(search);
+  const list = useInfiniteQuery(warehouseDispatchesQueryOptions(filter));
   const items = list.data?.pages.flatMap((page) => page.items) ?? [];
   const filtered = Object.keys(filter).length > 0;
 
-  const columns: DataColumn<WarehouseOrderSummaryDto>[] = [
+  const columns: DataColumn<WarehouseDispatchListItemDto>[] = [
     {
       id: 'number',
-      header: 'No SO',
+      header: 'No Riwayat',
       mobile: 'title',
-      cell: (order) => (
-        <LinkCell to="/serial/gudang/riwayat/$orderId" params={{ orderId: order.id }}>
-          {order.number}
+      cell: (dispatch) => (
+        <LinkCell to="/serial/gudang/riwayat/$dispatchId" params={{ dispatchId: dispatch.id }}>
+          {dispatch.number}
         </LinkCell>
       ),
     },
     {
+      id: 'order',
+      header: 'No SO',
+      cell: (dispatch) =>
+        dispatch.orderId !== '' ? (
+          <LinkCell to="/serial/gudang/riwayat/so/$orderId" params={{ orderId: dispatch.orderId }}>
+            {dispatch.orderNumber}
+          </LinkCell>
+        ) : (
+          '—'
+        ),
+    },
+    {
       id: 'bu',
       header: 'BU',
-      cell: (order) => formatBuLabel({ code: order.buCode, name: order.buName }),
+      cell: (dispatch) => formatBuLabel({ code: dispatch.buCode, name: dispatch.buName }),
     },
-    { id: 'customer', header: 'Customer', cell: (order) => order.customerName || '—' },
-    { id: 'dispatches', header: 'Pengeluaran', cell: (order) => order.dispatchCount },
-    { id: 'serials', header: 'Serial', cell: (order) => order.serialCount },
+    { id: 'customer', header: 'Customer', cell: (dispatch) => dispatch.customerName || '—' },
+    { id: 'item', header: 'Tipe', cell: (dispatch) => dispatch.itemLabel || '—' },
+    { id: 'serials', header: 'Serial', cell: (dispatch) => dispatch.serialCount },
+    { id: 'date', header: 'Tanggal', cell: (dispatch) => formatDay(dispatch.dispatchedOn) },
     {
-      id: 'last',
-      header: 'Terakhir',
-      cell: (order) => (order.lastDispatchedOn ? formatDay(order.lastDispatchedOn) : '—'),
+      id: 'handovers',
+      header: 'Task Serah Terima',
+      cell: (dispatch) => <HandoverNumbers handovers={dispatch.handovers} />,
     },
     {
       id: 'status',
       header: 'Status',
       mobile: 'badge',
-      cell: (order) =>
-        order.hasPending ? (
-          <Badge variant="soft" color="warning">
-            Belum selesai
-          </Badge>
-        ) : (
-          <Badge variant="soft" color="success">
-            Selesai
-          </Badge>
-        ),
+      cell: (dispatch) => (
+        <Badge variant="soft" color={DISPATCH_STATUS[dispatch.status].color}>
+          {DISPATCH_STATUS[dispatch.status].label}
+        </Badge>
+      ),
     },
-    { id: 'handovers', header: 'Task', cell: (order) => order.handoverCount },
   ];
 
   return (
@@ -87,33 +113,35 @@ function OrdersListPage({ search, onSearchChange }: OrdersPageProps) {
       title="Riwayat Gudang"
       count={
         list.isSuccess && (items.length > 0 || filtered)
-          ? `${items.length}${list.hasNextPage ? '+' : ''} SO`
+          ? `${items.length}${list.hasNextPage ? '+' : ''} pengeluaran`
           : undefined
       }
-      filters={
-        <>
-          <HistoryTabs
-            tab="order"
-            onChange={(tab) => onSearchChange(tabSwitchPatch(tab, search))}
-          />
-          <OrdersFilters search={search} onChange={onSearchChange} rows={items} />
-        </>
-      }
+      {...(canUseWarehouse(me)
+        ? {
+            createAction: {
+              label: 'Catat Serial WH',
+              kind: 'warehouse' as const,
+              onClick: () => stack.push({ to: '/serial/gudang' }),
+            },
+          }
+        : {})}
+      filters={<OrdersFilters search={search} onChange={onSearchChange} rows={items} />}
     >
       <DataTable
         rows={items}
-        rowKey={(order) => order.id}
+        rowKey={(dispatch) => dispatch.id}
         columns={columns}
-        label="Daftar catatan SO"
-        rowTo={(order) => ({
-          to: '/serial/gudang/riwayat/$orderId',
-          params: { orderId: order.id },
+        label="Daftar pengeluaran Gudang"
+        rowTo={(dispatch) => ({
+          to: '/serial/gudang/riwayat/$dispatchId',
+          params: { dispatchId: dispatch.id },
         })}
-        empty="Belum ada Keluar Gudang yang tercatat."
+        empty="Belum ada pencatatan Gudang."
         filtered={filtered}
         onClearFilters={() =>
           onSearchChange({
             q: undefined,
+            kind: undefined,
             customerIds: undefined,
             buIds: undefined,
             from: undefined,

@@ -63,11 +63,11 @@ export function auditTargetLink(
         : undefined;
     case 'warehouseOrder':
       return canReadWarehouse(me)
-        ? { to: '/serial/gudang/riwayat/$orderId', params: { orderId: id } }
+        ? { to: '/serial/gudang/riwayat/so/$orderId', params: { orderId: id } }
         : undefined;
     case 'warehouseReady':
       return canReadWarehouse(me)
-        ? { to: '/serial/gudang/riwayat/ready/$readyId', params: { readyId: id } }
+        ? { to: '/serial/gudang/riwayat/$dispatchId', params: { dispatchId: id } }
         : undefined;
     case 'handover':
       return canAnywhere(me, 'handover', 'view') || canAnywhere(me, 'qc', 'edit')
