@@ -37,7 +37,12 @@ import {
   type WarehouseAuditTarget,
   warehouseAuditStmt,
 } from './audit';
-import { BOX_TAKEN_MESSAGE, boxStatements, releaseStatements } from './boxes';
+import {
+  BOX_TAKEN_MESSAGE,
+  boxStatements,
+  readyHeldInOtherPending,
+  releaseStatements,
+} from './boxes';
 import { addOrderLinksStmts, assertLinkableHandovers } from './handover-links';
 import { reserveDispatchNumber } from './number';
 import {
@@ -156,6 +161,7 @@ const SKIP_REASONS = {
   futureTestDate: 'Tanggal uji tidak boleh di masa depan',
   noLocation: 'Lokasi tidak ditemukan',
   alreadyRecorded: 'Sudah tercatat WH',
+  inOtherPending: 'Sudah ada di pengeluaran lain yang belum selesai',
 } as const;
 
 function parseSkipped(json: string | undefined): WarehouseSkippedRowDto[] {
@@ -427,6 +433,20 @@ async function submitOnce(
     });
   }
 
+  if (!ready && plans.length > 0) {
+    // Serial yang masih di stok ready dan sedang ada di Penjualan pending LAIN dilewati (spek Stok Ready §9).
+    const held = await readyHeldInOtherPending(
+      env,
+      plans.filter((plan) => !plan.createdNew).map((plan) => plan.serialId),
+      existing?.id.trim() ?? '',
+    );
+    plans = plans.filter((plan) => {
+      if (!held.has(plan.serialId)) return true;
+      skip(plan.serial, SKIP_REASONS.inOtherPending);
+      return false;
+    });
+  }
+
   const locationNames = new Map<string, string>();
   let stickers: Awaited<ReturnType<typeof applicableStickersOf>> = [];
   if (plans.some((plan) => plan.createdNew)) {
@@ -557,7 +577,8 @@ async function submitOnce(
                 dispatchedOn: header.dispatchedOn,
                 serialTotal: header.total,
                 boxFrom: header.boxStart,
-                boxTo: (header.boxStart ?? 0) + Math.ceil(header.total / (header.boxSize ?? 1)) - 1,
+                boxToPlanned:
+                  (header.boxStart ?? 0) + Math.ceil(header.total / (header.boxSize ?? 1)) - 1,
               },
             }
           : {
@@ -621,8 +642,10 @@ async function submitOnce(
       statements.push(
         env.DB.prepare(
           // Ready: juga gagal bila serial itu kini tercatat pada pengeluaran selesai atau pending mana pun (balapan).
-          `UPDATE serials SET id = CASE WHEN status = 'good' AND custody = 'qc' AND deleted_at = '' AND item_id = ?${ready ? " AND NOT EXISTS (SELECT 1 FROM warehouse_dispatch_serials rg JOIN warehouse_dispatches rd ON rd.id = rg.dispatch_id WHERE rg.serial_id = serials.id AND rd.status IN ('done', 'pending'))" : ''} THEN id ELSE ${CAS_FAIL_SQL} END WHERE id = ?`,
-        ).bind(header.itemId, plan.serialId),
+          `UPDATE serials SET id = CASE WHEN status = 'good' AND custody = 'qc' AND deleted_at = '' AND item_id = ?${ready ? " AND NOT EXISTS (SELECT 1 FROM warehouse_dispatch_serials rg JOIN warehouse_dispatches rd ON rd.id = rg.dispatch_id WHERE rg.serial_id = serials.id AND rd.status IN ('done', 'pending'))" : " AND NOT EXISTS (SELECT 1 FROM warehouse_ready_serials rr JOIN warehouse_dispatch_serials wd ON wd.serial_id = rr.serial_id JOIN warehouse_dispatches pd ON pd.id = wd.dispatch_id WHERE rr.serial_id = serials.id AND rr.released_dispatch_id = '' AND pd.kind = 'order' AND pd.status = 'pending' AND pd.id <> ?)"} THEN id ELSE ${CAS_FAIL_SQL} END WHERE id = ?`,
+        ).bind(
+          ...(ready ? [header.itemId, plan.serialId] : [header.itemId, dispatchId, plan.serialId]),
+        ),
       );
     }
     statements.push(

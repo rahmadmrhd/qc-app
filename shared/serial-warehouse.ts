@@ -98,7 +98,8 @@ export function dispatchNumber(
 }
 
 /** Batas Stok Ready per kardus: pcs per kardus (`items.box_size`) dan nomor kardus. */
-export const WAREHOUSE_BOX_LIMITS = { sizeMax: 1000, numberMax: 999999 } as const;
+/** `pickMax` = batas "Pilih N unit" (`pickCount`) dan batas oper ke draf form Catat Serial WH. */
+export const WAREHOUSE_BOX_LIMITS = { sizeMax: 1000, numberMax: 999999, pickMax: 5000 } as const;
 
 /**
  * Membagi `count` serial berurutan ke kardus: lebih dulu mengisi kardus terbuka `carry` (sudah berisi `used` unit),

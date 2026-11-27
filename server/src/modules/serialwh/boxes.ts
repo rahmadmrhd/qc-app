@@ -2,6 +2,7 @@ import type { DbStatement } from '@server/core/db';
 import type { Env } from '@server/core/env';
 import { appError } from '@server/core/errors';
 import { newId } from '@server/core/id';
+import { liveWhere } from '@server/core/soft-delete';
 import { assignBoxes } from '@shared/serial-warehouse';
 import { placeholders } from './repo';
 
@@ -36,6 +37,7 @@ export async function boxStatements(
 ): Promise<DbStatement[]> {
   const { dispatchId, buId, itemId, header, serialIds, firstSeq, user, now } = input;
   if (serialIds.length === 0) return [];
+  await closeDeadBoxes(env, buId, itemId);
   const own = await env.DB.prepare(
     'SELECT b.id, b.number, b.capacity, b.closed_key, (SELECT COUNT(*) FROM warehouse_ready_serials r WHERE r.box_id = b.id) AS used FROM warehouse_ready_boxes b WHERE b.dispatch_id = ? ORDER BY b.number',
   )
@@ -98,6 +100,33 @@ export async function boxStatements(
 }
 
 /**
+ * Menutup kardus pencatatan ready yang SUDAH selesai tetapi tak lagi punya serial hidup di stok (mis. semua serialnya
+ * dihapus): nomornya bebas. Pencatatan pending tidak ditutup (nomornya masih dipegang).
+ */
+export async function closeDeadBoxes(env: Env, buId: string, itemId: string): Promise<void> {
+  await env.DB.prepare(
+    `UPDATE warehouse_ready_boxes SET closed_key = id WHERE closed_key = '' AND bu_id = ? AND item_id = ? AND dispatch_id IN (SELECT id FROM warehouse_dispatches WHERE status = 'done') AND NOT EXISTS (SELECT 1 FROM warehouse_ready_serials r JOIN serials s ON s.id = r.serial_id WHERE r.box_id = warehouse_ready_boxes.id AND r.released_dispatch_id = '' AND ${liveWhere('s')})`,
+  )
+    .bind(buId, itemId)
+    .run();
+}
+
+/** Serial (dari `serialIds`) yang masih di stok ready dan sedang ada di Penjualan pending selain `exceptDispatchId`. */
+export async function readyHeldInOtherPending(
+  env: Env,
+  serialIds: string[],
+  exceptDispatchId: string,
+): Promise<Set<string>> {
+  if (serialIds.length === 0) return new Set();
+  const rows = await env.DB.prepare(
+    `SELECT DISTINCT rr.serial_id FROM warehouse_ready_serials rr JOIN warehouse_dispatch_serials wd ON wd.serial_id = rr.serial_id JOIN warehouse_dispatches pd ON pd.id = wd.dispatch_id WHERE rr.released_dispatch_id = '' AND pd.kind = 'order' AND pd.status = 'pending' AND pd.id <> ? AND rr.serial_id IN (${placeholders(serialIds.length)})`,
+  )
+    .bind(exceptDispatchId, ...serialIds)
+    .all<{ serial_id: string }>();
+  return new Set(rows.results.map((row) => row.serial_id.trim()));
+}
+
+/**
  * Pelepasan stok ready saat pengeluaran Penjualan SELESAI: (1) serial pengeluaran itu yang masih di stok ditandai
  * dilepas (hanya bila pengeluaran `done` dan `order`; serentak aman karena syarat `released_dispatch_id = ''` pada baris
  * terkunci), (2) kardus yang tak lagi punya serial di stok ditutup (`closed_key = id`) sehingga nomornya bebas.
@@ -108,8 +137,8 @@ export function releaseStatements(env: Env, dispatchId: string): DbStatement[] {
       "UPDATE warehouse_ready_serials SET released_dispatch_id = ? WHERE released_dispatch_id = '' AND serial_id IN (SELECT serial_id FROM warehouse_dispatch_serials WHERE dispatch_id = ?) AND EXISTS (SELECT 1 FROM warehouse_dispatches WHERE id = ? AND status = 'done' AND kind = 'order')",
     ).bind(dispatchId, dispatchId, dispatchId),
     env.DB.prepare(
-      "UPDATE warehouse_ready_boxes SET closed_key = id WHERE closed_key = '' AND NOT EXISTS (SELECT 1 FROM warehouse_ready_serials r WHERE r.box_id = warehouse_ready_boxes.id AND r.released_dispatch_id = '')",
-    ),
+      "UPDATE warehouse_ready_boxes SET closed_key = id WHERE closed_key = '' AND id IN (SELECT box_id FROM warehouse_ready_serials WHERE released_dispatch_id = ?) AND NOT EXISTS (SELECT 1 FROM warehouse_ready_serials r WHERE r.box_id = warehouse_ready_boxes.id AND r.released_dispatch_id = '')",
+    ).bind(dispatchId),
   ];
 }
 

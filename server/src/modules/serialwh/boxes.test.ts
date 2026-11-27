@@ -193,7 +193,7 @@ describe('catat ready dengan kardus', () => {
     expect(out.error?.message).toBe('Isi pengeluaran berubah');
   });
 
-  test('audit ready_create memuat boxFrom dan boxTo', async () => {
+  test('audit ready_create memuat boxFrom dan boxToPlanned', async () => {
     await submitDispatch(env, WH_USERS.edit, {
       ready: true,
       boxStart: 12,
@@ -205,6 +205,45 @@ describe('catat ready dengan kardus', () => {
     ).first<{ a: string }>();
     const after = JSON.parse(row?.a ?? '{}') as Record<string, unknown>;
     expect(after.boxFrom).toBe(12);
-    expect(after.boxTo).toBe(14);
+    expect(after.boxToPlanned).toBe(14);
+  });
+
+  test('kardus yang semua serialnya terhapus tidak menahan nomor; kardus berisi tetap menahan', async () => {
+    const out = await submitDispatch(env, WH_USERS.edit, {
+      ready: true,
+      boxStart: 1,
+      boxSize: 3,
+      fresh: serialsOf('K', 6),
+    });
+    expect(out.ok).toBe(true);
+    await env.DB.prepare(
+      "UPDATE serials SET deleted_at = 'x' WHERE serial IN ('K001', 'K002', 'K003')",
+    ).run();
+    const taken = await readyChunk(crypto.randomUUID(), 0, 1, 200, ['K101'], {
+      boxStart: 2,
+      boxSize: 3,
+    });
+    expect(taken.ok).toBe(false);
+    expect(taken.error?.fields?.boxStart).toBe('Nomor kardus sudah dipakai');
+    const again = await readyChunk(crypto.randomUUID(), 0, 1, 200, ['K102'], {
+      boxStart: 1,
+      boxSize: 3,
+    });
+    expect(again.ok).toBe(true);
+    const closed = await env.DB.prepare(
+      "SELECT COUNT(*) AS n FROM warehouse_ready_boxes WHERE number = 1 AND closed_key <> ''",
+    ).first<{ n: number | string }>();
+    expect(Number(closed?.n)).toBe(1);
+  });
+
+  test('pencatatan ready yang masih pending tidak ditutup walau serialnya terhapus', async () => {
+    const id = crypto.randomUUID();
+    expect((await readyChunk(id, 0, 4, 2, ['L001', 'L002'], { boxSize: 3 })).ok).toBe(true);
+    await env.DB.prepare(
+      "UPDATE serials SET deleted_at = 'x' WHERE serial IN ('L001', 'L002')",
+    ).run();
+    const other = await readyChunk(crypto.randomUUID(), 0, 1, 200, ['L101'], { boxSize: 3 });
+    expect(other.ok).toBe(false);
+    expect(other.error?.fields?.boxStart).toBe('Nomor kardus sudah dipakai');
   });
 });

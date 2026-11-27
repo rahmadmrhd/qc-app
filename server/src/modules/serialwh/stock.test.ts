@@ -261,8 +261,15 @@ describe('serialWarehouse.readyStock', () => {
     await box({ id: 'b1', number: 2, capacity: 2, serials: ['M-1', 'M-2'] });
     // Pending: tidak tampil di daftar, tetapi nomornya dipegang.
     await box({ id: 'b2', number: 9, capacity: 1, serials: ['M-3'], dispatch: 'rd-pending' });
-    // Terbuka tanpa stok terlihat (semua serial sudah dilepas).
-    await box({ id: 'b3', number: 12, capacity: 1, serials: ['M-4'], released: ['M-4'] });
+    // Terbuka tanpa stok terlihat (pencatatan pending yang serialnya sudah dilepas): tetap memegang nomor.
+    await box({
+      id: 'b3',
+      number: 12,
+      capacity: 1,
+      serials: ['M-4'],
+      released: ['M-4'],
+      dispatch: 'rd-pending',
+    });
     // Tertutup: tidak dihitung.
     await box({ id: 'b4', number: 40, capacity: 1, serials: ['M-5'], released: ['M-5'] });
     await env.DB.prepare(
@@ -304,6 +311,7 @@ describe('serialWarehouse.readyStock', () => {
     expect((await call(E, { limit: 0 })).ok).toBe(false);
     expect((await call(E, { limit: 51 })).ok).toBe(false);
     expect((await call(E, { pickCount: 0 })).ok).toBe(false);
-    expect((await call(E, { pickCount: 1001 })).ok).toBe(false);
+    expect((await call(E, { pickCount: 5001 })).ok).toBe(false);
+    expect((await call(E, { pickCount: 5000 })).ok).toBe(true);
   });
 });

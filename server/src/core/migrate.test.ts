@@ -605,6 +605,7 @@ describe('skema baseline', () => {
         'warehouse_ready_boxes.warehouse_ready_boxes_open',
         'warehouse_ready_serials.warehouse_ready_serials_box',
         'warehouse_ready_serials.warehouse_ready_serials_dispatch',
+        'warehouse_ready_serials.warehouse_ready_serials_released',
       ].sort(),
     );
     const pk = await db

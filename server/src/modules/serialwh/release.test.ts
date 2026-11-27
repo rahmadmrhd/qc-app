@@ -187,4 +187,18 @@ describe('pelepasan stok ready', () => {
     });
     expect(free.ok).toBe(true);
   });
+
+  test('serial ready yang sudah ada di Penjualan pending lain dilewati; setelah itu selesai, hanya satu yang melepas', async () => {
+    const stock = await seedReady();
+    const pick = stock.slice(0, 1);
+    const a = await orderChunk('SO-P1', pick, 2, 1);
+    expect(a.data?.status).toBe('pending');
+    const b = await orderChunk('SO-P2', pick, 1, 200);
+    expect(b.ok).toBe(true);
+    const skipped = (b.data?.skipped ?? []) as { reason: string }[];
+    expect(skipped.map((r) => r.reason)).toEqual([
+      'Sudah ada di pengeluaran lain yang belum selesai',
+    ]);
+    expect(await releasedCount()).toBe(0);
+  });
 });

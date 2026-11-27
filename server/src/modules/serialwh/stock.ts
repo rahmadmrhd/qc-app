@@ -75,6 +75,7 @@ function stockSql(
   tail: string,
 ): { sql: string; binds: unknown[] } {
   const where = [
+    "b.closed_key = ''",
     "rs.released_dispatch_id = ''",
     "rd.status = 'done'",
     `b.bu_id IN (${placeholders(filters.buIds.length)})`,
@@ -98,7 +99,12 @@ function stockSql(
 
 /** Nomor kardus terbuka tertinggi (BU + Tipe terfilter), termasuk kardus pencatatan pending dan kardus tanpa stok. */
 async function maxOpenBoxNumber(env: Env, filters: Filters): Promise<number> {
-  const where = ["closed_key = ''", `bu_id IN (${placeholders(filters.buIds.length)})`];
+  // Kardus pencatatan selesai tanpa serial hidup di stok (mis. serial dihapus) tidak memegang nomor.
+  const where = [
+    "closed_key = ''",
+    `(dispatch_id IN (SELECT id FROM warehouse_dispatches WHERE status = 'pending') OR EXISTS (SELECT 1 FROM warehouse_ready_serials r JOIN serials s ON s.id = r.serial_id WHERE r.box_id = warehouse_ready_boxes.id AND r.released_dispatch_id = '' AND ${liveWhere('s')}))`,
+    `bu_id IN (${placeholders(filters.buIds.length)})`,
+  ];
   const binds: unknown[] = [...filters.buIds];
   if (filters.itemIds) {
     where.push(`item_id IN (${placeholders(filters.itemIds.length)})`);

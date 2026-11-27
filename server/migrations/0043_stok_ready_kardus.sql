@@ -5,8 +5,8 @@
 -- sebelumnya tak membaca/menulisnya dan tetap berjalan di atas skema ini. Idempoten (IF NOT EXISTS).
 ALTER TABLE items ADD COLUMN IF NOT EXISTS box_size INT NOT NULL DEFAULT 0;
 
--- Kardus ready. `closed_key` = '' selama kardus terbuka (masih berisi atau belum dilepas); diisi id pengeluaran
--- Penjualan saat kardus kosong, sehingga nomor kardus yang sama dapat dipakai lagi (indeks unik tetap menjaga satu
+-- Kardus ready. `closed_key` = '' selama kardus terbuka (masih berisi atau belum dilepas); diisi id kardus itu sendiri
+-- saat kardus kosong (serial semua dilepas atau dihapus), sehingga nomor kardus yang sama dapat dipakai lagi (indeks unik tetap menjaga satu
 -- kardus terbuka per nomor).
 CREATE TABLE IF NOT EXISTS warehouse_ready_boxes (
   id VARCHAR(100) NOT NULL,
@@ -33,5 +33,6 @@ CREATE TABLE IF NOT EXISTS warehouse_ready_serials (
   released_dispatch_id VARCHAR(100) NOT NULL DEFAULT '',
   PRIMARY KEY (serial_id),
   KEY warehouse_ready_serials_box (box_id, released_dispatch_id),
-  KEY warehouse_ready_serials_dispatch (dispatch_id)
+  KEY warehouse_ready_serials_dispatch (dispatch_id),
+  KEY warehouse_ready_serials_released (released_dispatch_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_nopad_bin;

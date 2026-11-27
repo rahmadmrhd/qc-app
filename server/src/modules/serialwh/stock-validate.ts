@@ -1,8 +1,8 @@
 import { readFilterList, readObject } from '@server/core/validate';
 import type { ListReadyStockInput } from '@shared/contract';
-import { SERIAL_LIMITS } from '@shared/serials';
+import { WAREHOUSE_BOX_LIMITS } from '@shared/serial-warehouse';
 
-/** Halaman Stok Ready: kardus per halaman (bawaan 20, maks. 50) dan batas `pickCount` (sama dengan baris draf). */
+/** Halaman Stok Ready: kardus per halaman (bawaan 20, maks. 50) dan batas `pickCount` (`WAREHOUSE_BOX_LIMITS.pickMax`, sama dengan batas oper ke draf). */
 export const READY_STOCK_LIMITS = { listDefault: 20, listMax: 50 } as const;
 
 export function validateListReadyStock(raw: unknown): ListReadyStockInput {
@@ -12,7 +12,12 @@ export function validateListReadyStock(raw: unknown): ListReadyStockInput {
   const itemIds = readFilterList(reader, 'itemIds');
   const cursor = reader.str('cursor', { max: 200 });
   const limit = readBoundedInt(reader, 'limit', READY_STOCK_LIMITS.listMax, 'Batas halaman');
-  const pickCount = readBoundedInt(reader, 'pickCount', SERIAL_LIMITS.tableRows, 'Jumlah pilihan');
+  const pickCount = readBoundedInt(
+    reader,
+    'pickCount',
+    WAREHOUSE_BOX_LIMITS.pickMax,
+    'Jumlah pilihan',
+  );
   reader.done();
   return {
     ...(query !== '' ? { query } : {}),
