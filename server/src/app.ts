@@ -13,6 +13,7 @@ import {
 } from '@server/http/security';
 import { isServerPath, serveStatic } from '@server/http/static';
 import { authApp } from '@server/modules/auth/routes';
+import { countryLockPublicApp } from '@server/modules/countrylock/public-routes';
 import { publicDashboardApp } from '@server/modules/dashboard/public-routes';
 import { desktopApp } from '@server/modules/desktop/routes';
 import { notificationStreamApp } from '@server/modules/notification/stream-routes';
@@ -58,6 +59,9 @@ export function createApp(routes: RouteTable): Hono<AppBindings> {
   // Data awal klien = `GET /api/v1/me` (id `auth.me`, tabel REST).
   app.route('/auth', authApp);
   // Manifest UI bertanda tangan untuk pembaruan UI aplikasi desktop (publik, tanpa sesi).
+  // Bundel Country Lock untuk desktop (manifest + berkas menurut sha256; token bersama katalog, tanpa sesi): dipasang
+  // SEBELUM `/api/desktop` agar jelas terpisah dari rute di sana.
+  app.route('/api/desktop/countrylock', countryLockPublicApp);
   app.route('/api/desktop', desktopApp);
   // Kabel lama (`POST /sync`, amplop {v,method,token,payload}) dihapus (keputusan pemilik 2026-11-06); modul sinkron
   // REST `/api/v1/sync/*` pun dihapus (2026-11-08). Jawabannya 404 problem+json untuk semua metode di `/sync` dan turunannya.
