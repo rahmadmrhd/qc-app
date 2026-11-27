@@ -21,7 +21,7 @@ const VIEWS: readonly [file: string, kind: string][] = [
   ['sticker/components/sticker-type-view.tsx', 'stickerType'],
   ['sticker/components/sticker-view.tsx', 'sticker'],
   ['serialwh/components/order-detail-page.tsx', 'warehouseOrder'],
-  ['serialwh/components/ready-detail-page.tsx', 'warehouseReady'],
+  ['serialwh/components/dispatch-detail-page.tsx', 'warehouseReady'],
 ];
 
 const modules = path.resolve(__dirname, '..');
