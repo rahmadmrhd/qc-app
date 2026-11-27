@@ -52,10 +52,30 @@ export const SOFT_DELETE_EXEMPT: Record<string, string> = {
     'Pemilih SO: BU pemilik SO tampil dengan kode/namanya walau BU terhapus (BU terhapus tetap memberi hak, spek soft delete butir 9); SO dibatasi `bu_id` hak pemanggil.',
   'server/src/modules/serialwh/orders.ts#business_units@1#80737b55':
     'Ringkasan SO menampilkan kode/nama BU pemilik walau BU terhapus (BU terhapus tetap memberi hak); SO dibatasi `bu_id` hak pemanggil.',
-  'server/src/modules/serialwh/orders.ts#items@1#8c9bf38b':
+  'server/src/modules/serialwh/orders.ts#items@1#a712a262':
     'Penampil rujukan: Riwayat pengeluaran menampilkan nama Item walau Item terhapus (LEFT JOIN); catatan historis, bukan keputusan hak.',
-  'server/src/modules/serialwh/orders.ts#brands@1#8c9bf38b':
+  'server/src/modules/serialwh/orders.ts#brands@1#a712a262':
     'Penampil rujukan: nama merk Item pada Riwayat pengeluaran tetap tampil walau merk terhapus.',
+  'server/src/modules/serialwh/dispatches.ts#business_units@1#fc0fc753':
+    'Riwayat pengeluaran menampilkan kode/nama BU walau BU terhapus (BU terhapus tetap memberi hak); dibatasi `bu_id` hak pemanggil.',
+  'server/src/modules/serialwh/dispatches.ts#items@1#fc0fc753':
+    'Penampil rujukan: Riwayat pengeluaran menampilkan nama Item walau Item terhapus (LEFT JOIN); catatan historis, bukan keputusan hak.',
+  'server/src/modules/serialwh/dispatches.ts#brands@1#fc0fc753':
+    'Penampil rujukan: nama merk Item pada Riwayat pengeluaran tetap tampil walau merk terhapus.',
+  'server/src/modules/serialwh/dispatches.ts#business_units@2#fe798be5':
+    'Riwayat pengeluaran menampilkan kode/nama BU walau BU terhapus (BU terhapus tetap memberi hak); dibatasi `bu_id` hak pemanggil.',
+  'server/src/modules/serialwh/dispatches.ts#items@2#fe798be5':
+    'Penampil rujukan: Riwayat pengeluaran menampilkan nama Item walau Item terhapus (LEFT JOIN); catatan historis, bukan keputusan hak.',
+  'server/src/modules/serialwh/dispatches.ts#brands@2#fe798be5':
+    'Penampil rujukan: nama merk Item pada Riwayat pengeluaran tetap tampil walau merk terhapus.',
+  'server/src/modules/serialwh/dispatches.ts#business_units@3#cfd51a31':
+    'Riwayat pengeluaran menampilkan kode/nama BU walau BU terhapus (BU terhapus tetap memberi hak); dibatasi `bu_id` hak pemanggil.',
+  'server/src/modules/serialwh/dispatches.ts#items@3#cfd51a31':
+    'Penampil rujukan: Riwayat pengeluaran menampilkan nama Item walau Item terhapus (LEFT JOIN); catatan historis, bukan keputusan hak.',
+  'server/src/modules/serialwh/dispatches.ts#brands@3#cfd51a31':
+    'Penampil rujukan: nama merk Item pada Riwayat pengeluaran tetap tampil walau merk terhapus.',
+  'server/src/modules/serialwh/submit.ts#business_units@2#71a9e696':
+    'Penjaga nomor riwayat: membaca kode BU pengeluaran untuk penomoran; BU terhapus tetap memberi hak dan pengeluaran dibatasi `bu_id` hak pemanggil.',
   'server/src/modules/serialwh/ready.ts#business_units@1#58e24d93':
     'Pencatatan ready menampilkan kode/nama BU walau BU terhapus (BU terhapus tetap memberi hak); dibatasi `bu_id` hak pemanggil.',
   'server/src/modules/serialwh/ready.ts#items@1#58e24d93':
