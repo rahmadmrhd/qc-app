@@ -1,9 +1,13 @@
 import type { ImportClResult } from '@shared/contract';
-import { useMemo, useState } from 'react';
+import { CL_TEXT_MAX_BYTES } from '@shared/countrylock-bundle';
+import { X } from 'lucide-react';
+import { useMemo, useRef, useState } from 'react';
+import { formatBytes } from '@/components/file-dialog/accept';
 import { FilePicker } from '@/components/file-dialog/file-picker';
 import { FormPage } from '@/components/page/form-page';
 import { FormSection } from '@/components/page/form-section';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
 import { describeError } from '@/lib/api/describe-error';
 import { parseLegacyConfig } from '../lib/parse-legacy-config';
 import { mergeImportResults, splitImport } from '../lib/split-import';
@@ -14,6 +18,19 @@ const FORM_ID = 'cl-import-form';
 interface ScriptFile {
   path: string;
   text: string;
+}
+
+/** Satu kali memilih skrip (satu folder lama); pilihan berikutnya menjadi kelompok baru, bukan mengganti. */
+interface ScriptGroup {
+  id: number;
+  files: ScriptFile[];
+}
+
+/** `config.QC` lama berukuran beberapa KB; batas ini hanya pelindung terhadap salah pilih berkas. */
+const CONFIG_MAX_BYTES = 512 * 1024;
+
+function tooBigMessage(name: string, size: number, limit: number): string {
+  return `${name} (${formatBytes(size)}) melebihi batas ${formatBytes(limit)}; dilewati tanpa dibaca`;
 }
 
 interface Message {
@@ -49,7 +66,10 @@ export function ImportPage({ onCancel }: ImportPageProps) {
   const runImport = useRunImport();
   const [configText, setConfigText] = useState<string | null>(null);
   const [configName, setConfigName] = useState('');
-  const [scripts, setScripts] = useState<ScriptFile[]>([]);
+  const [groups, setGroups] = useState<ScriptGroup[]>([]);
+  const [rejected, setRejected] = useState<string[]>([]);
+  const nextGroupId = useRef(1);
+  const scripts = useMemo(() => groups.flatMap((group) => group.files), [groups]);
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState<string | null>(null);
   const [report, setReport] = useState<ImportClResult | null>(null);
@@ -66,17 +86,53 @@ export function ImportPage({ onCancel }: ImportPageProps) {
     if (!file) return;
     setReport(null);
     setFailure(null);
+    if (file.size > CONFIG_MAX_BYTES) {
+      setRejected((previous) => [
+        ...previous,
+        tooBigMessage('config.QC', file.size, CONFIG_MAX_BYTES),
+      ]);
+      return;
+    }
     setConfigName(file.name);
     setConfigText(await file.text());
   };
   const pickScripts = async (files: File[]) => {
     setReport(null);
     setFailure(null);
-    const next = await Promise.all(
-      files.map(async (file) => ({ path: file.name, text: await file.text() })),
+    const accepted = files.filter((file) => file.size <= CL_TEXT_MAX_BYTES);
+    setRejected(
+      files
+        .filter((file) => file.size > CL_TEXT_MAX_BYTES)
+        .map((file) => tooBigMessage(file.name, file.size, CL_TEXT_MAX_BYTES)),
     );
-    setScripts(next);
+    if (accepted.length === 0) return;
+    const read = await Promise.all(
+      accepted.map(async (file) => ({ path: file.name, text: await file.text() })),
+    );
+    // Pilihan berikutnya MENAMBAH: dialog berkas hanya dapat memilih satu folder sekali jalan.
+    setGroups((previous) => [...previous, { id: nextGroupId.current++, files: read }]);
   };
+  const removeFile = (groupId: number, path: string) =>
+    setGroups((previous) =>
+      previous
+        .map((group) =>
+          group.id === groupId
+            ? { ...group, files: group.files.filter((file) => file.path !== path) }
+            : group,
+        )
+        .filter((group) => group.files.length > 0),
+    );
+  const removeGroup = (groupId: number) =>
+    setGroups((previous) => previous.filter((group) => group.id !== groupId));
+
+  const folderCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const script of request?.scripts ?? []) {
+      const folder = script.path.split('/')[0] ?? '';
+      counts.set(folder, (counts.get(folder) ?? 0) + 1);
+    }
+    return [...counts.entries()];
+  }, [request]);
 
   const submit = async () => {
     if (!request || busy) return;
@@ -154,10 +210,53 @@ export function ImportPage({ onCancel }: ImportPageProps) {
             </span>
           </div>
           <p className="text-xs text-muted-foreground">
-            Pilih semua berkas dari folder skrip lama (mis. MIKROTIK dan UBIQUITI). Berkas yang
-            tidak dirujuk firmware di config.QC dilewati.
+            Dialog berkas hanya dapat memilih satu folder sekali jalan. Pilih berkas folder pertama
+            (mis. MIKROTIK), lalu pilih lagi untuk folder berikutnya (mis. UBIQUITI): pilihan baru
+            MENAMBAH, tidak mengganti. Berkas yang tidak dirujuk firmware di config.QC dilewati.
           </p>
+          {groups.map((group, index) => (
+            <div key={group.id} className="rounded-md border p-3">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <span className="text-sm font-medium">{`Pilihan ${index + 1}`}</span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  color="destructive"
+                  size="sm"
+                  onClick={() => removeGroup(group.id)}
+                >
+                  {`Hapus Pilihan ${index + 1}`}
+                </Button>
+              </div>
+              <ul className="flex flex-wrap gap-1.5">
+                {group.files.map((file) => (
+                  <li
+                    key={file.path}
+                    className="inline-flex items-center gap-1 rounded bg-muted px-2 py-0.5 text-xs"
+                  >
+                    {file.path}
+                    <button
+                      type="button"
+                      aria-label={`Hapus skrip ${file.path}`}
+                      className="touch:size-11 inline-flex size-5 items-center justify-center rounded hover:bg-background"
+                      onClick={() => removeFile(group.id, file.path)}
+                    >
+                      <X className="size-3" aria-hidden="true" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
         </FormSection>
+
+        {rejected.length > 0 ? (
+          <Alert color="warning">
+            <AlertDescription>
+              <MessageList items={rejected.map((text) => ({ text }))} />
+            </AlertDescription>
+          </Alert>
+        ) : null}
 
         {parsed ? (
           <FormSection title="Hasil pembacaan" columns={1}>
@@ -165,6 +264,13 @@ export function ImportPage({ onCancel }: ImportPageProps) {
               <p className="text-sm">
                 {request.firmwares.length} firmware, {request.scripts.length} skrip siap diimpor.
               </p>
+            ) : null}
+            {folderCounts.length > 1 ? (
+              <ul className="text-xs text-muted-foreground">
+                {folderCounts.map(([folder, count]) => (
+                  <li key={folder}>{`${folder}: ${count} skrip`}</li>
+                ))}
+              </ul>
             ) : null}
             {parsed.problems.length > 0 ? (
               <Alert color={request ? 'warning' : 'destructive'}>

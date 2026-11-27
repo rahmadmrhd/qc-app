@@ -153,3 +153,36 @@ describe('parseLegacyConfig: kasus bermasalah', () => {
     expect(result.request?.settings.network.computerIp).toBe('10.0.0.3');
   });
 });
+
+describe('berkas kembar antar folder', () => {
+  test('nama sama dengan isi berbeda: dilaporkan, firmware yang merujuknya tanpa skrip (tidak saling menimpa diam-diam)', () => {
+    const files = [
+      ...fixtureScripts(),
+      { path: 'mikrotik-ac.txt', text: '# versi lain dari folder lain' },
+    ];
+    const result = parseLegacyConfig(configText, files);
+    expect(
+      result.problems.some(
+        (problem) => /mikrotik-ac\.txt/.test(problem) && /lebih dari satu/.test(problem),
+      ),
+    ).toBe(true);
+    const ac = result.request?.firmwares.find((firmware) => firmware.code === 'AC');
+    expect(ac?.scriptPath).toBeNull();
+    expect(
+      result.request?.scripts.some((script) => script.path === 'MIKROTIK/mikrotik-ac.txt'),
+    ).toBe(false);
+  });
+
+  test('nama sama dengan isi persis sama (dipilih dua kali): digabung tanpa masalah', () => {
+    const scripts = fixtureScripts();
+    const ac = scripts.find((file) => file.path === 'mikrotik-ac.txt');
+    const result = parseLegacyConfig(configText, [
+      ...scripts,
+      { path: 'mikrotik-ac.txt', text: ac?.text ?? '' },
+    ]);
+    expect(result.problems.some((problem) => /lebih dari satu/.test(problem))).toBe(false);
+    expect(result.request?.firmwares.find((firmware) => firmware.code === 'AC')?.scriptPath).toBe(
+      'MIKROTIK/mikrotik-ac.txt',
+    );
+  });
+});

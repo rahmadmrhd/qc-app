@@ -177,8 +177,15 @@ export function parseLegacyConfig(
     if (!/sshKeys/.test(warning)) problems.push(`config.QC: ${warning}`);
   }
 
-  const byName = new Map<string, { path: string; text: string }>();
-  for (const file of files) byName.set(baseName(file.path).toLowerCase(), file);
+  // Berkas bernama sama (mis. dari dua folder lama) dikelompokkan: isi sama = satu berkas, isi berbeda = ambigu.
+  const byName = new Map<string, { path: string; text: string }[]>();
+  for (const file of files) {
+    const key = baseName(file.path).toLowerCase();
+    const group = byName.get(key) ?? [];
+    if (!group.some((existing) => existing.text === file.text)) group.push(file);
+    byName.set(key, group);
+  }
+  const reportedAmbiguous = new Set<string>();
   const used = new Set<string>();
   const scripts: ImportClInput['scripts'] = [];
   const firmwares: ImportClInput['firmwares'] = [];
@@ -194,13 +201,23 @@ export function parseLegacyConfig(
       if (firmware.file === '') {
         problems.push(`Firmware ${firmware.code} (${brand}) tidak punya berkas skrip di config.QC`);
       } else {
-        const match = byName.get(baseName(firmware.file).toLowerCase());
+        const nameKey = baseName(firmware.file).toLowerCase();
+        const candidates = byName.get(nameKey) ?? [];
+        const match = candidates.length === 1 ? candidates[0] : undefined;
         const candidate = `${folder}/${firmware.file}`;
         const pathProblem = validateClPath(candidate);
         if (pathProblem !== null) {
           problems.push(
             `Firmware ${firmware.code}: jalur skrip "${candidate}" tidak sah (${pathProblem})`,
           );
+        } else if (candidates.length > 1) {
+          used.add(nameKey);
+          if (!reportedAmbiguous.has(nameKey)) {
+            reportedAmbiguous.add(nameKey);
+            problems.push(
+              `Berkas ${baseName(firmware.file)} dipilih lebih dari satu kali dengan isi berbeda (mis. dari dua folder); tidak dapat ditentukan mana yang dipakai, jadi firmware yang merujuknya diimpor tanpa skrip. Pilih ulang hanya satu versinya.`,
+            );
+          }
         } else if (!match) {
           problems.push(
             `Skrip ${firmware.file} untuk firmware ${firmware.code} (${brand}) tidak ada di berkas yang dipilih`,

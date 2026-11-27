@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { ImportClInput, ImportClResult } from '@shared/contract';
+import { CL_TEXT_MAX_BYTES } from '@shared/countrylock-bundle';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
@@ -17,9 +18,9 @@ import { ImportPage } from './import-page';
 
 const FIXTURE = join(__dirname, '../../../../../countrylock/fixtures/country-lock2');
 
-function fixtureFiles(): File[] {
+function fixtureFiles(folders: readonly string[] = ['MIKROTIK', 'UBIQUITI']): File[] {
   const files: File[] = [];
-  for (const folder of ['MIKROTIK', 'UBIQUITI']) {
+  for (const folder of folders) {
     for (const name of readdirSync(join(FIXTURE, folder))) {
       files.push(new File([readFileSync(join(FIXTURE, folder, name))], name));
     }
@@ -156,5 +157,68 @@ describe('ImportPage', () => {
     await userEvent.upload(scripts as HTMLInputElement, fixtureFiles());
     await userEvent.click(await screen.findByRole('button', { name: 'Impor' }));
     expect(await screen.findByText('Berkas sudah ada dengan isi berbeda; dilewati')).toBeTruthy();
+  });
+});
+
+describe('ImportPage: beberapa folder dan batas ukuran', () => {
+  test('pilihan berikutnya MENAMBAH (folder MIKROTIK lalu UBIQUITI), bukan mengganti', async () => {
+    await page();
+    const [config, scripts] = await pickers();
+    await userEvent.upload(config as HTMLInputElement, configFile());
+    await userEvent.upload(scripts as HTMLInputElement, fixtureFiles(['MIKROTIK']));
+    expect(await screen.findByText(/8 skrip/)).toBeTruthy();
+    await userEvent.upload(scripts as HTMLInputElement, fixtureFiles(['UBIQUITI']));
+    expect(await screen.findByText(/17 firmware, 17 skrip siap diimpor/)).toBeTruthy();
+    expect(screen.getByText('Pilihan 1')).toBeTruthy();
+    expect(screen.getByText('Pilihan 2')).toBeTruthy();
+    await userEvent.click(screen.getByRole('button', { name: 'Impor' }));
+    await waitFor(() => expect(importCalls()).toHaveLength(1));
+    const sent = importCalls()[0]?.[1] as ImportClInput | undefined;
+    expect(sent?.scripts).toHaveLength(17);
+  });
+
+  test('berkas dapat dihapus dari daftar terpilih, juga satu pilihan sekaligus', async () => {
+    await page();
+    const [config, scripts] = await pickers();
+    await userEvent.upload(config as HTMLInputElement, configFile());
+    await userEvent.upload(scripts as HTMLInputElement, fixtureFiles(['MIKROTIK']));
+    await userEvent.upload(scripts as HTMLInputElement, fixtureFiles(['UBIQUITI']));
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Hapus skrip mikrotik-ac.txt' }),
+    );
+    expect(await screen.findByText(/16 skrip siap diimpor/)).toBeTruthy();
+    await userEvent.click(screen.getByRole('button', { name: 'Hapus Pilihan 2' }));
+    expect(await screen.findByText(/7 skrip siap diimpor/)).toBeTruthy();
+  });
+
+  test('nama berkas sama dengan isi berbeda di dua pilihan dilaporkan sebagai masalah', async () => {
+    await page();
+    const [config, scripts] = await pickers();
+    await userEvent.upload(config as HTMLInputElement, configFile());
+    await userEvent.upload(scripts as HTMLInputElement, fixtureFiles(['MIKROTIK']));
+    await userEvent.upload(scripts as HTMLInputElement, [new File(['# lain'], 'mikrotik-ac.txt')]);
+    expect(await screen.findByText(/mikrotik-ac\.txt dipilih lebih dari satu kali/)).toBeTruthy();
+  });
+
+  test('skrip lebih besar dari batas ditolak tanpa dibaca dan alasannya tampil', async () => {
+    await page();
+    const [config, scripts] = await pickers();
+    await userEvent.upload(config as HTMLInputElement, configFile());
+    const big = new File(['x'.repeat(CL_TEXT_MAX_BYTES + 1)], 'besar.txt');
+    const textSpy = vi.spyOn(big, 'text');
+    await userEvent.upload(scripts as HTMLInputElement, [big]);
+    expect(await screen.findByText(/besar\.txt.*melebihi batas/)).toBeTruthy();
+    expect(textSpy).not.toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: 'Hapus skrip besar.txt' })).toBeNull();
+  });
+
+  test('config.QC yang terlalu besar ditolak tanpa dibaca', async () => {
+    await page();
+    const [config] = await pickers();
+    const big = new File(['x'.repeat(600 * 1024)], 'config.QC');
+    const textSpy = vi.spyOn(big, 'text');
+    await userEvent.upload(config as HTMLInputElement, big);
+    expect(await screen.findByText(/config\.QC.*melebihi batas/)).toBeTruthy();
+    expect(textSpy).not.toHaveBeenCalled();
   });
 });
