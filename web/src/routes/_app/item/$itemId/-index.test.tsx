@@ -41,6 +41,7 @@ const base: ItemDto = {
   firmware: '',
   proofRequired: false,
   proofMin: 1,
+  boxSize: 0,
   status: 'inactive',
   aliases: [],
   imageCount: 1,

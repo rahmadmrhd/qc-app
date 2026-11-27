@@ -97,6 +97,9 @@ function mergeSkipped(
   return [...bySerial.values()];
 }
 
+/** Pesan server bila nomor kardus awal bentrok dengan kardus yang sudah ada (potongan pertama ditolak). */
+const BOX_TAKEN = /Nomor kardus sudah dipakai/;
+
 /** Form Keluar Gudang (spek 5.3-5.6, 5.11, 5.12, 5.14 pemakaian 1). */
 export function DispatchPage({ handoverId, onCancel }: DispatchPageProps) {
   const me = useMe();
@@ -291,6 +294,8 @@ export function DispatchPage({ handoverId, onCancel }: DispatchPageProps) {
   const [line, setLine] = useState<ScanLine | null>(null);
   const [typeDialog, setTypeDialog] = useState<TypeDialogState | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  // Galat nomor kardus dari server: dialog simpan dibuka lagi dengan pesan pada field nomor kardus awal.
+  const [boxStartError, setBoxStartError] = useState<string | undefined>(undefined);
   const [clearOpen, setClearOpen] = useState(false);
   const [progress, setProgress] = useState<ProgressState | null>(null);
   const [result, setResult] = useState<{
@@ -601,6 +606,12 @@ export function DispatchPage({ handoverId, onCancel }: DispatchPageProps) {
             // Potongan pertama atomik: tidak ada yang tersimpan, jadi kiriman dibuka lagi dan baris bisa diperbaiki.
             live.current.submission = undefined;
             setSubmission(undefined);
+            if (BOX_TAKEN.test(outcome.message)) {
+              setBoxStartError(outcome.message);
+              setProgress(null);
+              setConfirmOpen(true);
+              return;
+            }
           }
           if (outcome.serial) setFailedSerial({ serial: outcome.serial, message: outcome.message });
           setProgress({
@@ -621,6 +632,7 @@ export function DispatchPage({ handoverId, onCancel }: DispatchPageProps) {
   function startSubmit(values: ConfirmValues) {
     // Kiriman baru: tanda "dilewati" dari kiriman sebelumnya tidak berlaku lagi.
     commitSkipped([]);
+    setBoxStartError(undefined);
     // Serial baru yang belum punya lokasi/tanggal uji (chip filter kosong saat scan) dilengkapi dari isian dialog.
     const needsFill = live.current.rows.some(
       (row) => row.kind === 'new' && (row.locationId === '' || row.testDate === ''),
@@ -640,7 +652,13 @@ export function DispatchPage({ handoverId, onCancel }: DispatchPageProps) {
       );
     }
     const sub = freezeSubmission(live.current.rows, {
-      ...(values.mode === 'ready' ? { mode: 'ready' as const } : {}),
+      ...(values.mode === 'ready'
+        ? {
+            mode: 'ready' as const,
+            ...(values.boxStart !== undefined ? { boxStart: values.boxStart } : {}),
+            ...(values.boxSize !== undefined ? { boxSize: values.boxSize } : {}),
+          }
+        : {}),
       dispatchedOn: values.dispatchedOn,
       ...(values.orderId ? { orderId: values.orderId } : {}),
       orderNumber: values.orderNumber,
@@ -912,6 +930,7 @@ export function DispatchPage({ handoverId, onCancel }: DispatchPageProps) {
         onPurposeChange={setPurpose}
         onRemoveRows={(ids) => removeKeys(ids)}
         onConfirm={startSubmit}
+        boxStartError={boxStartError}
       />
       <TypeMismatchDialog
         state={typeDialog}

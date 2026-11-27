@@ -4,7 +4,7 @@ import type {
   WarehouseSerialDto,
 } from '@shared/contract';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
@@ -34,14 +34,23 @@ import { ConfirmDialog, type ConfirmDialogProps, type WarehousePurpose } from '.
 let media: ReturnType<typeof mockMatchMedia>;
 let orders: WarehouseOrderOptionDto[] = [];
 let inOrderIds: string[] = [];
+let maxBoxNumber: number | null = null;
 
 beforeEach(() => {
   media = mockMatchMedia(true);
   orders = [];
   inOrderIds = [];
+  maxBoxNumber = null;
   apiMock.mockImplementation((id: string, input: Record<string, unknown>) => {
     if (id === 'serialWarehouse.orderOptions') {
       return Promise.resolve({ items: orders, nextCursor: null });
+    }
+    if (id === 'serialWarehouse.readyStock') {
+      return Promise.resolve({
+        boxes: [],
+        nextCursor: null,
+        totals: { units: 0, fullBoxes: 0, looseBoxes: 0, maxBoxNumber: maxBoxNumber ?? 0 },
+      });
     }
     if (id === 'serialWarehouse.lookup') {
       const ids = (input.ids as string[]) ?? [];
@@ -229,7 +238,7 @@ test('tujuan bawaan Penjualan mengirim mode order dan field SO', async () => {
 });
 
 test('Ready Stock menyembunyikan No SO, customer, dan tautan task; mengirim mode ready tanpa SO', async () => {
-  const props = setup([makeExistingRow(whSerial())]);
+  const props = setup([makeExistingRow(whSerial())], { item: whItem({ boxSize: 10 }) });
   await userEvent.type(await screen.findByLabelText('Catatan'), '  stok ready ');
   await pickSelect(screen, 'Tujuan', 'Ready Stock');
   expect(screen.queryByLabelText('No SO')).not.toBeInTheDocument();
@@ -246,6 +255,8 @@ test('Ready Stock menyembunyikan No SO, customer, dan tautan task; mengirim mode
     customerName: '',
     note: 'stok ready',
     handoverIds: [],
+    boxStart: 1,
+    boxSize: 10,
   });
 });
 
@@ -296,4 +307,67 @@ test('serial baru yang sudah punya lokasi dan tanggal uji: tidak ada isian tamba
   await screen.findByLabelText('No SO');
   expect(screen.queryByLabelText('Tanggal uji serial baru')).toBeNull();
   expect(screen.queryByLabelText('Lokasi serial baru')).toBeNull();
+});
+
+const manyRows = (n: number) =>
+  Array.from({ length: n }, (_, i) => makeExistingRow(whSerial({ id: `s${i}`, serial: `SN${i}` })));
+
+test('Ready Stock: nomor awal = kardus tertinggi + 1, isi bawaan dari Item, ringkasan perkiraan', async () => {
+  maxBoxNumber = 11;
+  setup(manyRows(25), { item: whItem({ boxSize: 10 }) });
+  await pickSelect(screen, 'Tujuan', 'Ready Stock');
+  expect(await screen.findByLabelText('Nomor kardus awal')).toHaveValue(12);
+  expect(screen.getByLabelText('Isi per kardus')).toHaveValue(10);
+  expect(await screen.findByText('Kardus 12-14: 2 penuh, 1 ecer (5 unit)')).toBeInTheDocument();
+});
+
+test('Ready Stock: Simpan terblokir bila isi per kardus kosong atau 0', async () => {
+  const props = setup(manyRows(3), { item: whItem({ boxSize: 0 }) });
+  await pickSelect(screen, 'Tujuan', 'Ready Stock');
+  const size = await screen.findByLabelText('Isi per kardus');
+  expect(size).toHaveValue(null);
+  await userEvent.click(screen.getByRole('button', { name: 'Simpan & salin' }));
+  expect(props.onConfirm).not.toHaveBeenCalled();
+  expect(await screen.findByText('Isi per kardus harus lebih dari 0')).toBeInTheDocument();
+  await userEvent.type(size, '0');
+  await userEvent.click(screen.getByRole('button', { name: 'Simpan & salin' }));
+  expect(props.onConfirm).not.toHaveBeenCalled();
+});
+
+test('Ready Stock: nilai kardus yang diubah ikut terkirim', async () => {
+  maxBoxNumber = 4;
+  const props = setup(manyRows(3), { item: whItem({ boxSize: 10 }) });
+  await pickSelect(screen, 'Tujuan', 'Ready Stock');
+  const start = await screen.findByLabelText('Nomor kardus awal');
+  await waitFor(() => expect(start).toHaveValue(5));
+  await userEvent.clear(start);
+  await userEvent.type(start, '20');
+  const size = screen.getByLabelText('Isi per kardus');
+  await userEvent.clear(size);
+  await userEvent.type(size, '2');
+  await userEvent.click(screen.getByRole('button', { name: 'Simpan & salin' }));
+  expect(props.onConfirm).toHaveBeenCalledWith(
+    expect.objectContaining({ mode: 'ready', boxStart: 20, boxSize: 2 }),
+  );
+});
+
+test('Ready Stock: galat "Nomor kardus sudah dipakai" dari server tampil pada field nomor', async () => {
+  setup(manyRows(3), {
+    item: whItem({ boxSize: 10 }),
+    boxStartError: 'Nomor kardus sudah dipakai',
+  });
+  await pickSelect(screen, 'Tujuan', 'Ready Stock');
+  expect(await screen.findByText('Nomor kardus sudah dipakai')).toBeInTheDocument();
+});
+
+test('mode Penjualan tidak menampilkan isian kardus dan tidak mengirimnya', async () => {
+  const props = setup([makeExistingRow(whSerial())], { item: whItem({ boxSize: 10 }) });
+  await userEvent.type(await screen.findByLabelText('No SO'), 'SO-5');
+  await userEvent.type(screen.getByLabelText('Customer'), 'PT Baru');
+  expect(screen.queryByLabelText('Nomor kardus awal')).not.toBeInTheDocument();
+  expect(screen.queryByLabelText('Isi per kardus')).not.toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: 'Simpan & salin' }));
+  const values = vi.mocked(props.onConfirm).mock.calls[0]?.[0];
+  expect(values).not.toHaveProperty('boxStart');
+  expect(values).not.toHaveProperty('boxSize');
 });
