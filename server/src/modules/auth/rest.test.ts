@@ -164,7 +164,7 @@ describe('GET /api/v1/me', () => {
           item: 'manage',
           serial: 'manage',
           serialservice: 'edit',
-          serialwh: 'none',
+          serialwh: 'edit',
         },
         deleted: false,
       },

@@ -219,8 +219,8 @@ describe('penugasan BU', () => {
   test('super admin: semua BU manage; tanpa BU sama sekali = {} dan item manage', async () => {
     const ctx = await loadUserContext(env, 'admin@gmail.com');
     expect(ctx?.businessUnits).toEqual({
-      'bu-a': { item: 'manage', serial: 'manage', serialservice: 'edit', serialwh: 'none' },
-      'bu-b': { item: 'manage', serial: 'manage', serialservice: 'edit', serialwh: 'none' },
+      'bu-a': { item: 'manage', serial: 'manage', serialservice: 'edit', serialwh: 'edit' },
+      'bu-b': { item: 'manage', serial: 'manage', serialservice: 'edit', serialwh: 'edit' },
     });
     await env.DB.prepare('DELETE FROM business_units').run();
     const empty = await loadUserContext(env, 'admin@gmail.com');
