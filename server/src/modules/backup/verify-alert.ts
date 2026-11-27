@@ -83,7 +83,7 @@ export async function checkBackupVerifyAlerts(env: Env): Promise<VerifyAlertOutc
   if (missing && now - parsed.epochMs > VERIFY_MISSING_AFTER_MS) {
     const reason =
       env.BACKUP_VERIFY === undefined
-        ? 'Uji pemulihan belum dikonfigurasi: RESTORE_DATABASE_URL di .env server kosong atau tidak valid.'
+        ? 'Uji pemulihan belum dikonfigurasi: RESTORE_DATABASE_URL kosong atau tidak valid (di .env server isi QC_RESTORE_DB_PASSWORD, lalu docker compose up -d).'
         : current === null
           ? 'Tidak ada hasil verifikasi untuk cadangan ini (job tidak berjalan atau belum selesai).'
           : `Percobaan terakhir belum berhasil: ${current.summary}`;

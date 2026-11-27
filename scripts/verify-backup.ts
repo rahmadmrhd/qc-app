@@ -55,7 +55,7 @@ async function main(): Promise<number> {
     const env = envFromConfig(config, db);
     if (env.BACKUP_VERIFY === undefined) {
       console.error(
-        'RESTORE_DATABASE_URL kosong atau tidak valid; verifikasi tidak dapat berjalan.',
+        'RESTORE_DATABASE_URL kosong atau tidak valid (di .env server isi QC_RESTORE_DB_PASSWORD, lalu docker compose up -d); verifikasi tidak dapat berjalan.',
       );
       return 2;
     }

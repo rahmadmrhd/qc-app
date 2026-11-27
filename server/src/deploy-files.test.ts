@@ -46,6 +46,7 @@ const NOT_IN_ENV_EXAMPLE = new Set([
   'PORT',
   'NODE_ENV',
   'DATABASE_URL',
+  'RESTORE_DATABASE_URL', // disusun compose dari QC_RESTORE_DB_* (keputusan pemilik 2026-11-27)
   'BACKUP_LOCAL_DIR', // tetap /var/backups/qc (volume qc-backups); bukan pilihan operator
   'PROOF_STAGING_DIR', // tetap /var/lib/qc/proofs (volume qc-proofs); bukan pilihan operator
 ]);
@@ -124,6 +125,38 @@ describe('deploy: variabel konfigurasi', () => {
     for (const name of ['VAPID_PUBLIC_KEY', 'VAPID_PRIVATE_KEY', 'VAPID_SUBJECT']) {
       expect(String(environment[name])).toBe(`\${${name}:-}`);
     }
+  });
+});
+
+describe('deploy: RESTORE_DATABASE_URL disusun compose dari variabel .env terpisah', () => {
+  const restoreUrl = String(
+    ((compose.services['qc-app']?.environment ?? {}) as Record<string, unknown>)
+      .RESTORE_DATABASE_URL,
+  );
+  const lines = envExample.split('\n').map((line) => line.replace(/^#\s*/, ''));
+
+  test('URL = mysql://<USER>:<PASSWORD>@<HOST>:<PORT>/ tanpa nama basis data, aktif hanya bila kata sandi terisi', () => {
+    expect(restoreUrl).toBe(
+      '${QC_RESTORE_DB_PASSWORD:+mysql://${QC_RESTORE_DB_USER:-qc_restore}:${QC_RESTORE_DB_PASSWORD}@${QC_RESTORE_DB_HOST:-qc-db}:${QC_RESTORE_DB_PORT:-3306}/}',
+    );
+  });
+
+  test('keempat variabel tercantum di .env.example; kata sandi kosong (tanpa rahasia di Git) dan bawaan sesuai compose', () => {
+    for (const name of [
+      'QC_RESTORE_DB_USER',
+      'QC_RESTORE_DB_PASSWORD',
+      'QC_RESTORE_DB_HOST',
+      'QC_RESTORE_DB_PORT',
+    ]) {
+      expect(
+        lines.some((line) => line.startsWith(`${name}=`)),
+        name,
+      ).toBe(true);
+    }
+    expect(envExample).toMatch(/^QC_RESTORE_DB_PASSWORD=$/m);
+    expect(envExample).toMatch(/^QC_RESTORE_DB_USER=qc_restore$/m);
+    expect(envExample).toMatch(/^QC_RESTORE_DB_HOST=qc-db$/m);
+    expect(envExample).toMatch(/^QC_RESTORE_DB_PORT=3306$/m);
   });
 });
 

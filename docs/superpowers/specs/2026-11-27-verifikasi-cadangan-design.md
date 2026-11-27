@@ -91,10 +91,19 @@ otomatis, dan cadangan yang tidak pernah diuji belum bisa dianggap cadangan.
 
 ## 5. Konfigurasi baru
 
-`RESTORE_DATABASE_URL` (opsional): `mysql://qc_restore:<sandi-heksa>@qc-db:3306/`. Ditambah di `server/src/config.ts`
-(`restoreDatabaseUrl`), `deploy/compose.yml`, `deploy/.env.example`, `server/.env.example` (dijaga `deploy-files.test.ts`).
-Kosong atau tidak valid = verifikasi mati dengan satu baris log (start tidak gagal, pola SMTP). Variabel yang sama dipakai
-CLI `restore-backup.ts` (sebagai URL admin bawaan) sehingga `docker exec` tak perlu lagi `-e`.
+Di kode aplikasi, `RESTORE_DATABASE_URL` (opsional): `mysql://qc_restore:<sandi-heksa>@qc-db:3306/`
+(`server/src/config.ts` `restoreDatabaseUrl`; `server/.env.example` untuk dev lokal tetap berupa URL). Kosong atau tidak valid =
+verifikasi mati dengan satu baris log (start tidak gagal, pola SMTP). Variabel yang sama dipakai CLI `restore-backup.ts`
+(sebagai URL admin bawaan) sehingga `docker exec` tak perlu lagi `-e`.
+
+**Keputusan pemilik 2026-11-27 (menggantikan rancangan awal yang meminta pemilik mengisi URL di `.env` VPS):** pemilik tidak
+suka pola URL, jadi di `deploy/.env.example` dan `.env` VPS nilainya dipecah menjadi `QC_RESTORE_DB_USER` (bawaan
+`qc_restore`), `QC_RESTORE_DB_PASSWORD` (wajib; kosong = verifikasi mati), `QC_RESTORE_DB_HOST` (bawaan `qc-db`), dan
+`QC_RESTORE_DB_PORT` (bawaan `3306`), sejajar dengan `QC_DB_USER`/`QC_DB_PASSWORD`. `deploy/compose.yml` yang menyusunnya
+menjadi `RESTORE_DATABASE_URL` untuk kontainer (`${QC_RESTORE_DB_PASSWORD:+mysql://...}`), jadi kode aplikasi, CLI, dan
+`parseMysqlUrl` tidak berubah. Konsekuensi yang diterima: kata sandi dipasang apa adanya di URL tanpa persen-enkode (compose
+tak dapat meng-enkode), jadi harus heksa; `RESTORE_DATABASE_URL` tidak lagi dipilih operator, sehingga masuk
+`NOT_IN_ENV_EXAMPLE` di `deploy-files.test.ts` (seperti `DATABASE_URL`). Dijaga tes `deploy-files.test.ts`.
 
 ## 6. CLI manual
 
@@ -105,7 +114,8 @@ pilihan pemilik, tanpa menunggu cadangan malam berikutnya.
 ## 7. Langkah manual pemilik (tidak dibawa CI)
 
 1. Pastikan pengguna `qc_restore` ada dengan hak `qc\_restore\_%` + SELECT pada skema aplikasi (docs/setup-google.md S8).
-2. Isi `RESTORE_DATABASE_URL` di `.env` VPS production, `docker compose up -d` SEBELUM merge `dev` -> `main` (atau segera
+2. Isi `QC_RESTORE_DB_PASSWORD` (kata sandi heksa pengguna `qc_restore`; `QC_RESTORE_DB_USER`/`HOST`/`PORT` hanya bila beda
+   dari bawaan) di `.env` VPS production, `docker compose up -d` SEBELUM merge `dev` -> `main` (atau segera
    sesudahnya; sebelum diisi, peringatan "belum diverifikasi" akan berbunyi 12 jam sesudah cadangan berikutnya).
 3. Salin `deploy/compose.yml` terbaru ke VPS (variabel baru di `environment`).
 4. Uji pertama: `docker exec <app> bun /app/scripts/verify-backup.ts --record` di luar jam sibuk (beban: mengimpor seluruh
