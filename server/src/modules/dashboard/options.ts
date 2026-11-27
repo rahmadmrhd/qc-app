@@ -72,7 +72,7 @@ async function customers(env: Env, query: Query): Promise<Page> {
 }
 
 async function items(env: Env, user: UserContext, query: Query): Promise<Page> {
-  const buIds = widgetAllowed(user, widgetMeta('sn.recorded')) ? readableBuIds(user) : [];
+  const buIds = widgetAllowed(user, widgetMeta('sn.trend')) ? readableBuIds(user) : [];
   if (buIds.length === 0) return { options: [] };
   const where: string[] = [];
   const binds: unknown[] = [...buIds];
@@ -95,6 +95,27 @@ async function items(env: Env, user: UserContext, query: Query): Promise<Page> {
     value: row.id,
     label: `${row.brand_name ?? ''} ${row.model.trim()}`.trim(),
   }));
+}
+
+async function brands(env: Env, user: UserContext, query: Query): Promise<Page> {
+  const buIds = widgetAllowed(user, widgetMeta('sn.trend')) ? readableBuIds(user) : [];
+  if (buIds.length === 0) return { options: [] };
+  const where: string[] = [];
+  const binds: unknown[] = [...buIds];
+  if (query.ids) {
+    where.push(`b.id IN (${marksOf(query.ids)})`);
+    binds.push(...query.ids);
+  } else if (query.search !== '') {
+    where.push("LOWER(b.name) LIKE ? ESCAPE '!'");
+    binds.push(likePattern(query.search));
+  }
+  const extra = where.map((clause) => ` AND ${clause}`).join('');
+  const rows = await env.DB.prepare(
+    `SELECT b.id, b.name FROM brands b WHERE ${liveWhere('b')} AND EXISTS (SELECT 1 FROM items i WHERE ${liveWhere('i')} AND i.brand_id = b.id AND EXISTS (SELECT 1 FROM item_business_units ibu WHERE ibu.item_id = i.id AND ibu.bu_id IN (${marksOf(buIds)})))${extra} ORDER BY b.name, b.id ${windowSql(query)}`,
+  )
+    .bind(...binds)
+    .all<{ id: string; name: string }>();
+  return pageOf(rows.results, query, (row) => ({ value: row.id, label: row.name }));
 }
 
 async function stickerTypes(env: Env, query: Query): Promise<Page> {
@@ -155,7 +176,7 @@ export async function loadOptions(
   };
   const kinds: readonly DashboardOptionKind[] = input.kind
     ? [input.kind]
-    : ['customers', 'items', 'stickerTypes', 'stickers'];
+    : ['customers', 'items', 'brands', 'stickerTypes', 'stickers'];
   const stickerAllowed =
     widgetAllowed(user, widgetMeta('st.out')) || hasLevel(user.permissions.sticker, 'view');
   const empty: Page = { options: [] };
@@ -164,11 +185,18 @@ export async function loadOptions(
     customers: async () =>
       widgetAllowed(user, widgetMeta('hs.created')) ? customers(env, query) : empty,
     items: () => items(env, user, query),
+    brands: () => brands(env, user, query),
     stickerTypes: async () => (stickerAllowed ? stickerTypes(env, query) : empty),
     stickers: async () => (stickerAllowed ? stickers(env, query) : empty),
   };
 
-  const options: DashboardOptionsDto = { customers: [], items: [], stickerTypes: [], stickers: [] };
+  const options: DashboardOptionsDto = {
+    customers: [],
+    items: [],
+    brands: [],
+    stickerTypes: [],
+    stickers: [],
+  };
   const next: NonNullable<DashboardOptionsDto['next']> = {};
   for (const kind of kinds) {
     const page = await loaders[kind]();

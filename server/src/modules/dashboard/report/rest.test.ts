@@ -20,7 +20,7 @@ const BODY = {
   schedule: { frequency: 'weekly', hour: 8, weekday: 1, monthDay: 1 },
   period: 'lastWeek',
   filter: { from: '2026-11-01', to: '2026-11-23' },
-  widgets: [{ id: 'sn.recorded', filters: {} }],
+  widgets: [{ id: 'sn.status', filters: {} }],
   offers: [],
   recipients: ['penerima@contoh.id'],
   linkDays: 14,
@@ -293,13 +293,13 @@ describe('sendTest dan preview', () => {
     expect(ok.status).toBe(200);
     expect(await ok.json()).toEqual({ ok: true });
     expect(sent).toHaveLength(1);
-    expect(sent[0]?.bcc).toEqual([OWNER]);
+    expect(sent[0]?.to).toEqual([OWNER]);
     expect(sent[0]?.subject.startsWith('[UJI] ')).toBe(true);
     // Pengelola semua menguji laporan orang lain: surel uji ke alamat PELAKU, bukan pemilik.
     expect((await rest.post(url, { email: ADMIN })).status).toBe(200);
-    expect(sent[1]?.bcc).toEqual([ADMIN]);
+    expect(sent[1]?.to).toEqual([ADMIN]);
     expect((await rest.post(url, { email: MANAGER })).status).toBe(200);
-    expect(sent[2]?.bcc).toEqual([MANAGER]);
+    expect(sent[2]?.to).toEqual([MANAGER]);
 
     const log = (await (
       await rest.get(`/activity?kind=dashboardReport&id=${id}`, { email: OWNER })

@@ -22,7 +22,7 @@ describe('toPublicDto', () => {
   });
 
   test('number tanpa previous tetap sah', () => {
-    expect(toPublicDto('sn.recorded', { kind: 'number', value: 0 })).toEqual({
+    expect(toPublicDto('sn.status', { kind: 'number', value: 0 })).toEqual({
       kind: 'number',
       value: 0,
     });

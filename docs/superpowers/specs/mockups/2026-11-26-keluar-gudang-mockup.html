@@ -1,0 +1,578 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mockup Keluar Gudang</title>
+<style>
+:root{
+  --bg:#fff;--fg:#0a0a0a;--card:#fff;--muted:#f5f5f5;--mfg:#737373;--border:#e5e5e5;--input:#e5e5e5;
+  --primary:#18181b;--pfg:#fafafa;--sidebar:#fafafa;
+  --success:#15803d;--success-t:#166534;--warning:#f59e0b;--warning-t:#92400e;--info:#2563eb;--info-t:#1d4ed8;--destr:#dc2626;--destr-t:#b91c1c;
+  --radius:10px;--page:#ececee;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#0a0a0a;--fg:#fafafa;--card:#171717;--muted:#262626;--mfg:#a3a3a3;--border:#ffffff1a;--input:#ffffff26;
+  --primary:#fafafa;--pfg:#18181b;--sidebar:#171717;--success-t:#22c55e;--warning-t:#f59e0b;--info-t:#60a5fa;--destr-t:#f87171;--page:#050505;
+}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--page);color:var(--fg);font:14px/1.45 "Geist Variable",ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.wrap{max-width:1320px;margin:0 auto;padding:24px 16px 80px}
+h1.top{font-size:22px;margin:0 0 4px}
+.lede{color:var(--mfg);margin:0 0 16px;max-width:820px}
+nav.jump{position:sticky;top:0;z-index:50;background:var(--page);padding:10px 0;display:flex;flex-wrap:wrap;gap:8px;border-bottom:1px solid var(--border);margin-bottom:24px}
+nav.jump a{padding:6px 12px;border:1px solid var(--border);border-radius:999px;color:var(--fg);text-decoration:none;font-size:13px;background:var(--card)}
+h2.sec{font-size:18px;margin:40px 0 4px}
+p.note{color:var(--mfg);margin:0 0 14px;max-width:860px}
+.cap{font-size:12px;color:var(--mfg);margin:6px 0 0}
+svg.i{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:none}
+/* app primitives */
+.btn{display:inline-flex;align-items:center;gap:6px;height:36px;padding:0 14px;border-radius:8px;border:1px solid var(--input);background:var(--card);color:var(--fg);font:inherit;font-weight:500;white-space:nowrap}
+.btn.p{background:var(--primary);color:var(--pfg);border-color:var(--primary)}
+.btn.g{border-color:transparent;background:transparent}
+.btn.sm{height:30px;padding:0 10px;font-size:13px}
+.btn.lg{height:48px;font-size:15px;border-radius:10px;width:100%;justify-content:center}
+.pill{display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 6px;border-radius:999px;background:#ffffff33;font-size:12px}
+.badge{display:inline-flex;align-items:center;gap:4px;height:22px;padding:0 8px;border-radius:999px;font-size:12px;font-weight:500;white-space:nowrap}
+.b-succ{background:#15803d26;color:var(--success-t)}.b-warn{background:#f59e0b26;color:var(--warning-t)}
+.b-info{background:#2563eb26;color:var(--info-t)}.b-dest{background:#dc262626;color:var(--destr-t)}.b-mut{background:var(--muted);color:var(--mfg)}
+.chip{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 10px;border:1px dashed var(--input);border-radius:999px;background:var(--card);font-size:13px;white-space:nowrap}
+.chip b{font-weight:600}.chip.on{border-style:solid}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:13px}
+.alert{display:flex;gap:10px;padding:10px 12px;border-radius:var(--radius);font-size:13px;border:1px solid}
+.alert.w{background:#f59e0b1a;border-color:#f59e0b66;color:var(--fg)}.alert.w svg{color:var(--warning-t)}
+.alert.i{background:#2563eb14;border-color:#2563eb55}.alert.i svg{color:var(--info-t)}
+.alert.e{background:#dc262614;border-color:#dc262655}.alert.e svg{color:var(--destr-t)}
+.alert.s{background:#15803d14;border-color:#15803d55}.alert.s svg{color:var(--success-t)}
+.alert b{font-weight:600}.alert .lnk{margin-left:auto;color:var(--info-t);white-space:nowrap}
+input.f,textarea.f,.f{width:100%;height:38px;border:1px solid var(--input);border-radius:8px;background:var(--card);color:var(--fg);padding:0 12px;font:inherit;display:flex;align-items:center}
+textarea.f{height:72px;padding:8px 12px;align-items:flex-start}
+.lbl{font-size:13px;font-weight:500;margin-bottom:6px}.lbl i{color:var(--destr-t);font-style:normal}
+.lock{background:var(--muted);color:var(--mfg);gap:8px}
+.cbx{width:16px;height:16px;border:1px solid var(--input);border-radius:4px;display:inline-flex;align-items:center;justify-content:center;flex:none;background:var(--card)}
+.cbx.on{background:var(--primary);border-color:var(--primary);color:var(--pfg)}.cbx.on svg{width:12px;height:12px;stroke-width:3}
+.sw{width:34px;height:20px;border-radius:999px;background:var(--primary);position:relative;flex:none}.sw::after{content:"";position:absolute;right:2px;top:2px;width:16px;height:16px;border-radius:50%;background:var(--pfg)}
+/* desktop window */
+.win{background:var(--bg);border:1px solid var(--border);border-radius:12px;overflow:hidden;box-shadow:0 8px 30px #0000001a;margin-bottom:8px}
+.win .chrome{display:flex;gap:6px;align-items:center;padding:8px 12px;background:var(--muted);border-bottom:1px solid var(--border);font-size:12px;color:var(--mfg)}
+.dot{width:10px;height:10px;border-radius:50%;background:#bbb}.chrome .url{margin-left:12px;background:var(--bg);border-radius:6px;padding:2px 10px;flex:1;max-width:420px}
+.app{display:flex;min-height:640px}
+.side{width:216px;background:var(--sidebar);border-right:1px solid var(--border);padding:12px 10px;font-size:13px;flex:none}
+.side .brand{font-weight:700;padding:4px 8px 12px;font-size:15px}
+.side .it{padding:7px 10px;border-radius:8px;display:flex;gap:8px;align-items:center;color:var(--fg)}
+.side .it.sub{padding-left:32px;color:var(--mfg)}.side .it.act{background:var(--muted);font-weight:600;color:var(--fg)}
+.main{flex:1;min-width:0;padding:16px 20px 24px}
+.crumb{font-size:12px;color:var(--mfg);margin-bottom:6px}
+.titlebar{display:flex;align-items:center;gap:12px;padding-bottom:10px;border-bottom:1px solid var(--border);margin:0 -20px 14px;padding-inline:20px}
+.titlebar h1{font-size:20px;margin:0;flex:1}.titlebar .sp{flex:1}
+.fbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
+.fbar .search{width:200px}
+.scan{display:flex;gap:12px;align-items:stretch;margin-bottom:12px}
+.scan .box{flex:1;border:2px solid var(--primary);border-radius:12px;padding:10px 14px;display:flex;gap:10px;align-items:center;background:var(--card)}
+.scan .box .ph{color:var(--mfg);flex:1}
+.stats{display:flex;gap:16px;align-items:center;border:1px solid var(--border);border-radius:12px;padding:10px 16px;background:var(--card)}
+.stats div{font-size:12px;color:var(--mfg)}.stats strong{display:block;font-size:20px;color:var(--fg);line-height:1.1}
+.feed{margin-bottom:12px}
+.stack{display:flex;flex-direction:column;gap:8px;margin-bottom:12px}
+table{width:100%;border-collapse:separate;border-spacing:0;font-size:13px}
+th{text-align:left;font-weight:500;color:var(--mfg);padding:8px 10px;border-bottom:1px solid var(--border);background:var(--muted);position:sticky;top:0}
+td{padding:9px 10px;border-bottom:1px solid var(--border);vertical-align:middle}
+tr.hl td{background:#15803d14}tr.draft td{background:#2563eb0d}
+.tbl{border:1px solid var(--border);border-radius:12px;overflow:hidden}
+.tfoot{display:flex;justify-content:space-between;padding:8px 12px;color:var(--mfg);font-size:12px;border-top:1px solid var(--border);background:var(--card)}
+/* dialog */
+.overlay{background:#00000066;padding:40px;display:flex;justify-content:center;border-radius:12px}
+.dlg{background:var(--card);border-radius:14px;width:560px;max-width:100%;box-shadow:0 20px 60px #0004;display:flex;flex-direction:column}
+.dlg .hd{padding:16px 20px 8px}.dlg .hd h3{margin:0;font-size:17px}.dlg .hd p{margin:4px 0 0;color:var(--mfg);font-size:13px}
+.dlg .bd{padding:8px 20px 12px;display:flex;flex-direction:column;gap:12px}
+.dlg .ft{padding:12px 20px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.sum{display:flex;gap:8px;flex-wrap:wrap}
+.sugg{border:1px solid var(--input);border-radius:10px;background:var(--card);margin-top:4px;box-shadow:0 6px 20px #0002;overflow:hidden}
+.sugg div{padding:8px 12px;font-size:13px;display:flex;justify-content:space-between;gap:8px}.sugg div.on{background:var(--muted)}
+.card{border:1px solid var(--border);border-radius:12px;background:var(--card);padding:14px}
+.kv{display:flex;gap:8px;color:var(--mfg);font-size:13px;flex-wrap:wrap}.kv b{color:var(--fg);font-weight:500}
+.snchips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}.snchips span{padding:2px 8px;border-radius:6px;background:var(--muted);font-size:12px}
+/* phones */
+.phones{display:flex;flex-wrap:wrap;gap:28px;align-items:flex-start}
+.phone{width:390px;flex:none}
+.pf{width:390px;height:800px;border:10px solid #111;border-radius:42px;background:var(--bg);overflow:hidden;position:relative;display:flex;flex-direction:column;box-shadow:0 10px 30px #0003}
+.pf .sb{height:30px;display:flex;align-items:flex-end;justify-content:space-between;padding:0 22px 2px;font-size:12px;font-weight:600;flex:none}
+.pf .hdr{display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid var(--border);flex:none}
+.pf .hdr .t{flex:1;font-weight:600;font-size:16px}
+.ibtn{width:44px;height:44px;display:inline-flex;align-items:center;justify-content:center;border-radius:10px;border:1px solid transparent;color:var(--fg)}
+.pf .body{flex:1;overflow:hidden;position:relative;padding:10px 12px;display:flex;flex-direction:column;gap:10px}
+.pf .scanm{display:flex;gap:8px;align-items:center}
+.pf .scanm .box{flex:1;height:48px;border:2px solid var(--primary);border-radius:12px;padding:0 12px;display:flex;align-items:center;gap:8px;color:var(--mfg);font-size:16px;background:var(--card)}
+.chips{display:flex;gap:8px;overflow:hidden;flex:none}
+.strip{display:flex;justify-content:space-between;align-items:center;font-size:13px;color:var(--mfg)}.strip b{color:var(--fg)}
+.mc{display:flex;gap:10px;padding:12px;border:1px solid var(--border);border-radius:12px;background:var(--card);align-items:flex-start}
+.mc.hl{background:#15803d14;border-color:#15803d66}.mc.draft{background:#2563eb0d}
+.mc .ct{flex:1;min-width:0}.mc .ti{font-weight:600}.mc .su{color:var(--mfg);font-size:13px;margin:2px 0 6px}
+.mc .bd{display:flex;gap:6px;flex-wrap:wrap}
+.bar{position:absolute;left:0;right:0;bottom:0;background:var(--bg);border-top:1px solid var(--border);padding:10px 12px 22px;display:flex;gap:8px;flex:none}
+.toast{position:absolute;left:12px;right:12px;top:6px;border-radius:12px;padding:10px 12px;display:flex;gap:10px;align-items:center;background:var(--card);border:1px solid #15803d77;box-shadow:0 8px 24px #0003;z-index:5;font-size:13px}
+.toast svg{color:var(--success-t)}
+.scrim{position:absolute;inset:0;background:#0000007a;z-index:6}
+.sheet{position:absolute;left:0;right:0;bottom:0;z-index:7;background:var(--card);border-radius:20px 20px 0 0;padding:8px 16px 28px;display:flex;flex-direction:column;gap:12px}
+.grab{width:40px;height:5px;border-radius:99px;background:var(--input);margin:0 auto 4px}
+.prog{height:10px;border-radius:99px;background:var(--muted);overflow:hidden}.prog i{display:block;height:100%;background:var(--primary);width:40%}
+.full{position:absolute;inset:0;background:var(--bg);z-index:8;display:flex;flex-direction:column;padding-top:30px}
+.full .fh{display:flex;align-items:center;gap:8px;padding:8px 8px;border-bottom:1px solid var(--border)}.full .fh .t{font-weight:600;font-size:16px;flex:1}
+.full .fb{flex:1;overflow:hidden;padding:12px;display:flex;flex-direction:column;gap:12px}
+.fill-note{font-size:12px;color:var(--mfg)}
+/* revisi 2026-11-26: field Item wajib, pemilih tautan task, pilih rentang */
+.frow{display:flex;gap:16px;align-items:flex-start;margin-bottom:12px;flex-wrap:wrap}
+.fld{display:flex;flex-direction:column;width:310px}
+.fld .lbl{margin-bottom:6px}
+.fld .f{height:38px}
+.lockmsg{display:flex;gap:6px;font-size:12px;color:var(--mfg);line-height:1.4;margin-top:6px}
+.lockmsg svg{width:14px;height:14px;margin-top:1px;color:var(--warning-t)}
+.lockmsg a{color:var(--info-t);font-weight:600;text-decoration:underline;white-space:nowrap}
+.frow .chs{display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding-top:27px}
+tr.rng td{background:#2563eb1f}
+.tipbox{display:inline-flex;gap:6px;align-items:center;padding:3px 9px;border-radius:6px;background:#111;color:#fff;font-size:12px;box-shadow:0 4px 12px #0004}
+.pick{border:1px solid var(--border);border-radius:10px;overflow:hidden;background:var(--card)}
+.pick .ph2{padding:8px 12px;background:var(--muted);font-size:12px;color:var(--mfg);display:flex;justify-content:space-between;gap:8px}
+.pick .rw{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border-bottom:1px solid var(--border);font-size:13px}
+.pick .rw.on{background:#2563eb14}
+.pick .rw .tx{flex:1;min-width:0}.pick .rw .nm{font-weight:600;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.pick .rw .nt{color:var(--mfg);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pick .ft2{padding:8px 12px;display:flex;gap:10px;align-items:center;justify-content:space-between;font-size:12px;color:var(--mfg)}
+.inb{margin-left:auto}
+.band{position:absolute;left:6px;width:40px;border-radius:12px;background:#2563eb33;border:2px dashed var(--info-t);z-index:3}
+.finger{position:absolute;z-index:4;width:30px;height:30px;border-radius:50%;background:#2563ebcc;color:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 14px #0005;font-size:14px}
+.mc.sel{background:#2563eb14;border-color:#2563eb66}
+/* mockup desktop berlebar tetap (lebar <main> sekitar 960 px); di layar sempit halaman menggulir ke samping */
+.win,.overlay{width:1180px}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute"><defs>
+<symbol id="scan" viewBox="0 0 24 24"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M8 7v10"/><path d="M12 7v10"/><path d="M16 7v10"/></symbol>
+<symbol id="cam" viewBox="0 0 24 24"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></symbol>
+<symbol id="copy" viewBox="0 0 24 24"><rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></symbol>
+<symbol id="hist" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></symbol>
+<symbol id="chk" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+<symbol id="warn" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></symbol>
+<symbol id="inf" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></symbol>
+<symbol id="x" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></symbol>
+<symbol id="flt" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M7 12h10"/><path d="M10 18h4"/></symbol>
+<symbol id="menu" viewBox="0 0 24 24"><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="18" y2="18"/></symbol>
+<symbol id="more" viewBox="0 0 24 24"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></symbol>
+<symbol id="lock" viewBox="0 0 24 24"><rect width="18" height="11" x="3" y="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></symbol>
+<symbol id="ban" viewBox="0 0 24 24"><path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h16"/></symbol>
+</defs></svg>
+
+<div class="wrap">
+<h1 class="top">Keluar Gudang: mockup desktop dan mobile</h1>
+<p class="lede">Mockup statis dengan token warna aplikasi (terang/gelap otomatis). Data contoh: SO-2611-0042, customer PT Maju Jaya, BU SBY, Tipe Tenda AX300. Ini bukan kode aplikasi; ia hanya menunjukkan susunan, urutan, dan perilaku.</p>
+<nav class="jump">
+<a href="#d1">Desktop · Form</a><a href="#d2">Desktop · Konfirmasi</a><a href="#d3">Desktop · Riwayat</a>
+<a href="#m1">Mobile · Form &amp; scan</a><a href="#m6">Mobile · Pilih tarik</a><a href="#m2">Mobile · Hasil scan</a><a href="#m3">Mobile · Konfirmasi</a><a href="#m4">Mobile · Progres</a><a href="#m5">Mobile · Riwayat</a>
+</nav>
+
+<!-- ================= DESKTOP 1 ================= -->
+<h2 class="sec" id="d1">Desktop 1 · Form Keluar Gudang</h2>
+<p class="note">Satu halaman kerja. <b>Item adalah field wajib</b> (berbintang, terkunci setelah ada pilihan, dengan pesan di bawahnya); <b>BU, Lokasi, dan Tanggal uji tetap chip filter</b> yang juga menjadi isian bawaan serial baru. Kolom scan selalu fokus. Hasil scan terakhir tampil sebagai satu baris umpan balik dan barisnya disorot di tabel. Empat baris biru di tabel = contoh <b>Shift+klik</b> memilih rentang. Tombol utama di bar judul.</p>
+<div class="win">
+ <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="url">qc.rhd.my.id/serial/gudang</span></div>
+ <div class="app">
+  <aside class="side">
+   <div class="brand">QC App</div>
+   <div class="it">Beranda</div><div class="it">Dashboard</div>
+   <div class="it">Serial Number</div>
+   <div class="it sub">Daftar</div><div class="it sub">Laporan</div>
+   <div class="it sub act">Keluar Gudang</div><div class="it sub">Riwayat Keluar Gudang</div>
+   <div class="it">Serah Terima</div><div class="it">Stiker</div>
+  </aside>
+  <section class="main">
+   <div class="crumb">Serial Number / Keluar Gudang</div>
+   <div class="titlebar">
+    <h1>Keluar Gudang</h1>
+    <button class="btn g"><svg class="i"><use href="#hist"/></svg>Riwayat</button>
+    <button class="btn p"><svg class="i"><use href="#copy"/></svg>Salin ke clipboard <span class="pill">132</span></button>
+   </div>
+   <div class="frow">
+    <div class="fld">
+     <div class="lbl">Item <i>*</i></div>
+     <div class="f lock"><svg class="i"><use href="#lock"/></svg><b style="color:var(--fg)">Tenda AX300</b></div>
+     <div class="lockmsg"><svg class="i"><use href="#warn"/></svg><span>Terkunci karena <b>132 serial</b> sudah dipilih. Selesaikan pengeluaran Tipe ini, atau <a>Batalkan pilihan</a>.</span></div>
+    </div>
+    <div class="fld" style="flex:1;min-width:380px">
+     <div class="lbl">Serial Number</div>
+     <div class="scan" style="margin:0"><div class="box" style="padding:0 12px;height:38px;border-radius:8px"><svg class="i" style="width:20px;height:20px"><use href="#scan"/></svg><span class="ph">Scan, atau ketik untuk mencari lalu Enter</span><button class="btn sm"><svg class="i"><use href="#cam"/></svg>Kamera</button></div></div>
+     <div class="lockmsg"><svg class="i" style="color:var(--info-t)"><use href="#inf"/></svg><span>Satu kolom: mengetik menyaring tabel, scan atau Enter memilih serial (dibuat sebagai draf bila belum ada).</span></div>
+    </div>
+    <div class="stats" style="margin-top:26px"><div><strong>132</strong>dipilih</div><div><strong>3</strong>draf baru</div><div><strong>2</strong>warning</div></div>
+   </div>
+   <div class="fbar">
+    <span class="chip on"><svg class="i"><use href="#flt"/></svg>BU: <b>SBY</b></span>
+    <span class="chip on"><svg class="i"><use href="#flt"/></svg>Lokasi: <b>Gudang QC</b></span>
+    <span class="chip on"><svg class="i"><use href="#flt"/></svg>Tanggal uji: <b>24 Nov 2026</b></span>
+    <label style="display:flex;gap:8px;align-items:center;font-size:13px;margin-left:8px"><span class="sw"></span>Sembunyikan yang sudah tercatat WH di BU ini</label>
+   </div>
+   <div class="alert s feed"><svg class="i"><use href="#chk"/></svg><div><b class="mono">AX300-24110137</b> dipilih · Tenda AX300 · SBY · 24 Nov 2026</div></div>
+   <div class="stack">
+    <div class="alert w"><svg class="i"><use href="#warn"/></svg><div><b>2 serial ada di BU lain.</b> BU SO ini SBY, serialnya tercatat di JKT. BU serial tidak berubah.</div><span class="lnk">Lihat serial</span></div>
+    <div class="alert w"><svg class="i"><use href="#warn"/></svg><div><b>Tanggal uji berbeda:</b> 24 Nov (129 serial), 23 Nov (3 serial).</div><span class="lnk">Lihat serial</span></div>
+    <div class="alert i"><svg class="i"><use href="#inf"/></svg><div>1 serial pernah keluar di SO BU lain (SO-2611-0031, JKT). Ini transaksi internal yang sah.</div><span class="lnk">Lihat serial</span></div>
+   </div>
+   <div class="tbl">
+   <table>
+    <thead><tr><th style="width:36px"><span class="cbx on"><svg class="i"><use href="#chk"/></svg></span></th><th>Serial Number</th><th>Item</th><th>BU</th><th>Lokasi</th><th>Tgl uji</th><th>Status</th><th>Keterangan</th><th style="width:40px"></th></tr></thead>
+    <tbody>
+     <tr class="hl"><td><span class="cbx on"><svg class="i"><use href="#chk"/></svg></span></td><td class="mono">AX300-24110137</td><td>Tenda AX300</td><td>SBY</td><td>Gudang QC</td><td>24 Nov</td><td><span class="badge b-succ">Lolos</span></td><td></td><td><svg class="i"><use href="#more"/></svg></td></tr>
+     <tr class="draft rng"><td><span class="cbx on"><svg class="i"><use href="#chk"/></svg></span></td><td class="mono">AX300-24110201</td><td>Tenda AX300</td><td>SBY</td><td>Gudang QC</td><td>24 Nov</td><td><span class="badge b-info">Draf baru</span></td><td><span class="badge b-warn">Butuh foto</span></td><td><svg class="i"><use href="#more"/></svg></td></tr>
+     <tr class="draft rng"><td><span class="cbx on"><svg class="i"><use href="#chk"/></svg></span></td><td class="mono">AX300-24110202</td><td>Tenda AX300</td><td>SBY</td><td>Gudang QC</td><td>24 Nov</td><td><span class="badge b-info">Draf baru</span></td><td><span class="badge b-warn">Butuh foto</span></td><td><svg class="i"><use href="#more"/></svg></td></tr>
+     <tr class="rng"><td><span class="cbx on"><svg class="i"><use href="#chk"/></svg></span></td><td class="mono">AX300-24110088</td><td>Tenda AX300</td><td><span class="badge b-warn">JKT</span></td><td>Gudang QC</td><td>24 Nov</td><td><span class="badge b-succ">Lolos</span></td><td><span class="badge b-warn">BU berbeda</span></td><td><svg class="i"><use href="#more"/></svg></td></tr>
+     <tr class="rng"><td><span class="cbx on"><svg class="i"><use href="#chk"/></svg></span></td><td class="mono">AX300-24110054</td><td>Tenda AX300</td><td>SBY</td><td>Gudang QC</td><td><span class="badge b-warn">23 Nov</span></td><td><span class="badge b-succ">Lolos</span></td><td><span class="badge b-warn">Tanggal beda</span> <span class="tipbox">⇧ Shift+klik: pilih rentang sampai sini</span></td><td><svg class="i"><use href="#more"/></svg></td></tr>
+     <tr><td><span class="cbx on"><svg class="i"><use href="#chk"/></svg></span></td><td class="mono">AX300-24110012</td><td>Tenda AX300</td><td>SBY</td><td>Gudang QC</td><td>24 Nov</td><td><span class="badge b-succ">Lolos</span></td><td><span class="badge b-mut">Pernah keluar · JKT</span></td><td><svg class="i"><use href="#more"/></svg></td></tr>
+     <tr><td><span class="cbx"></span></td><td class="mono">AX300-24110099</td><td>Tenda AX300</td><td>SBY</td><td>Gudang QC</td><td>24 Nov</td><td><span class="badge b-succ">Lolos</span></td><td><span class="badge b-mut">Tercatat WH</span></td><td><svg class="i"><use href="#more"/></svg></td></tr>
+     <tr><td><span class="cbx"></span></td><td class="mono">AX300-24110150</td><td>Tenda AX300</td><td>SBY</td><td>Gudang QC</td><td>24 Nov</td><td><span class="badge b-dest">Dilaporkan</span></td><td><span class="badge b-dest">Tidak dapat dikeluarkan</span></td><td><svg class="i"><use href="#more"/></svg></td></tr>
+    </tbody>
+   </table>
+   <div class="tfoot"><span>Menampilkan 8 dari 1.912 serial pada BU yang diizinkan · baris yang di-scan selalu tampil · Shift+klik memilih rentang</span><span>Muat lebih banyak</span></div>
+   </div>
+   <p class="cap">Serial yang sudah tercatat WH di BU ini disembunyikan oleh saklar; saklar mati menampilkannya (baris "Tercatat WH") tanpa bisa dicentang bila di SO yang sama.</p>
+  </section>
+ </div>
+</div>
+
+<!-- ================= DESKTOP 2 ================= -->
+<h2 class="sec" id="d2">Desktop 2 · Dialog konfirmasi (Simpan &amp; salin)</h2>
+<p class="note">Keadaan <b>SO baru</b>: mengetik nomor yang belum ada otomatis membuat SO saat disimpan (lencana "SO baru"; BU dan Customer boleh diisi). Bagian Tautan Serah Terima langsung menampilkan task berjalan milik customer itu, tanpa mencari. Banner foto muncul bila ada serial baru milik item wajib foto. Di bawah dialog: keadaan memilih SO yang sudah ada.</p>
+<div class="overlay">
+ <div class="dlg">
+  <div class="hd"><h3>Simpan dan salin pengeluaran</h3><p>Pengeluaran akan dicatat pada SO di bawah, lalu daftar Serial Number disalin ke clipboard.</p></div>
+  <div class="bd">
+   <div class="sum"><span class="badge b-mut">132 serial</span><span class="badge b-info">3 baru</span><span class="badge b-mut">Tenda AX300</span><span class="badge b-mut">Uji 23–24 Nov 2026</span></div>
+   <div class="grid2">
+    <div><div class="lbl">Tanggal keluar <i>*</i></div><div class="f">26 Nov 2026</div></div>
+    <div><div class="lbl">BU <i>*</i></div><div class="f">SBY · Surabaya</div></div>
+   </div>
+   <div>
+    <div class="lbl">No SO <i>*</i></div>
+    <div class="f"><span class="mono">SO-2611-0050</span><span class="badge b-info inb">SO baru</span></div>
+    <div class="cap" style="margin-top:6px">Dibuat otomatis saat disimpan, seperti customer di Serah Terima. Ketik nomor yang sudah ada untuk memilih SO itu.</div>
+   </div>
+   <div>
+    <div class="lbl">Customer <i>*</i></div><div class="f">PT Maju Jaya</div>
+   </div>
+   <div>
+    <div class="lbl">Tautan Serah Terima <span style="color:var(--mfg);font-weight:400">(opsional)</span></div>
+    <div class="pick">
+     <div class="ph2"><span>Task berjalan milik <b style="color:var(--fg)">PT Maju Jaya</b></span><span>2 task</span></div>
+     <div class="rw on"><span class="cbx on" style="margin-top:2px"><svg class="i"><use href="#chk"/></svg></span><div class="tx"><div class="nm"><span class="mono">ST-20261120-003</span><span style="color:var(--mfg);font-weight:400">20 Nov</span><span class="badge b-info inb">Berjalan</span></div><div class="nt">Kirim 150 unit Tenda AX300 ke gudang Sidoarjo, minta label…</div></div></div>
+     <div class="rw"><span class="cbx" style="margin-top:2px"></span><div class="tx"><div class="nm"><span class="mono">ST-20261118-011</span><span style="color:var(--mfg);font-weight:400">18 Nov</span><span class="badge b-mut inb">Baru</span></div><div class="nt">Retur 12 unit Tenda SG8 dari cabang Malang…</div></div></div>
+     <div class="ft2"><span class="f" style="height:30px;width:210px;font-size:13px;color:var(--mfg)">Cari task lain (nomor atau isi)</span><label style="display:flex;gap:8px;align-items:center"><span class="sw" style="background:var(--input)"></span>Tampilkan yang sudah selesai</label></div>
+    </div>
+    <div class="cap" style="margin-top:6px">Satu ketukan = tertaut. Tanpa centang otomatis. Bisa ditambah atau dilepas lagi dari detail Riwayat.</div>
+   </div>
+   <div><div class="lbl">Catatan</div><textarea class="f" placeholder="Opsional"></textarea></div>
+   <div class="alert w"><svg class="i"><use href="#warn"/></svg><div><b>Foto bukti belum ada untuk 3 serial baru.</b> Item ini wajib foto bukti QC. Ingatkan tim QC untuk melampirkannya lewat Cek ulang.</div></div>
+   <div class="alert w"><svg class="i"><use href="#warn"/></svg><div><b>2 serial berada di BU JKT</b> sedangkan SO ini BU SBY, dan <b>3 serial</b> berbeda tanggal uji.</div></div>
+  </div>
+  <div class="ft"><button class="btn">Batal</button><button class="btn p"><svg class="i"><use href="#copy"/></svg>Simpan &amp; salin 132 serial</button></div>
+ </div>
+</div>
+<p class="note" style="margin-top:18px">Keadaan <b>SO yang sudah ada</b> (mengetik "SO-2611-0"): saran muncul sambil mengetik, SO pada BU form lebih dulu. Memilih satu mengunci BU dan Customer mengikuti catatan SO itu; tautan task yang sudah ada tampil tercentang.</p>
+<div class="overlay" style="padding:24px 40px">
+ <div class="dlg">
+  <div class="bd" style="padding-top:16px">
+   <div>
+    <div class="lbl">No SO <i>*</i></div><div class="f">SO-2611-0</div>
+    <div class="sugg"><div class="on"><span class="mono">SO-2611-0042</span><span style="color:var(--mfg)">PT Maju Jaya · SBY · 1 pengeluaran</span></div><div><span class="mono">SO-2611-0043</span><span style="color:var(--mfg)">CV Sentosa · SBY</span></div><div><span style="color:var(--mfg)">Tidak ada yang cocok? Lanjutkan mengetik: SO baru dibuat otomatis.</span></div></div>
+   </div>
+   <div class="grid2" style="margin-top:6px">
+    <div><div class="lbl">BU</div><div class="f lock"><svg class="i"><use href="#lock"/></svg>SBY · mengikuti SO</div></div>
+    <div><div class="lbl">Customer</div><div class="f lock"><svg class="i"><use href="#lock"/></svg>PT Maju Jaya</div></div>
+   </div>
+  </div>
+ </div>
+</div>
+
+<!-- ================= DESKTOP 3 ================= -->
+<h2 class="sec" id="d3">Desktop 3 · Riwayat</h2>
+<p class="note">Daftar catatan SO, lalu detail SO dengan pengeluaran-pengeluarannya. Salin ulang tanpa scan. Pengeluaran yang belum selesai bisa dilanjutkan.</p>
+<div class="win">
+ <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="url">qc.rhd.my.id/serial/gudang/riwayat/SO-2611-0042</span></div>
+ <div class="app">
+  <aside class="side"><div class="brand">QC App</div><div class="it">Beranda</div><div class="it">Serial Number</div><div class="it sub">Daftar</div><div class="it sub">Keluar Gudang</div><div class="it sub act">Riwayat Keluar Gudang</div></aside>
+  <section class="main">
+   <div class="crumb">Serial Number / Riwayat Keluar Gudang</div>
+   <div class="fbar"><div class="f search" style="width:260px">Cari No SO atau customer</div><span class="chip"><svg class="i"><use href="#flt"/></svg>BU</span><span class="chip"><svg class="i"><use href="#flt"/></svg>Customer</span><span class="chip"><svg class="i"><use href="#flt"/></svg>Tanggal</span></div>
+   <div class="tbl" style="margin-bottom:18px">
+    <table><thead><tr><th>No SO</th><th>BU</th><th>Customer</th><th>Pengeluaran</th><th>Serial</th><th>Terakhir</th><th>Status</th><th>Task</th></tr></thead><tbody>
+     <tr class="hl"><td class="mono">SO-2611-0042</td><td>SBY</td><td>PT Maju Jaya</td><td>2</td><td>1.800</td><td>26 Nov 2026</td><td><span class="badge b-warn">Belum selesai</span></td><td class="mono">ST-…003</td></tr>
+     <tr><td class="mono">SO-2611-0031</td><td>JKT</td><td>CV Sentosa</td><td>1</td><td>240</td><td>25 Nov 2026</td><td><span class="badge b-succ">Selesai</span></td><td>—</td></tr>
+     <tr><td class="mono">SO-2611-0027</td><td>SBY</td><td>PT Maju Jaya</td><td>3</td><td>4.120</td><td>24 Nov 2026</td><td><span class="badge b-succ">Selesai</span></td><td class="mono">ST-…001</td></tr>
+    </tbody></table>
+   </div>
+   <div class="titlebar" style="margin-top:6px"><h1 class="mono">SO-2611-0042</h1><span class="badge b-mut">BU SBY</span><span class="badge b-warn">Belum selesai</span></div>
+   <div class="kv" style="margin-bottom:12px"><span>Customer <b>PT Maju Jaya</b></span><span>·</span><span>Dibuat oleh <b>Rina</b></span></div>
+   <div class="card" style="margin-bottom:12px"><div style="display:flex;align-items:center;gap:10px"><b>Task Serah Terima</b><span style="margin-left:auto"></span><button class="btn sm"><svg class="i"><use href="#hist"/></svg>Tautkan task</button></div>
+    <div class="pick" style="margin-top:8px"><div class="rw"><div class="tx"><div class="nm"><span class="mono">ST-20261120-003</span><span style="color:var(--mfg);font-weight:400">20 Nov</span><span class="badge b-info">Berjalan</span></div><div class="nt">Kirim 150 unit Tenda AX300 ke gudang Sidoarjo, minta label…</div></div><span class="ibtn" style="width:32px;height:32px"><svg class="i"><use href="#x"/></svg></span></div></div>
+    <div class="cap">Tombol silang melepas tautan (task tidak berubah). "Tautkan task" membuka pemilih yang sama dengan dialog konfirmasi.</div></div>
+   <div class="stack">
+    <div class="card"><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><b>26 Nov 2026 · Tenda AX300</b><span class="badge b-succ">Selesai</span><span class="badge b-mut">1.500 serial</span><span style="margin-left:auto"></span><button class="btn sm"><svg class="i"><use href="#copy"/></svg>Salin ulang</button></div>
+     <div class="kv" style="margin-top:6px">Oleh <b>Rina</b> · Catatan <b>Kirim pagi</b></div><div class="snchips"><span class="mono">AX300-24110001</span><span class="mono">AX300-24110002</span><span class="mono">AX300-24110003</span><span>… 1.497 lainnya</span></div></div>
+    <div class="card"><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><b>26 Nov 2026 · Tenda SG8</b><span class="badge b-warn">Belum selesai</span><span class="badge b-mut">300 dari 1.100</span><span style="margin-left:auto"></span><button class="btn sm p">Lanjutkan</button></div>
+     <div class="prog" style="margin-top:10px"><i style="width:27%"></i></div><div class="cap">Potongan 2 dari 6 tersimpan. Salin tersedia setelah selesai.</div></div>
+   </div>
+  </section>
+ </div>
+</div>
+
+<!-- ================= MOBILE 1 ================= -->
+<h2 class="sec" id="m1">Mobile 1 · Form dan scan</h2>
+<p class="note"><b>Item dulu, lalu satu kolom scan/cari</b>; Item bergulir pergi dan kolom scan menempel di atas. Isian bawaan berupa chip yang digeser dan membuka lembar bawah. Kartu padat, kotak centang di kiri. Tombol utama menempel di bawah. Bawah: lembar filter dari chip BU.</p>
+<div class="phones">
+ <div class="phone"><div class="pf">
+  <div class="sb"><span>09:41</span><span>●●● 100%</span></div>
+  <div class="hdr"><span class="ibtn"><svg class="i"><use href="#menu"/></svg></span><span class="t">Keluar Gudang</span><span class="ibtn"><svg class="i"><use href="#hist"/></svg></span><span class="ibtn"><svg class="i"><use href="#more"/></svg></span></div>
+  <div class="body">
+   <div><div class="lbl" style="margin-bottom:4px">Item <i>*</i></div><div class="f lock" style="height:44px"><svg class="i"><use href="#lock"/></svg><b style="color:var(--fg)">Tenda AX300</b></div>
+    <div class="lockmsg"><svg class="i"><use href="#warn"/></svg><span>Terkunci karena <b>132 serial</b> sudah dipilih. Selesaikan pengeluaran ini, atau <a>Batalkan pilihan</a>.</span></div></div>
+   <div class="scanm"><div class="box"><svg class="i" style="width:22px;height:22px"><use href="#scan"/></svg>Scan / ketik SN</div><span class="ibtn" style="border-color:var(--input);background:var(--card)"><svg class="i"><use href="#cam"/></svg></span></div>
+   <div class="chips"><span class="chip on"><svg class="i"><use href="#flt"/></svg>BU <b>SBY</b></span><span class="chip on"><svg class="i"><use href="#flt"/></svg><b>Gudang QC</b></span><span class="chip on"><svg class="i"><use href="#flt"/></svg><b>24 Nov</b></span></div>
+   <div class="strip"><span><b>132</b> dipilih · <b>3</b> draf baru</span><span>2 warning ›</span></div>
+   <div class="mc hl"><span class="cbx on"><svg class="i"><use href="#chk"/></svg></span><div class="ct"><div class="ti mono">AX300-24110137</div><div class="su">Tenda AX300 · SBY · 24 Nov</div><div class="bd"><span class="badge b-succ">Lolos</span></div></div></div>
+   <div class="mc draft"><span class="cbx on"><svg class="i"><use href="#chk"/></svg></span><div class="ct"><div class="ti mono">AX300-24110201</div><div class="su">Tenda AX300 · SBY · 24 Nov</div><div class="bd"><span class="badge b-info">Draf baru</span><span class="badge b-warn">Butuh foto</span></div></div></div>
+   <div class="mc"><span class="cbx on"><svg class="i"><use href="#chk"/></svg></span><div class="ct"><div class="ti mono">AX300-24110088</div><div class="su">Tenda AX300 · <b style="color:var(--warning-t)">JKT</b> · 24 Nov</div><div class="bd"><span class="badge b-succ">Lolos</span><span class="badge b-warn">BU berbeda</span></div></div></div>
+   <div class="mc"><span class="cbx on"><svg class="i"><use href="#chk"/></svg></span><div class="ct"><div class="ti mono">AX300-24110054</div><div class="su">Tenda AX300 · SBY · <b style="color:var(--warning-t)">23 Nov</b></div><div class="bd"><span class="badge b-succ">Lolos</span><span class="badge b-warn">Tanggal beda</span></div></div></div>
+   <div class="bar"><button class="btn p lg"><svg class="i"><use href="#copy"/></svg>Salin ke clipboard <span class="pill">132</span></button></div>
+  </div>
+ </div><p class="cap">Layar utama. Item = field wajib (terkunci setelah ada pilihan, dengan pesan); BU, Lokasi, Tanggal = chip filter. Fokus selalu kembali ke kolom scan setelah tiap scan, jadi pemindai fisik tidak butuh sentuhan.</p></div>
+
+ <div class="phone"><div class="pf">
+  <div class="sb"><span>09:41</span><span>●●● 100%</span></div>
+  <div class="hdr"><span class="ibtn"><svg class="i"><use href="#menu"/></svg></span><span class="t">Keluar Gudang</span><span class="ibtn"><svg class="i"><use href="#more"/></svg></span></div>
+  <div class="body" style="opacity:.55">
+   <div class="scanm"><div class="box">Scan / ketik SN</div></div>
+   <div class="chips"><span class="chip on"><svg class="i"><use href="#flt"/></svg>BU <b>SBY</b></span><span class="chip on"><svg class="i"><use href="#flt"/></svg><b>Gudang QC</b></span></div>
+   <div class="mc"><span class="cbx on"><svg class="i"><use href="#chk"/></svg></span><div class="ct"><div class="ti mono">AX300-24110137</div><div class="su">Tenda AX300 · SBY</div></div></div>
+  </div>
+  <div class="scrim"></div>
+  <div class="sheet" style="top:150px">
+   <div class="grab"></div>
+   <div style="display:flex;align-items:center"><b style="font-size:16px;flex:1">BU pengeluaran</b><span class="ibtn"><svg class="i"><use href="#x"/></svg></span></div>
+   <div class="f">Cari BU</div>
+   <div class="mc"><span class="cbx on"><svg class="i"><use href="#chk"/></svg></span><div class="ct"><div class="ti">SBY · Surabaya</div><div class="su">Izin Gudang: Ubah</div></div></div>
+   <div class="mc"><span class="cbx"></span><div class="ct"><div class="ti">JKT · Jakarta</div><div class="su">Izin Gudang: Ubah</div></div></div>
+   <div class="mc"><span class="cbx"></span><div class="ct"><div class="ti">BDG · Bandung</div><div class="su">Izin Gudang: Lihat · tidak dapat memilih</div></div></div>
+   <button class="btn p lg">Terapkan</button>
+  </div>
+ </div><p class="cap">Chip BU membuka lembar bawah, pola chip filter proyek. Seret ke atas untuk layar penuh; pilihan diterapkan saat lembar ditutup.</p></div>
+</div>
+
+<!-- ================= MOBILE 6 (pilih tarik) ================= -->
+<h2 class="sec" id="m6">Mobile 1b · Pilih tarik</h2>
+<p class="note">Dua jalan masuk, hasil sama: <b>(1)</b> tekan lama sebuah kartu lalu langsung tarik tanpa melepas jari, atau <b>(2)</b> saat sudah di mode pilih, tarik vertikal dari <b>lajur kotak centang</b> di kiri kartu. Menarik dari bagian kartu lain tetap menggulir halaman. Daftar menggulir otomatis di dekat tepi.</p>
+<div class="phones">
+ <div class="phone"><div class="pf">
+  <div class="sb"><span>09:41</span><span>●●● 100%</span></div>
+  <div class="hdr"><span class="ibtn"><svg class="i"><use href="#x"/></svg></span><span class="t">5 dipilih</span></div>
+  <div class="body" style="gap:8px">
+   <div class="mc"><span class="cbx"></span><div class="ct"><div class="ti mono">AX300-24110010</div><div class="su">Tenda AX300 · SBY · 24 Nov</div></div></div>
+   <div class="mc sel"><span class="cbx on"><svg class="i"><use href="#chk"/></svg></span><div class="ct"><div class="ti mono">AX300-24110011</div><div class="su">Tenda AX300 · SBY · 24 Nov</div></div></div>
+   <div class="mc sel"><span class="cbx on"><svg class="i"><use href="#chk"/></svg></span><div class="ct"><div class="ti mono">AX300-24110012</div><div class="su">Tenda AX300 · SBY · 24 Nov</div></div></div>
+   <div class="mc sel"><span class="cbx on"><svg class="i"><use href="#chk"/></svg></span><div class="ct"><div class="ti mono">AX300-24110013</div><div class="su">Tenda AX300 · SBY · 24 Nov</div></div></div>
+   <div class="mc sel"><span class="cbx on"><svg class="i"><use href="#chk"/></svg></span><div class="ct"><div class="ti mono">AX300-24110014</div><div class="su">Tenda AX300 · SBY · 24 Nov</div></div></div>
+   <div class="mc sel"><span class="cbx on"><svg class="i"><use href="#chk"/></svg></span><div class="ct"><div class="ti mono">AX300-24110015</div><div class="su">Tenda AX300 · SBY · 24 Nov</div></div></div>
+   <div class="mc"><span class="cbx"></span><div class="ct"><div class="ti mono">AX300-24110016</div><div class="su">Tenda AX300 · SBY · 24 Nov</div></div></div>
+   <div class="band" style="top:86px;height:484px"></div>
+   <div class="finger" style="left:11px;top:562px">↓</div>
+   <div class="bar" style="align-items:center"><span class="cbx" style="width:22px;height:22px;background:var(--primary);border-color:var(--primary);color:var(--pfg)"><svg class="i"><use href="#chk"/></svg></span><b>6 dipilih</b><span style="flex:1"></span><button class="btn p" style="height:44px"><svg class="i"><use href="#copy"/></svg>Salin ke clipboard</button></div>
+  </div>
+ </div><p class="cap">Jari di lajur kotak centang bergerak ke bawah; semua kartu yang dilewati ikut tercentang (pita biru putus-putus). Bergerak balik ke atas melepas yang terlewati. Getar singkat tiap batas bergeser.</p></div>
+
+ <div class="phone"><div class="pf">
+  <div class="sb"><span>09:41</span><span>●●● 100%</span></div>
+  <div class="hdr"><span class="ibtn"><svg class="i"><use href="#x"/></svg></span><span class="t">1 dipilih</span></div>
+  <div class="body" style="gap:8px">
+   <div class="mc"><span class="cbx"></span><div class="ct"><div class="ti mono">AX300-24110008</div><div class="su">Tenda AX300 · SBY · 24 Nov</div></div></div>
+   <div class="mc sel" style="outline:2px solid var(--primary)"><span class="cbx on"><svg class="i"><use href="#chk"/></svg></span><div class="ct"><div class="ti mono">AX300-24110009</div><div class="su">Tenda AX300 · SBY · 24 Nov</div></div></div>
+   <div class="mc"><span class="cbx"></span><div class="ct"><div class="ti mono">AX300-24110010</div><div class="su">Tenda AX300 · SBY · 24 Nov</div></div></div>
+   <div class="mc"><span class="cbx"></span><div class="ct"><div class="ti mono">AX300-24110011</div><div class="su">Tenda AX300 · SBY · 24 Nov</div></div></div>
+   <div class="mc"><span class="cbx"></span><div class="ct"><div class="ti mono">AX300-24110012</div><div class="su">Tenda AX300 · SBY · 24 Nov</div></div></div>
+   <div class="finger" style="left:200px;top:140px">●</div>
+   <div class="bar" style="align-items:center"><span class="cbx" style="width:22px;height:22px;background:var(--primary);border-color:var(--primary);color:var(--pfg)"><svg class="i"><use href="#chk"/></svg></span><b>1 dipilih</b><span style="flex:1"></span><button class="btn p" style="height:44px"><svg class="i"><use href="#copy"/></svg>Salin ke clipboard</button></div>
+  </div>
+ </div><p class="cap">Jalan masuk 1 (titik biru = jari, ditekan ±0,5 dtk lalu ditarik ke bawah): tekan lama sebuah kartu mengaktifkan mode pilih, dan jari yang masih menekan langsung dapat menarik untuk memperluas rentang (seperti galeri foto). Ketuk satu kartu tetap mengubah satu pilihan.</p></div>
+</div>
+
+<!-- ================= MOBILE 2 ================= -->
+<h2 class="sec" id="m2">Mobile 2 · Hasil scan</h2>
+<p class="note">Kasus biasa: toast hijau dan baris disorot di atas daftar. Kasus tertolak: lembar bawah dengan satu tombol. Warning: toast kuning yang bisa ditekan untuk rincian.</p>
+<div class="phones">
+ <div class="phone"><div class="pf">
+  <div class="sb"><span>09:41</span><span>●●● 100%</span></div>
+  <div class="hdr"><span class="ibtn"><svg class="i"><use href="#menu"/></svg></span><span class="t">Keluar Gudang</span><span class="ibtn"><svg class="i"><use href="#more"/></svg></span></div>
+  <div class="body">
+   <div class="toast"><svg class="i"><use href="#chk"/></svg><div><b class="mono">AX300-24110138</b> dipilih<br><span style="color:var(--mfg)">Tenda AX300 · SBY · 133 dipilih</span></div></div>
+   <div style="height:54px"></div>
+   <div class="scanm"><div class="box" style="border-color:var(--success)">AX300-24110138</div><span class="ibtn" style="border-color:var(--input);background:var(--card)"><svg class="i"><use href="#cam"/></svg></span></div>
+   <div class="mc hl"><span class="cbx on"><svg class="i"><use href="#chk"/></svg></span><div class="ct"><div class="ti mono">AX300-24110138</div><div class="su">Tenda AX300 · SBY · 24 Nov</div><div class="bd"><span class="badge b-succ">Lolos</span></div></div></div>
+   <div class="mc"><span class="cbx on"><svg class="i"><use href="#chk"/></svg></span><div class="ct"><div class="ti mono">AX300-24110137</div><div class="su">Tenda AX300 · SBY · 24 Nov</div></div></div>
+   <div class="mc"><span class="cbx on"><svg class="i"><use href="#chk"/></svg></span><div class="ct"><div class="ti mono">AX300-24110136</div><div class="su">Tenda AX300 · SBY · 24 Nov</div></div></div>
+   <div class="bar"><button class="btn p lg"><svg class="i"><use href="#copy"/></svg>Salin ke clipboard <span class="pill">133</span></button></div>
+  </div>
+ </div><p class="cap">Sukses: getar singkat, baris baru di paling atas dan disorot sebentar.</p></div>
+
+ <div class="phone"><div class="pf">
+  <div class="sb"><span>09:41</span><span>●●● 100%</span></div>
+  <div class="hdr"><span class="ibtn"><svg class="i"><use href="#menu"/></svg></span><span class="t">Keluar Gudang</span><span class="ibtn"><svg class="i"><use href="#more"/></svg></span></div>
+  <div class="body" style="opacity:.5">
+   <div class="scanm"><div class="box">SG8-24090044</div></div>
+   <div class="mc"><span class="cbx on"><svg class="i"><use href="#chk"/></svg></span><div class="ct"><div class="ti mono">AX300-24110137</div></div></div>
+  </div>
+  <div class="scrim"></div>
+  <div class="sheet">
+   <div class="grab"></div>
+   <div style="display:flex;gap:10px;align-items:center"><span class="badge b-dest" style="height:32px;width:32px;justify-content:center"><svg class="i"><use href="#x"/></svg></span><b style="font-size:17px">Tipe berbeda</b></div>
+   <div style="color:var(--mfg)"><span class="mono" style="color:var(--fg)">SG8-24090044</span> adalah <b style="color:var(--fg)">Tenda SG8</b>. Satu pengeluaran hanya untuk satu Tipe (Item terkunci: <b style="color:var(--fg)">Tenda AX300</b>, 132 serial dipilih).</div>
+   <div class="alert i"><svg class="i"><use href="#inf"/></svg><div>Selesaikan pengeluaran AX300 ini, atau batalkan pilihan lalu ganti Item. Pengeluaran SG8 dibuat terpisah pada SO yang sama.</div></div>
+   <button class="btn p lg">Mengerti</button>
+  </div>
+ </div><p class="cap">Hanya Tipe berbeda yang memakai lembar penuh perhatian; getar ganda. Bila belum ada pilihan sama sekali, lembar ini diganti pertanyaan "Ganti Item ke Tenda SG8?" (Ganti / Batal).</p></div>
+
+ <div class="phone"><div class="pf">
+  <div class="sb"><span>09:41</span><span>●●● 100%</span></div>
+  <div class="hdr"><span class="ibtn"><svg class="i"><use href="#menu"/></svg></span><span class="t">Keluar Gudang</span><span class="ibtn"><svg class="i"><use href="#more"/></svg></span></div>
+  <div class="body">
+   <div class="toast" style="border-color:#f59e0b88"><svg class="i" style="color:var(--warning-t)"><use href="#warn"/></svg><div><b class="mono">AX300-24110088</b> dipilih, <b>BU berbeda</b><br><span style="color:var(--mfg)">Ada di JKT, SO ini SBY · ketuk untuk rincian</span></div></div>
+   <div style="height:54px"></div>
+   <div class="scanm"><div class="box" style="border-color:var(--warning)">AX300-24110088</div></div>
+   <div class="mc"><span class="cbx on"><svg class="i"><use href="#chk"/></svg></span><div class="ct"><div class="ti mono">AX300-24110088</div><div class="su">Tenda AX300 · <b style="color:var(--warning-t)">JKT</b> · 24 Nov</div><div class="bd"><span class="badge b-succ">Lolos</span><span class="badge b-warn">BU berbeda</span></div></div></div>
+   <div class="mc"><span class="cbx on"><svg class="i"><use href="#chk"/></svg></span><div class="ct"><div class="ti mono">AX300-24110138</div><div class="su">Tenda AX300 · SBY · 24 Nov</div></div></div>
+   <div class="bar"><button class="btn p lg"><svg class="i"><use href="#copy"/></svg>Salin ke clipboard <span class="pill">134</span></button></div>
+  </div>
+ </div><p class="cap">Warning tidak memblokir: serial tetap dipilih. Rincian lengkap muncul lagi di dialog konfirmasi.</p></div>
+</div>
+
+<!-- ================= MOBILE 3 ================= -->
+<h2 class="sec" id="m3">Mobile 3 · Dialog konfirmasi layar penuh (3 layar)</h2>
+<p class="note">Aturan dialog form ponsel proyek: layar penuh, field bertumpuk, tombol Simpan menempel di bawah dan naik mengikuti papan ketik.</p>
+<div class="phones">
+ <div class="phone"><div class="pf">
+  <div class="sb" style="position:relative;z-index:9"><span>09:41</span><span>●●● 100%</span></div>
+  <div class="full">
+   <div class="fh"><span class="ibtn"><svg class="i"><use href="#x"/></svg></span><span class="t">Simpan dan salin</span></div>
+   <div class="fb">
+    <div class="sum"><span class="badge b-mut">132 serial</span><span class="badge b-info">3 baru</span><span class="badge b-mut">Tenda AX300</span></div>
+    <div><div class="lbl">Tanggal keluar <i>*</i></div><div class="f" style="height:48px">26 Nov 2026</div></div>
+    <div><div class="lbl">No SO <i>*</i></div><div class="f" style="height:48px"><span class="mono">SO-2611-0050</span><span class="badge b-info inb">SO baru</span></div><div class="cap">Dibuat otomatis saat disimpan.</div></div>
+    <div><div class="lbl">BU <i>*</i></div><div class="f" style="height:48px">SBY · Surabaya</div></div>
+    <div><div class="lbl">Customer <i>*</i></div><div class="f" style="height:48px">PT Maju Jaya</div></div>
+    <div class="fill-note">Gulir ke bawah: Tautan Serah Terima, Catatan, dan peringatan.</div>
+   </div>
+   <div class="bar" style="position:relative;margin-top:auto"><button class="btn lg">Batal</button><button class="btn p lg" style="flex:2"><svg class="i"><use href="#copy"/></svg>Simpan &amp; salin</button></div>
+  </div>
+ </div><p class="cap">Bagian atas dialog. SO baru diketik langsung; tombol Simpan tetap menempel di bawah.</p></div>
+
+ <div class="phone"><div class="pf">
+  <div class="sb" style="position:relative;z-index:9"><span>09:41</span><span>●●● 100%</span></div>
+  <div class="full">
+   <div class="fh"><span class="ibtn"><svg class="i"><use href="#x"/></svg></span><span class="t">Simpan dan salin</span></div>
+   <div class="fb">
+    <div><div class="lbl">Tautan Serah Terima <span style="color:var(--mfg);font-weight:400">(opsional)</span></div>
+     <div class="pick">
+      <div class="ph2"><span>Task berjalan milik <b style="color:var(--fg)">PT Maju Jaya</b></span><span>2</span></div>
+      <div class="rw on" style="min-height:56px"><span class="cbx on" style="width:22px;height:22px;margin-top:2px"><svg class="i"><use href="#chk"/></svg></span><div class="tx"><div class="nm"><span class="mono">ST-20261120-003</span><span class="badge b-info">Berjalan</span></div><div class="nt">20 Nov · Kirim 150 unit Tenda AX300 ke gudang…</div></div></div>
+      <div class="rw" style="min-height:56px"><span class="cbx" style="width:22px;height:22px;margin-top:2px"></span><div class="tx"><div class="nm"><span class="mono">ST-20261118-011</span><span class="badge b-mut">Baru</span></div><div class="nt">18 Nov · Retur 12 unit Tenda SG8 dari cabang…</div></div></div>
+      <div class="ft2"><span>Cari task lain · Tampilkan yang selesai</span></div>
+     </div></div>
+    <div><div class="lbl">Catatan</div><textarea class="f" placeholder="Opsional"></textarea></div>
+    <div class="alert w"><svg class="i"><use href="#warn"/></svg><div><b>Foto bukti belum ada untuk 3 serial.</b> Ingatkan QC melampirkannya.</div></div>
+    <div class="alert w"><svg class="i"><use href="#warn"/></svg><div>2 serial di BU JKT · 3 serial beda tanggal uji</div></div>
+   </div>
+   <div class="bar" style="position:relative;margin-top:auto"><button class="btn lg">Batal</button><button class="btn p lg" style="flex:2"><svg class="i"><use href="#copy"/></svg>Simpan &amp; salin</button></div>
+  </div>
+ </div><p class="cap">Bagian bawah dialog (digulir). Task customer itu langsung tampil dengan baris besar (44 px+): satu ketukan = tertaut, tanpa mencari atau menghafal nomor. Banner di atas tombol.</p></div>
+
+ <div class="phone"><div class="pf">
+  <div class="sb" style="position:relative;z-index:9"><span>09:41</span><span>●●● 100%</span></div>
+  <div class="full">
+   <div class="fh"><span class="ibtn"><svg class="i"><use href="#x"/></svg></span><span class="t">Simpan dan salin</span></div>
+   <div class="fb" style="position:relative">
+    <div><div class="lbl">Tanggal keluar <i>*</i></div><div class="f" style="height:48px">26 Nov 2026</div></div>
+    <div style="position:relative;z-index:3">
+     <div class="lbl">No SO <i>*</i></div>
+     <div class="f" style="height:48px;border-color:var(--primary);box-shadow:0 0 0 2px #2563eb44"><span class="mono">SO-2611-0</span></div>
+     <div class="sugg" style="position:absolute;left:0;right:0;top:78px"><div class="on" style="padding:12px;flex-direction:column;gap:2px"><span class="mono">SO-2611-0042</span><span style="color:var(--mfg)">PT Maju Jaya · SBY · 1 pengeluaran</span></div><div style="padding:12px;flex-direction:column;gap:2px"><span class="mono">SO-2611-0043</span><span style="color:var(--mfg)">CV Sentosa · SBY</span></div><div style="color:var(--mfg);font-size:12px">Tidak cocok? Teruskan mengetik: SO baru dibuat saat disimpan.</div></div>
+    </div>
+    <div style="opacity:.35"><div class="lbl">BU <i>*</i></div><div class="f" style="height:48px">SBY · Surabaya</div></div>
+   </div>
+   <div style="position:absolute;left:0;right:0;bottom:0;height:230px;background:#cfd3da;display:flex;align-items:center;justify-content:center;color:#555;font-size:13px;z-index:5">Papan ketik</div>
+  </div>
+ </div><p class="cap">Tanpa halaman baru: saran SO muncul langsung di bawah field, seperti field Customer pada Serah Terima. Memilih SO yang ada mengunci BU dan Customer; nomor yang belum ada otomatis menjadi SO baru (tanpa langkah "Buat SO").</p></div>
+</div>
+
+<!-- ================= MOBILE 4 ================= -->
+<h2 class="sec" id="m4">Mobile 4 · Progres dan hasil (ribuan serial)</h2>
+<p class="note">Tanpa batas serial: pengiriman dipecah per 200 serial, tampil progres, tak dapat ditutup tak sengaja, dan bisa dilanjutkan bila terputus. Setelah selesai, hasil dengan Salin lagi.</p>
+<div class="phones">
+ <div class="phone"><div class="pf">
+  <div class="sb"><span>09:41</span><span>●●● 100%</span></div>
+  <div class="hdr"><span class="ibtn"><svg class="i"><use href="#menu"/></svg></span><span class="t">Keluar Gudang</span></div>
+  <div class="body" style="opacity:.5"><div class="mc"><div class="ct"><div class="ti mono">AX300-24110137</div></div></div></div>
+  <div class="scrim"></div>
+  <div class="sheet">
+   <div class="grab"></div>
+   <b style="font-size:17px">Menyimpan pengeluaran…</b>
+   <div class="prog"><i style="width:40%"></i></div>
+   <div style="display:flex;justify-content:space-between;color:var(--mfg)"><span>1.200 dari 3.000 serial</span><span>40%</span></div>
+   <div class="alert i"><svg class="i"><use href="#inf"/></svg><div>Jangan tutup halaman. Bila terputus, buka lagi Keluar Gudang atau Riwayat: tinggal <b>Lanjutkan</b> dari potongan berikutnya.</div></div>
+  </div>
+ </div><p class="cap">Progres per potongan; tak ada tombol tutup selama berjalan.</p></div>
+
+ <div class="phone"><div class="pf">
+  <div class="sb"><span>09:41</span><span>●●● 100%</span></div>
+  <div class="hdr"><span class="ibtn"><svg class="i"><use href="#menu"/></svg></span><span class="t">Keluar Gudang</span></div>
+  <div class="body" style="opacity:.5"><div class="mc"><div class="ct"><div class="ti mono">AX300-24110137</div></div></div></div>
+  <div class="scrim"></div>
+  <div class="sheet">
+   <div class="grab"></div>
+   <div style="display:flex;gap:10px;align-items:center"><span class="badge b-succ" style="height:32px;width:32px;justify-content:center"><svg class="i"><use href="#chk"/></svg></span><b style="font-size:17px">3.000 serial tersalin</b></div>
+   <div class="kv"><span>SO <b class="mono">SO-2611-0042</b></span><span>·</span><span>Tenda AX300</span><span>·</span><span>3 baru dicatat</span></div>
+   <div class="alert w"><svg class="i"><use href="#warn"/></svg><div>Tidak bisa menyalin otomatis? <b>Tempel manual</b> dari kotak di bawah.</div></div>
+   <div class="f" style="height:64px;align-items:flex-start;padding-top:8px;color:var(--mfg)" ><span class="mono">AX300-24110001<br>AX300-24110002<br>…</span></div>
+   <button class="btn p lg"><svg class="i"><use href="#copy"/></svg>Salin lagi</button>
+   <button class="btn lg">Buka riwayat</button>
+  </div>
+ </div><p class="cap">Hasil. Kotak teks muncul hanya bila penulisan clipboard ditolak peramban.</p></div>
+</div>
+
+<!-- ================= MOBILE 5 ================= -->
+<h2 class="sec" id="m5">Mobile 5 · Riwayat</h2>
+<p class="note">Kartu per SO; ketuk badan kartu membuka detail. Di detail, tiap pengeluaran adalah kartu dengan Salin ulang; yang belum selesai punya Lanjutkan.</p>
+<div class="phones">
+ <div class="phone"><div class="pf">
+  <div class="sb"><span>09:41</span><span>●●● 100%</span></div>
+  <div class="hdr"><span class="ibtn"><svg class="i"><use href="#menu"/></svg></span><span class="t">Riwayat Keluar Gudang</span></div>
+  <div class="body">
+   <div class="f">Cari No SO atau customer</div>
+   <div class="chips"><span class="chip"><svg class="i"><use href="#flt"/></svg>BU</span><span class="chip"><svg class="i"><use href="#flt"/></svg>Customer</span><span class="chip"><svg class="i"><use href="#flt"/></svg>Tanggal</span></div>
+   <div class="mc hl"><div class="ct"><div style="display:flex;justify-content:space-between"><span class="ti mono">SO-2611-0042</span><span class="badge b-warn">Belum selesai</span></div><div class="su">PT Maju Jaya · SBY</div><div class="bd"><span class="badge b-mut">2 pengeluaran</span><span class="badge b-mut">1.800 serial</span><span class="badge b-mut">26 Nov</span></div></div></div>
+   <div class="mc"><div class="ct"><div style="display:flex;justify-content:space-between"><span class="ti mono">SO-2611-0031</span><span class="badge b-succ">Selesai</span></div><div class="su">CV Sentosa · JKT</div><div class="bd"><span class="badge b-mut">1 pengeluaran</span><span class="badge b-mut">240 serial</span><span class="badge b-mut">25 Nov</span></div></div></div>
+   <div class="mc"><div class="ct"><div style="display:flex;justify-content:space-between"><span class="ti mono">SO-2611-0027</span><span class="badge b-succ">Selesai</span></div><div class="su">PT Maju Jaya · SBY · task ST-…001</div><div class="bd"><span class="badge b-mut">3 pengeluaran</span><span class="badge b-mut">4.120 serial</span><span class="badge b-mut">24 Nov</span></div></div></div>
+  </div>
+ </div><p class="cap">Daftar. Tanpa tabel horizontal; kartu memakai pola MobileCard.</p></div>
+
+ <div class="phone"><div class="pf">
+  <div class="sb"><span>09:41</span><span>●●● 100%</span></div>
+  <div class="hdr"><span class="ibtn"><svg class="i"><use href="#menu"/></svg></span><span class="t mono">SO-2611-0042</span><span class="ibtn"><svg class="i"><use href="#more"/></svg></span></div>
+  <div class="body">
+   <div class="kv"><span class="badge b-mut">BU SBY</span><span class="badge b-warn">Belum selesai</span></div>
+   <div class="kv"><span>Customer <b>PT Maju Jaya</b></span></div>
+   <div class="kv"><span>Task <b>ST-20261120-003</b></span></div>
+   <div class="card"><div style="display:flex;justify-content:space-between;align-items:center"><b>26 Nov · Tenda AX300</b><span class="badge b-succ">Selesai</span></div><div class="kv" style="margin:6px 0 10px">1.500 serial · oleh Rina</div><div class="snchips"><span class="mono">AX300-24110001</span><span class="mono">AX300-24110002</span><span>+1.498</span></div><button class="btn lg" style="margin-top:12px;height:44px"><svg class="i"><use href="#copy"/></svg>Salin ulang</button></div>
+   <div class="card"><div style="display:flex;justify-content:space-between;align-items:center"><b>26 Nov · Tenda SG8</b><span class="badge b-warn">Belum selesai</span></div><div class="prog" style="margin:10px 0 6px"><i style="width:27%"></i></div><div class="kv">300 dari 1.100 serial</div><button class="btn p lg" style="margin-top:12px;height:44px">Lanjutkan</button></div>
+  </div>
+ </div><p class="cap">Detail SO. Salin ulang hanya untuk pengeluaran selesai; Lanjutkan membuka form dengan draf.</p></div>
+</div>
+
+</div>
+</body>
+</html>

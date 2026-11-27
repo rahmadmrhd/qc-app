@@ -1,7 +1,22 @@
+import { isValidEmail } from '@server/core/email';
+import {
+  capRows,
+  cleanText,
+  ctaButton,
+  dataTable,
+  fitEmail,
+  moreNote,
+  paragraph,
+  renderEmailDocument,
+  sectionHeading,
+} from '@server/core/email-layout';
 import type { Env } from '@server/core/env';
 import { nowOf } from '@server/core/env';
+import { sendableMailLists } from '@server/core/mail-lists';
 import { getSetting } from '@server/core/settings';
 import { wibDate, wibHour } from '@server/modules/backup/names';
+import { mailListsCount } from '@shared/mail-lists';
+import { stripControlChars } from '@shared/postel';
 import { formatStockQty, stockDigestSection } from '@shared/stickers';
 import { readStickerAlert } from './settings';
 
@@ -16,6 +31,7 @@ import { readStickerAlert } from './settings';
 export const SETTING_STICKER_DIGEST_LAST_DATE = 'STICKER_DIGEST_LAST_DATE';
 
 export interface DigestStockRow {
+  id: string;
   name: string;
   typeName: string;
   total: number;
@@ -36,13 +52,21 @@ export interface StockDigestRows {
  */
 export async function stockDigestRows(env: Env): Promise<StockDigestRows> {
   const result = await env.DB.prepare(
-    "SELECT s.name, t.name AS type_name, s.min_qty, COALESCE(SUM(k.qty), 0) AS total FROM stickers s JOIN sticker_types t ON t.id = s.type_id LEFT JOIN sticker_stock k ON k.sticker_id = s.id WHERE s.status = 'active' AND s.deleted_at = '' AND t.deleted_at = '' GROUP BY s.id, s.name, t.name, s.min_qty HAVING COALESCE(SUM(k.qty), 0) <= 0 OR (s.min_qty > 0 AND COALESCE(SUM(k.qty), 0) <= s.min_qty) ORDER BY t.name, s.name",
-  ).all<{ name: string; type_name: string; min_qty: number | string; total: number | string }>();
+    "SELECT s.id, s.name, t.name AS type_name, s.min_qty, COALESCE(SUM(k.qty), 0) AS total FROM stickers s JOIN sticker_types t ON t.id = s.type_id LEFT JOIN sticker_stock k ON k.sticker_id = s.id WHERE s.status = 'active' AND s.deleted_at = '' AND t.deleted_at = '' GROUP BY s.id, s.name, t.name, s.min_qty HAVING COALESCE(SUM(k.qty), 0) <= 0 OR (s.min_qty > 0 AND COALESCE(SUM(k.qty), 0) <= s.min_qty) ORDER BY t.name, s.name",
+  ).all<{
+    id: string;
+    name: string;
+    type_name: string;
+    min_qty: number | string;
+    total: number | string;
+  }>();
   const rows: StockDigestRows = { out: [], low: [] };
   for (const row of result.results) {
     const entry: DigestStockRow = {
-      name: row.name.trim(),
-      typeName: row.type_name.trim(),
+      id: row.id,
+      // Nama dari input pengguna: buang karakter kontrol dan pengatur arah teks (sama dengan surel Postel dan Serial).
+      name: stripControlChars(row.name).trim(),
+      typeName: stripControlChars(row.type_name).trim(),
       total: Number(row.total) || 0,
       minQty: Number(row.min_qty) || 0,
     };
@@ -55,6 +79,107 @@ export async function stockDigestRows(env: Env): Promise<StockDigestRows> {
     else if (section === 'low') rows.low.push(entry);
   }
   return rows;
+}
+
+/** Keterangan satu kalimat: angka di surel dan di dashboard dihitung dengan cara berbeda. */
+const STOCK_NOTE =
+  'Angka stok adalah total semua lokasi. Dashboard menghitung per lokasi, jadi angkanya bisa berbeda.';
+
+const STOCK_MORE = (more: number) => `dan ${more} lainnya`;
+
+/**
+ * Subjek, teks polos, dan HTML ringkasan stok (murni, tanpa DB). Subjek dan format teks polos tidak berubah dari
+ * sebelum surel HTML; tiap bagian dibatasi `EMAIL_ROW_LIMIT` baris ("dan N lainnya"), nama stiker menaut ke halaman
+ * stiker bila `origin` ada. Nama dari input pengguna dibersihkan sebelum masuk teks, HTML, maupun subjek.
+ */
+export function buildStockDigestMail(input: {
+  out: readonly DigestStockRow[];
+  low: readonly DigestStockRow[];
+  origin: string;
+}): { subject: string; text: string; html: string } {
+  const origin = input.origin.replace(/\/+$/, '');
+  const { out, low } = input;
+  const subject = `Stok stiker: ${[
+    out.length > 0 ? `${out.length} habis` : null,
+    low.length > 0 ? `${low.length} menipis` : null,
+  ]
+    .filter((part) => part !== null)
+    .join(', ')}`;
+
+  const build = (limit: number) => {
+    const outRows = capRows(out, limit);
+    const lowRows = capRows(low, limit);
+    const sections: string[] = [];
+    if (outRows.shown.length > 0) {
+      const lines = outRows.shown.map(
+        (row) =>
+          `- ${cleanText(row.name)} (${cleanText(row.typeName)}): stok ${formatStockQty(row.total)}`,
+      );
+      if (outRows.more > 0) lines.push(STOCK_MORE(outRows.more));
+      sections.push(`Habis (total semua lokasi 0 atau kurang):\n\n${lines.join('\n')}`);
+    }
+    if (lowRows.shown.length > 0) {
+      const lines = lowRows.shown.map(
+        (row) =>
+          `- ${cleanText(row.name)} (${cleanText(row.typeName)}): stok ${row.total}, minimum ${row.minQty}`,
+      );
+      if (lowRows.more > 0) lines.push(STOCK_MORE(lowRows.more));
+      sections.push(`Menipis (total semua lokasi):\n\n${lines.join('\n')}`);
+    }
+    const stockUrl = origin === '' ? '' : `${origin}/sticker`;
+    const text = `${sections.join('\n\n')}\n\n${STOCK_NOTE}${stockUrl === '' ? '' : `\n\nLihat stok: ${stockUrl}`}\n`;
+
+    const linkOf = (row: DigestStockRow) =>
+      origin === '' ? undefined : `${origin}/sticker/${row.id}`;
+    const body: string[] = [paragraph(STOCK_NOTE, { muted: true, size: 13 })];
+    if (outRows.shown.length > 0) {
+      body.push(
+        sectionHeading('Habis', 'bad', out.length),
+        dataTable(
+          [
+            { label: 'Stiker' },
+            { label: 'Jenis', width: 130 },
+            { label: 'Stok', width: 90, align: 'right' },
+          ],
+          outRows.shown.map((row) => [
+            { text: row.name, href: linkOf(row) },
+            row.typeName,
+            { badge: formatStockQty(row.total), tone: 'bad' as const },
+          ]),
+        ),
+        moreNote(outRows.more),
+      );
+    }
+    if (lowRows.shown.length > 0) {
+      body.push(
+        sectionHeading('Menipis', 'warn', low.length),
+        dataTable(
+          [
+            { label: 'Stiker' },
+            { label: 'Jenis', width: 110 },
+            { label: 'Stok', width: 60, align: 'right' },
+            { label: 'Minimum', width: 80, align: 'right' },
+          ],
+          lowRows.shown.map((row) => [
+            { text: row.name, href: linkOf(row) },
+            row.typeName,
+            { badge: String(row.total), tone: 'warn' as const },
+            String(row.minQty),
+          ]),
+        ),
+        moreNote(lowRows.more),
+      );
+    }
+    body.push(ctaButton(stockUrl, 'Lihat stok'));
+    const html = renderEmailDocument({
+      title: 'Ringkasan stok stiker',
+      preheader: subject,
+      body,
+    });
+    return { text, html };
+  };
+  const { text, html } = fitEmail(build);
+  return { subject, text, html };
 }
 
 export type DigestOutcome = 'sent' | 'skipped' | 'failed';
@@ -102,7 +227,8 @@ export async function checkLowStockDigest(env: Env): Promise<DigestOutcome> {
   const mailer = env.MAILER;
   if (!mailer) return 'skipped';
   const { alert } = await readStickerAlert(env);
-  if (!alert.enabled || alert.recipients.length === 0) return 'skipped';
+  const lists = sendableMailLists(alert, isValidEmail);
+  if (!alert.enabled || mailListsCount(lists) === 0) return 'skipped';
   const now = nowOf(env);
   if (wibHour(now) < alert.digestHour) return 'skipped';
   const today = wibDate(now);
@@ -114,33 +240,15 @@ export async function checkLowStockDigest(env: Env): Promise<DigestOutcome> {
   const { out, low } = await stockDigestRows(env);
   if (out.length === 0 && low.length === 0) return 'skipped';
   if (!(await claimDigestDate(env, previous, today))) return 'skipped';
-  const sections: string[] = [];
-  if (out.length > 0) {
-    const lines = out.map(
-      (row) => `- ${row.name} (${row.typeName}): stok ${formatStockQty(row.total)}`,
-    );
-    sections.push(`Habis (total semua lokasi 0 atau kurang):\n\n${lines.join('\n')}`);
-  }
-  if (low.length > 0) {
-    const lines = low.map(
-      (row) => `- ${row.name} (${row.typeName}): stok ${row.total}, minimum ${row.minQty}`,
-    );
-    sections.push(`Menipis (total semua lokasi):\n\n${lines.join('\n')}`);
-  }
-  const subject = `Stok stiker: ${[
-    out.length > 0 ? `${out.length} habis` : null,
-    low.length > 0 ? `${low.length} menipis` : null,
-  ]
-    .filter((part) => part !== null)
-    .join(', ')}`;
-  const link = env.APP_ORIGIN
-    ? `\n\nLihat stok: ${env.APP_ORIGIN.replace(/\/+$/, '')}/sticker`
-    : '';
+  const mail = buildStockDigestMail({ out, low, origin: env.APP_ORIGIN ?? '' });
   try {
     await mailer.send({
-      to: alert.recipients,
-      subject,
-      text: `${sections.join('\n\n')}${link}\n`,
+      to: lists.recipients,
+      cc: lists.cc,
+      bcc: lists.bcc,
+      subject: mail.subject,
+      text: mail.text,
+      html: mail.html,
     });
   } catch (error) {
     // Pesan galat dari `createSmtpMailer` sudah bebas SMTP_PASS. Klaim dikembalikan: dicoba lagi pada detak berikutnya.

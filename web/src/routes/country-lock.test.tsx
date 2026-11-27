@@ -38,6 +38,7 @@ const me: MeDto = {
     stickerstock: 'manage',
     serial: 'manage',
     serialservice: 'manage',
+    serialwh: 'none',
     countrylock: 'none',
     dashboard: 'none',
   },

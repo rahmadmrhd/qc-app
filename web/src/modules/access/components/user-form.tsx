@@ -1,5 +1,5 @@
 import { ALL_LOCATIONS_KEY } from '@shared/assignments';
-import { ALL_BU_KEY } from '@shared/business-units';
+import { ALL_BU_KEY, formatBuLabel } from '@shared/business-units';
 import type {
   BusinessUnitDto,
   BusinessUnitOptionDto,
@@ -516,8 +516,8 @@ export function UserForm({
                   value: unit.id,
                   label:
                     unit.status === 'active'
-                      ? `${unit.name} (${unit.code})`
-                      : `${unit.name} (${unit.code}) — nonaktif`,
+                      ? formatBuLabel(unit)
+                      : `${formatBuLabel(unit)} — nonaktif`,
                 })),
               // BU terhapus yang masih tertaut tetap memberi hak: tampil bertanda dan idnya tetap terkirim.
               ...(current !== '' &&

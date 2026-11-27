@@ -11,10 +11,12 @@ import { Button } from '@/components/ui/button';
 import { formatStamp } from '@/lib/format-stamp';
 import { cn } from '@/lib/utils';
 import { MarkdownView } from '@/modules/markdown/markdown-view';
+import { useItemNames } from '../lib/item-names';
 import { collectNoteText, rangeForAnchor, setNoteHighlights } from '../lib/note-dom-text';
 import type { ItemSendState } from '../lib/outbox-status';
 import type { PendingComment } from '../lib/use-pending-checks';
 import { CommentComposer } from './comment-composer';
+import { ItemSummaryBadges, LineItemBadges, lineItemLabels, useDetectedItems } from './item-badges';
 
 export interface NoteViewProps {
   note: string;
@@ -121,6 +123,9 @@ export function NoteView({
   const highlightOwner = useRef({});
   const noteRef = useRef(note);
   noteRef.current = note;
+  // Kartu papan (compact) tidak menampilkan lencana Item: tak perlu memuat katalog dan menjalankan deteksi per kartu.
+  const itemNames = useItemNames(!compact);
+  const detected = useDetectedItems(note, itemNames);
 
   // Tombol "Balas" untuk setiap seleksi teks di dalam catatan (desktop dan ponsel), bukan menu klik kanan.
   useEffect(() => {
@@ -241,6 +246,7 @@ export function NoteView({
               />
               <span>{content}</span>
             </label>
+            <LineItemBadges labels={lineItemLabels(item.text, detected)} />
             {itemStates?.get(item.index) === 'sending' ? (
               <span
                 data-note-meta=""
@@ -273,13 +279,14 @@ export function NoteView({
         );
       },
     };
-  }, [note, checklist, canCheck, onCheck, itemStates]);
+  }, [note, checklist, canCheck, onCheck, itemStates, detected]);
 
   return (
     <div ref={wrapperRef} className="relative space-y-3">
       <div ref={bodyRef}>
         <MarkdownView source={note} components={components} />
       </div>
+      <ItemSummaryBadges detected={detected} />
       {pending && !composer ? (
         <Button
           type="button"

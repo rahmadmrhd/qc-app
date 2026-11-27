@@ -517,3 +517,79 @@ test('rowSelectable: baris tak terpilih tanpa checkbox; Pilih semua hanya memili
   await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih semua' }));
   expect(screen.getByText('2 dipilih')).toBeInTheDocument();
 });
+
+const FIVE_ROWS: Row[] = [
+  { id: '1', name: 'Satu' },
+  { id: '2', name: 'Dua' },
+  { id: '3', name: 'Tiga' },
+  { id: '4', name: 'Empat' },
+  { id: '5', name: 'Lima' },
+];
+
+function RangeHarness({ rowSelectable }: { rowSelectable?: (row: Row) => boolean }) {
+  const selection = useRowSelection('x');
+  return (
+    <DataTable
+      rows={FIVE_ROWS}
+      rowKey={(row) => row.id}
+      columns={COLUMNS}
+      label="Rentang"
+      selectLabel={(row) => row.name}
+      selection={selection}
+      rowSelectable={rowSelectable}
+    />
+  );
+}
+
+test('shift-klik di desktop memilih rentang dari jangkar sampai baris yang diklik', async () => {
+  mockWidth(true);
+  const user = userEvent.setup();
+  render(<RangeHarness />);
+  await user.click(screen.getByRole('checkbox', { name: 'Pilih Satu' }));
+  await user.keyboard('{Shift>}');
+  await user.click(screen.getByRole('checkbox', { name: 'Pilih Empat' }));
+  await user.keyboard('{/Shift}');
+  for (const name of ['Satu', 'Dua', 'Tiga', 'Empat']) {
+    expect(screen.getByRole('checkbox', { name: `Pilih ${name}` })).toBeChecked();
+  }
+  expect(screen.getByRole('checkbox', { name: 'Pilih Lima' })).not.toBeChecked();
+});
+
+test('Shift+Spasi di kotak centang memilih rentang tanpa menggandakan dengan klik sintetis', async () => {
+  mockWidth(true);
+  const user = userEvent.setup();
+  render(<RangeHarness />);
+  await user.click(screen.getByRole('checkbox', { name: 'Pilih Dua' }));
+  screen.getByRole('checkbox', { name: 'Pilih Empat' }).focus();
+  await user.keyboard('{Shift>}[Space]{/Shift}');
+  for (const name of ['Dua', 'Tiga', 'Empat']) {
+    expect(screen.getByRole('checkbox', { name: `Pilih ${name}` })).toBeChecked();
+  }
+  expect(screen.getByRole('checkbox', { name: 'Pilih Satu' })).not.toBeChecked();
+  expect(screen.getByRole('checkbox', { name: 'Pilih Lima' })).not.toBeChecked();
+});
+
+test('baris yang tidak dapat dipilih dilewati saat shift-klik rentang', async () => {
+  mockWidth(true);
+  const user = userEvent.setup();
+  render(<RangeHarness rowSelectable={(row) => row.id !== '3'} />);
+  await user.click(screen.getByRole('checkbox', { name: 'Pilih Satu' }));
+  await user.keyboard('{Shift>}');
+  await user.click(screen.getByRole('checkbox', { name: 'Pilih Lima' }));
+  await user.keyboard('{/Shift}');
+  expect(screen.getByRole('checkbox', { name: 'Pilih Satu' })).toBeChecked();
+  expect(screen.getByRole('checkbox', { name: 'Pilih Dua' })).toBeChecked();
+  expect(screen.getByRole('checkbox', { name: 'Pilih Empat' })).toBeChecked();
+  expect(screen.getByRole('checkbox', { name: 'Pilih Lima' })).toBeChecked();
+  expect(screen.queryByRole('checkbox', { name: 'Pilih Tiga' })).toBeNull();
+});
+
+test('kotak Pilih semua tetap memilih semua baris yang dapat dipilih', async () => {
+  mockWidth(true);
+  const user = userEvent.setup();
+  render(<RangeHarness />);
+  await user.click(screen.getByRole('checkbox', { name: 'Pilih semua' }));
+  for (const name of ['Satu', 'Dua', 'Tiga', 'Empat', 'Lima']) {
+    expect(screen.getByRole('checkbox', { name: `Pilih ${name}` })).toBeChecked();
+  }
+});

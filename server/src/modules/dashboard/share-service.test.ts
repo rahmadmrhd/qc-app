@@ -49,7 +49,7 @@ function input(overrides: Partial<CreateShareInput> = {}): CreateShareInput {
     title: 'Ringkasan',
     filter: { from: '2026-11-01', to: '2026-11-23' },
     range: RANGE,
-    widgets: [{ id: 'sn.recorded', filters: {} }],
+    widgets: [{ id: 'sn.status', filters: {} }],
     offers: [],
     expiresInDays: 30,
     ...overrides,
@@ -119,7 +119,7 @@ describe('freezeScope', () => {
         filter: { from: '2026-11-01', to: '2026-11-23', locationIds: ['loc-a', 'loc-b'] },
         widgets: [
           { id: 'hs.created', filters: {} },
-          { id: 'sn.recorded', filters: {} },
+          { id: 'sn.status', filters: {} },
         ],
       }),
       NOW,
@@ -166,7 +166,7 @@ describe('freezeScope', () => {
       user,
       input({
         range: { mode: 'rolling', days: 7 },
-        widgets: [{ id: 'sn.recorded', filters: { item: ['i-1'] } }],
+        widgets: [{ id: 'sn.status', filters: { item: ['i-1'] } }],
         offers: ['item'],
       }),
       NOW,
@@ -183,7 +183,7 @@ describe('freezeScope', () => {
         freezeScope(
           user,
           input({
-            widgets: [{ id: 'sn.recorded', filters: { item: ['i-1'] } }],
+            widgets: [{ id: 'sn.status', filters: { item: ['i-1'] } }],
             offers: ['customer'],
           }),
           NOW,
@@ -195,7 +195,7 @@ describe('freezeScope', () => {
   test('widget di luar hak, rentang tak sah, hari kedaluwarsa, judul, dan jumlah widget = VALIDATION', async () => {
     const user = await userOf();
     const cases: CreateShareInput[] = [
-      input({ widgets: [{ id: 'pt.condition', filters: {} }] }), // tanpa izin Postel
+      input({ widgets: [{ id: 'st.postel', filters: {} }] }), // tanpa izin stok stiker
       input({ widgets: [] }),
       input({ range: { mode: 'fixed', from: '2026-11-23', to: '2026-11-01' } }),
       input({ range: { mode: 'rolling', days: 0 } }),
@@ -208,7 +208,7 @@ describe('freezeScope', () => {
       input({ title: 'x'.repeat(SHARE_LIMITS.titleMax + 1) }),
       input({
         widgets: Array.from({ length: SHARE_LIMITS.widgetsMax + 1 }, () => ({
-          id: 'sn.recorded' as const,
+          id: 'sn.status' as const,
           filters: {},
         })),
       }),
@@ -287,7 +287,7 @@ describe('createShare', () => {
       await userOf(),
       input({
         widgets: [
-          { id: 'sn.recorded', filters: {} },
+          { id: 'sn.status', filters: {} },
           { id: 'hs.created', filters: {} },
         ],
       }),

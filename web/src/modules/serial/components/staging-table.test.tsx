@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { useState } from 'react';
 import { expect, test, vi } from 'vitest';
 import type { UploadEntry } from '@/components/file-dialog/use-background-uploads';
 import { addSerials, type StagingRow } from '../lib/draft';
@@ -17,6 +18,7 @@ test('wadah gulir tabel draft menampung elemen absolut (relative + overflow-x-au
       rows={[]}
       onSelect={noop}
       onSelectAll={noop}
+      onSelectMany={noop}
       onEdit={noop}
       onCommitSerial={() => null}
       onOpenDetail={noop}
@@ -71,6 +73,7 @@ function photoRow(serial: string, ids: string[]): StagingRow {
 function renderTable(rows: StagingRow[], over: Partial<Parameters<typeof StagingTable>[0]> = {}) {
   const noop = vi.fn();
   const onEdit = vi.fn();
+  const onSelectMany = vi.fn();
   const onUploadFiles = vi.fn();
   const onRetryUpload = vi.fn();
   const onCancelUpload = vi.fn();
@@ -80,6 +83,7 @@ function renderTable(rows: StagingRow[], over: Partial<Parameters<typeof Staging
         rows={rows}
         onSelect={noop}
         onSelectAll={noop}
+        onSelectMany={onSelectMany}
         onEdit={onEdit}
         onCommitSerial={() => null}
         onOpenDetail={noop}
@@ -92,7 +96,7 @@ function renderTable(rows: StagingRow[], over: Partial<Parameters<typeof Staging
       />
     </QueryClientProvider>,
   );
-  return { ...view, onEdit, onUploadFiles, onRetryUpload, onCancelUpload };
+  return { ...view, onEdit, onSelectMany, onUploadFiles, onRetryUpload, onCancelUpload };
 }
 
 test('kolom Foto: tiap baris menampilkan jumlah dan kisi fotonya', () => {
@@ -284,5 +288,104 @@ test('Tambahkan di dialog foto baris mengantrekan berkas untuk baris itu (tanpa 
     'serialProofs.upload',
     expect.anything(),
     expect.anything(),
+  );
+});
+
+test('shift-klik kotak centang memilih rentang lewat onSelectMany', async () => {
+  const rows = ['A1', 'B2', 'C3', 'D4', 'E5'].map((serial) => photoRow(serial, []));
+  const { onSelectMany } = renderTable(rows);
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih baris B2' }));
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Pilih baris D4' }), { shiftKey: true });
+  expect(onSelectMany).toHaveBeenCalledWith(['id-B2', 'id-C3', 'id-D4'], true);
+});
+
+test('klik biasa kotak centang tetap memanggil onSelect, bukan onSelectMany', async () => {
+  const onSelect = vi.fn();
+  const { onSelectMany } = renderTable([photoRow('A1', [])], { onSelect });
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih baris A1' }));
+  expect(onSelect).toHaveBeenCalledWith('id-A1', true);
+  expect(onSelectMany).not.toHaveBeenCalled();
+});
+
+function StatefulTable({ initial }: { initial: StagingRow[] }) {
+  const [rows, setRows] = useState(initial);
+  return (
+    <QueryClientProvider client={new QueryClient()}>
+      <StagingTable
+        rows={rows}
+        onSelect={(id, selected) =>
+          setRows((all) => all.map((r) => (r.clientId === id ? { ...r, selected } : r)))
+        }
+        onSelectAll={() => undefined}
+        onSelectMany={(ids, selected) =>
+          setRows((all) => all.map((r) => (ids.includes(r.clientId) ? { ...r, selected } : r)))
+        }
+        onEdit={() => undefined}
+        onCommitSerial={() => null}
+        onOpenDetail={() => undefined}
+        onRemove={() => undefined}
+        uploadEntries={[]}
+        onUploadFiles={() => undefined}
+        onRetryUpload={() => undefined}
+        onCancelUpload={() => undefined}
+      />
+    </QueryClientProvider>
+  );
+}
+
+function checkedOf(serial: string): boolean {
+  return (screen.getByRole('checkbox', { name: `Pilih baris ${serial}` }) as HTMLInputElement)
+    .checked;
+}
+
+test('shift-klik rentang pilih dengan onSelect nyata: baris target ikut terpilih', async () => {
+  const rows = ['A1', 'B2', 'C3', 'D4', 'E5'].map((serial) => photoRow(serial, []));
+  render(<StatefulTable initial={rows} />);
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih baris B2' }));
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Pilih baris D4' }), { shiftKey: true });
+  await waitFor(() =>
+    expect(['A1', 'B2', 'C3', 'D4', 'E5'].map(checkedOf)).toEqual([false, true, true, true, false]),
+  );
+});
+
+test('shift-klik rentang lepas dengan onSelect nyata: baris target ikut terlepas', async () => {
+  const rows = ['A1', 'B2', 'C3', 'D4', 'E5'].map((serial) => photoRow(serial, []));
+  render(<StatefulTable initial={rows} />);
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih baris B2' }));
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Pilih baris D4' }), { shiftKey: true });
+  // D4 tercentang; klik B2 lalu shift-klik D4 melepas rentang.
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih baris B2' }));
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Pilih baris D4' }), { shiftKey: true });
+  await waitFor(() =>
+    expect(['A1', 'B2', 'C3', 'D4', 'E5'].map(checkedOf)).toEqual([
+      false,
+      false,
+      false,
+      false,
+      false,
+    ]),
+  );
+});
+
+test('klik biasa berturut-turut tetap membalik baris dengan benar setelah rentang', async () => {
+  const rows = ['A1', 'B2', 'C3'].map((serial) => photoRow(serial, []));
+  render(<StatefulTable initial={rows} />);
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih baris A1' }));
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Pilih baris C3' }), { shiftKey: true });
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih baris B2' }));
+  expect(['A1', 'B2', 'C3'].map(checkedOf)).toEqual([true, false, true]);
+});
+
+test('Shift+Spasi memilih rentang dengan onSelectMany nyata dan klik sintetis susulan tak membalik baris', async () => {
+  const rows = ['A1', 'B2', 'C3', 'D4', 'E5'].map((serial) => photoRow(serial, []));
+  render(<StatefulTable initial={rows} />);
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih baris B2' }));
+  const target = screen.getByRole('checkbox', { name: 'Pilih baris D4' });
+  fireEvent.keyDown(target, { key: ' ', shiftKey: true });
+  fireEvent.keyUp(target, { key: ' ', shiftKey: true });
+  // Peramban menyusulkan klik sintetis setelah keyup Spasi.
+  fireEvent.click(target);
+  await waitFor(() =>
+    expect(['A1', 'B2', 'C3', 'D4', 'E5'].map(checkedOf)).toEqual([false, true, true, true, false]),
   );
 });

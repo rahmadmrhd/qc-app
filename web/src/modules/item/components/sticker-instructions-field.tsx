@@ -44,11 +44,11 @@ export interface StickerInstructionsFieldProps {
   /** Item yang sedang diubah: tidak ditawarkan sebagai sumber salin penanda. */
   currentItemId?: string | undefined;
   /**
-   * Membuka pembuatan stiker/jenis baru (hanya bila user berhak). `onCreated` dipanggil dengan hasilnya agar langsung
-   * terpilih pada penanda yang memintanya. Dialognya milik pemanggil (di luar `<form>`).
+   * Membuka dialog tambah stiker katalog (hanya bila user berhak); satu-satunya pintu "Tambah" pada sasaran penanda.
+   * Jenis baru dibuat dari dalam dialog stiker itu. `onCreated` dipanggil dengan stiker barunya agar langsung terpilih
+   * pada penanda yang memintanya. Dialognya milik pemanggil (di luar `<form>`).
    */
   onCreateSticker?: (onCreated: (sticker: StickerDto) => void) => void;
-  onCreateType?: (onCreated: (type: StickerTypeDto) => void) => void;
   /** Pesan galat bagian ini (skema form dan server); yang bernomor ("Foto N: …") tampil pada foto/penandanya. */
   errors?: readonly string[];
   /** Dipanggil saat ada foto yang menunggu/sedang diunggah (form menahan Simpan selama itu). */
@@ -90,7 +90,6 @@ export function StickerInstructionsField({
   knownGuides = [],
   currentItemId,
   onCreateSticker,
-  onCreateType,
   errors = [],
   onBusyChange,
 }: StickerInstructionsFieldProps) {
@@ -231,7 +230,6 @@ export function StickerInstructionsField({
             onMove={(delta) => movePhoto(index, delta)}
             onRemove={() => commit(valueRef.current.filter((p) => p.guideId !== photo.guideId))}
             {...(onCreateSticker ? { onCreateSticker } : {})}
-            {...(onCreateType ? { onCreateType } : {})}
           />
         ))}
         <AttachmentView
@@ -325,7 +323,6 @@ interface PhotoCardProps {
   onMove: (delta: -1 | 1) => void;
   onRemove: () => void;
   onCreateSticker?: (onCreated: (sticker: StickerDto) => void) => void;
-  onCreateType?: (onCreated: (type: StickerTypeDto) => void) => void;
 }
 
 function PhotoCard({
@@ -342,7 +339,6 @@ function PhotoCard({
   onMove,
   onRemove,
   onCreateSticker,
-  onCreateType,
 }: PhotoCardProps) {
   const number = index + 1;
   const [selected, setSelected] = useState<number | null>(null);
@@ -513,12 +509,6 @@ function PhotoCard({
                       onCreateSticker((sticker) =>
                         retarget(mark, { kind: 'sticker', stickerId: sticker.id }),
                       ),
-                  }
-                : {})}
-              {...(onCreateType
-                ? {
-                    onCreateType: () =>
-                      onCreateType((type) => retarget(mark, { kind: 'type', typeId: type.id })),
                   }
                 : {})}
             />

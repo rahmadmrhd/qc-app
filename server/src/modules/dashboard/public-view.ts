@@ -9,6 +9,7 @@ import { appError } from '@server/core/errors';
 import { liveWhere } from '@server/core/soft-delete';
 import { FILTER_LIST_MAX } from '@server/core/validate';
 import { loadUserContext, type UserContext } from '@server/modules/access/context';
+import { formatBuLabel } from '@shared/business-units';
 import type {
   DashboardGroupId,
   DashboardOptionKind,
@@ -48,6 +49,7 @@ const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
 const OPTION_KIND: Record<string, DashboardOptionKind> = {
   customer: 'customers',
   item: 'items',
+  brand: 'brands',
   stickerType: 'stickerTypes',
   sticker: 'stickers',
 };
@@ -188,11 +190,11 @@ const marks = (values: readonly unknown[]) => values.map(() => '?').join(', ');
 async function buOptions(env: Env, ids: readonly string[]): Promise<PublicFilterOption[]> {
   if (ids.length === 0) return [];
   const rows = await env.DB.prepare(
-    `SELECT b.id, b.name FROM business_units b WHERE ${liveWhere('b')} AND b.id IN (${marks(ids)}) ORDER BY b.name, b.id`,
+    `SELECT b.id, b.code, b.name FROM business_units b WHERE ${liveWhere('b')} AND b.id IN (${marks(ids)}) ORDER BY b.code, b.name, b.id`,
   )
     .bind(...ids)
-    .all<{ id: string; name: string }>();
-  return rows.results.map((row) => ({ value: row.id, label: row.name }));
+    .all<{ id: string; code: string; name: string }>();
+  return rows.results.map((row) => ({ value: row.id, label: formatBuLabel(row) }));
 }
 
 async function locationOptions(env: Env, ids: readonly string[]): Promise<PublicFilterOption[]> {
@@ -253,6 +255,25 @@ export async function servableShare(
   return { frozen, sharer };
 }
 
+/**
+ * Himpunan lokasi yang ditawarkan sebagai saringan Serial/Laporan. Dibatasi lokasi saat dibagikan = himpunan beku;
+ * tidak dibatasi = lokasi hak pembagi saat ini (ditambah himpunan beku Serah Terima/stok bila ada). Kosong bila tak ada
+ * widget Serial/Laporan, karena lokasi hanya relevan sebagai hak untuk Serah Terima dan stok (sudah di himpunan beku).
+ */
+function serialLocationPool(
+  sharer: UserContext,
+  frozen: ShareScope,
+  widgets: readonly ShareWidgetScope[],
+): string[] {
+  const usesSerial = widgets.some((widget) => {
+    const group = widgetMeta(widget.id).group;
+    return group === 'serial' || group === 'report';
+  });
+  if (!usesSerial) return [];
+  if (frozen.locationFiltered) return [...frozen.locationIds];
+  return [...new Set([...frozen.locationIds, ...Object.keys(sharer.locations)])];
+}
+
 export interface ComputedShareWidgets {
   /** Widget cakupan beku yang masih boleh dilihat pembagi (hak SAAT INI) dan, bila ada `actor`, juga oleh pelaku. */
   widgets: ShareWidgetScope[];
@@ -296,10 +317,15 @@ export async function computeShareWidgets(
   const base = frozenRange(frozen.range, wibDateIso(nowMs));
   const range = clampRange(base, viewer);
   const buIds = narrow(frozen.buIds, viewer.buIds);
-  // Pilihan lokasi penonton hanya berlaku bila tautan menawarkan lokasi (himpunan beku tak kosong); selain itu
-  // diabaikan, bukan diiris ke kosong (tautan Serial/Laporan tanpa saringan lokasi tak punya pilihan lokasi).
-  const viewerLocations = frozen.locationIds.length === 0 ? undefined : viewer.locationIds;
-  const locationIds = narrow(frozen.locationIds, viewerLocations);
+  // Lokasi yang boleh dipilih penonton untuk saringan Serial/Laporan: bila tautan tidak dibatasi lokasi, mengikuti hak
+  // lokasi pembagi SAAT INI (lokasi bukan batas hak Serial, hanya saringan); bila dibatasi, hanya himpunan beku.
+  const serialPool = serialLocationPool(sharer, frozen, widgets);
+  // Pilihan lokasi penonton hanya berlaku bila ada lokasi yang ditawarkan; selain itu diabaikan, bukan diiris ke kosong.
+  const viewerLocations = serialPool.length === 0 ? undefined : viewer.locationIds;
+  const locationIds = narrow(
+    frozen.locationIds,
+    frozen.locationIds.length === 0 ? undefined : viewer.locationIds,
+  );
 
   // Hak pembagi saat ini ∩ cakupan beku ∩ filter penonton; `[]` ke `resolveScope` berarti tidak ada (bukan semua).
   // Himpunan beku boleh lebih dari `FILTER_LIST_MAX` (hasil hak pembagi); daftar penonton sudah dibatasi validator.
@@ -315,8 +341,11 @@ export async function computeShareWidgets(
   let effective: ResolvedScope = {
     ...resolved,
     // Lokasi menjadi filter Serial/Laporan hanya bila dibekukan demikian atau penonton sendiri mempersempitnya.
-    serialLocationIds:
-      frozen.locationFiltered || viewerLocations !== undefined ? locationIds : null,
+    serialLocationIds: frozen.locationFiltered
+      ? locationIds
+      : viewerLocations !== undefined
+        ? narrow(serialPool, viewerLocations)
+        : null,
   };
   if (actor !== undefined && actorAllowed !== null) {
     const actorScope = resolveScope(actor, { from: range.from, to: range.to }, nowMs);
@@ -390,9 +419,16 @@ export async function loadPublicDashboard(
   ]);
   if (usesLocationFilter) for (const id of frozen.locationIds) nameableLocations.add(id);
   const nameableLocationIds = frozen.locationIds.filter((id) => nameableLocations.has(id));
+  // Tautan Serial/Laporan tanpa pembatasan lokasi: pilihan filter lokasi = lokasi hak pembagi (bukan nama di kepala).
+  const poolLocationIds = serialLocationPool(sharer, frozen, widgets).filter(
+    (id) => !nameableLocationIds.includes(id),
+  );
+  const offeredLocationIds = frozen.locationFiltered
+    ? nameableLocationIds
+    : [...nameableLocationIds, ...poolLocationIds];
   const [bu, location, buNames, locationNames] = await Promise.all([
     buOptions(env, baseScope.buIds),
-    locationOptions(env, nameableLocationIds),
+    locationOptions(env, offeredLocationIds),
     buScopeNames(env, baseScope.buIds, true),
     locationScopeNames(env, nameableLocationIds, true),
   ]);

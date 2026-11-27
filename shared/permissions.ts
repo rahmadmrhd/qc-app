@@ -9,6 +9,7 @@ export const MODULES = [
   'stickerstock',
   'serial',
   'serialservice',
+  'serialwh',
   'countrylock',
   'dashboard',
 ] as const;
@@ -25,6 +26,7 @@ export const MODULE_LABELS: Record<ModuleKey, string> = {
   stickerstock: 'Stok Stiker',
   serial: 'Serial Number',
   serialservice: 'Servis Serial Number',
+  serialwh: 'Gudang Serial Number',
   countrylock: 'Country Lock',
   dashboard: 'Dashboard',
 };
@@ -54,8 +56,9 @@ export const MODULE_LEVELS: Record<ModuleKey, readonly Level[]> = {
   stickerstock: ['none', 'view', 'edit', 'manage'],
   serial: ['none', 'view', 'edit', 'manage'],
   serialservice: ['none', 'view', 'edit'],
+  serialwh: ['none', 'view', 'edit'],
   countrylock: ['none', 'view'],
-  dashboard: ['none', 'edit', 'manage'],
+  dashboard: ['none', 'view', 'edit', 'manage'],
 };
 
 /** Arti umum tiap level (PRD §4.2); `MODULE_LEVEL_HINTS` menimpanya bila modul punya makna khusus. */
@@ -115,11 +118,16 @@ export const MODULE_LEVEL_HINTS: Partial<Record<ModuleKey, Partial<Record<Level,
     view: 'Melihat serial number dan riwayat servisnya pada BU penugasan.',
     edit: 'Melihat serta menangani servis serial number.',
   },
+  serialwh: {
+    view: 'Melihat Riwayat Keluar Gudang (catatan SO) pada BU penugasan dan menyalin ulang daftar Serial Number.',
+    edit: 'Melihat serta mencatat Keluar Gudang: memilih atau membuat Serial Number untuk sebuah SO dan menautkan task Serah Terima.',
+  },
   countrylock: {
     view: 'Melihat menu Country Lock dan membukanya di aplikasi desktop dari peramban (dengan akun yang sama). Halaman Country Lock di aplikasi desktop tetap dapat dibuka tanpa login.',
   },
   dashboard: {
-    edit: 'Membagikan dashboard secara publik dan mengelola tautan serta laporan terjadwal MILIK SENDIRI (penuh: lihat, ubah, jeda, kirim uji, hapus, cabut).',
+    view: 'Membuka halaman Dashboard dan melihat widget (data tetap mengikuti izin modul sumbernya). TIDAK dapat membagikan tautan atau mengelola laporan terjadwal.',
+    edit: 'Melihat dashboard, membagikan dashboard secara publik dan mengelola tautan serta laporan terjadwal MILIK SENDIRI (penuh: lihat, ubah, jeda, kirim uji, hapus, cabut).',
     manage:
       'Semua akses Kelola milik sendiri, ditambah mengelola milik SEMUA pengguna, termasuk melihat penerima, pratinjau, dan tautan terbitan laporan orang lain.',
   },

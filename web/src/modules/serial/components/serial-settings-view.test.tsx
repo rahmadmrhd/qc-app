@@ -5,6 +5,7 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, expect, test, vi } from 'vitest';
 import { ApiError } from '@/lib/api/api-error';
 import { pickLink } from '@/test/link-field';
+import { addMailAddress, BCC_FIELD, CC_FIELD, TO_FIELD, typeInMailField } from '@/test/mail-lists';
 
 const apiMock = vi.hoisted(() => vi.fn());
 vi.mock('@/lib/api', async () => ({
@@ -38,6 +39,7 @@ const meWith = (access: 'none' | 'view'): MeDto => ({
     stickerstock: 'none',
     serial: 'manage',
     serialservice: 'none',
+    serialwh: 'none',
     countrylock: 'none',
     dashboard: 'none',
   },
@@ -65,7 +67,7 @@ beforeEach(() => {
   onTabChange.mockReset();
   me = meWith('none');
   state = {
-    alert: { enabled: false, recipients: [] },
+    alert: { enabled: false, recipients: [], cc: [], bcc: [] },
     updatedAt: 'v1',
     smtpConfigured: true,
   };
@@ -118,35 +120,49 @@ test('judul, saklar, dan simpan mengirim expectedUpdatedAt dengan penerima email
   await userEvent.click(
     screen.getByRole('checkbox', { name: 'Kirim email saat Serial Number dinyatakan rusak' }),
   );
-  await userEvent.type(screen.getByLabelText('Email lain'), 'qc@x.com');
-  await userEvent.click(screen.getByRole('button', { name: 'Tambah email' }));
+  await addMailAddress(TO_FIELD, 'qc@x.com');
   await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
   await waitFor(() => expect(calls('serialSettings.save')).toHaveLength(1));
   expect(calls('serialSettings.save')[0]?.[1]).toEqual({
     expectedUpdatedAt: 'v1',
-    alert: { enabled: true, recipients: ['qc@x.com'] },
+    alert: { enabled: true, recipients: ['qc@x.com'], cc: [], bcc: [] },
   });
 });
 
-test('penerima: format salah, ganda, dan melebihi 20 ditolak di klien', async () => {
+test('CC dan BCC ikut terkirim pada payload simpan', async () => {
+  renderView();
+  await screen.findByRole('heading', { name: 'Pengaturan Serial Number' });
+  await addMailAddress(TO_FIELD, 'to@x.com');
+  await addMailAddress(CC_FIELD, 'CC@x.com');
+  await addMailAddress(BCC_FIELD, 'bcc@x.com');
+  await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
+  await waitFor(() => expect(calls('serialSettings.save')).toHaveLength(1));
+  expect(calls('serialSettings.save')[0]?.[1]).toEqual({
+    expectedUpdatedAt: 'v1',
+    alert: { enabled: false, recipients: ['to@x.com'], cc: ['cc@x.com'], bcc: ['bcc@x.com'] },
+  });
+});
+
+test('penerima: alamat tak sah tidak jadi chip, yang sudah dipilih tidak ditawarkan, batas 20', async () => {
   state = {
     ...state,
-    alert: { enabled: true, recipients: Array.from({ length: 20 }, (_, i) => `u${i}@x.com`) },
+    alert: {
+      enabled: true,
+      recipients: Array.from({ length: 20 }, (_, i) => `u${i}@x.com`),
+      cc: [],
+      bcc: [],
+    },
   };
   renderView();
   await screen.findByRole('heading', { name: 'Pengaturan Serial Number' });
-  const extra = screen.getByLabelText('Email lain');
-  await userEvent.type(extra, 'bukan-email');
-  await userEvent.click(screen.getByRole('button', { name: 'Tambah email' }));
-  expect(await screen.findByRole('alert')).toHaveTextContent('Format email tidak valid');
-  await userEvent.clear(extra);
-  await userEvent.type(extra, 'u1@x.com');
-  await userEvent.click(screen.getByRole('button', { name: 'Tambah email' }));
-  expect(screen.getByRole('alert')).toHaveTextContent('Email sudah ada dalam daftar');
-  await userEvent.clear(extra);
-  await userEvent.type(extra, 'baru@x.com');
-  await userEvent.click(screen.getByRole('button', { name: 'Tambah email' }));
-  expect(screen.getByRole('alert')).toHaveTextContent('Maksimal 20 penerima');
+  await typeInMailField(CC_FIELD, 'bukan-email');
+  expect(await screen.findByText(/Ketik alamat email lengkap/)).toBeInTheDocument();
+  await userEvent.keyboard('{Enter}');
+  await userEvent.clear(screen.getByRole('combobox', { name: CC_FIELD }));
+  await typeInMailField(CC_FIELD, 'u1@x.com');
+  expect(screen.queryByRole('option', { name: 'u1@x.com' })).not.toBeInTheDocument();
+  await userEvent.click(screen.getByRole('combobox', { name: TO_FIELD }));
+  expect(await screen.findByText(/Maksimal 20 pilihan/)).toBeInTheDocument();
   expect(calls('serialSettings.save')).toHaveLength(0);
 });
 
@@ -164,7 +180,7 @@ test('versi usang (412): pesan tampil dan pengaturan dimuat ulang ke data terbar
     if (id === 'serialSettings.save') {
       // Orang lain menyimpan lebih dulu: server kini di v9 dengan satu penerima.
       state = {
-        alert: { enabled: true, recipients: ['lain@x.com'] },
+        alert: { enabled: true, recipients: ['lain@x.com'], cc: [], bcc: [] },
         updatedAt: 'v9',
         smtpConfigured: true,
       };
@@ -172,8 +188,7 @@ test('versi usang (412): pesan tampil dan pengaturan dimuat ulang ke data terbar
     }
     return original?.(id, input);
   });
-  await userEvent.type(screen.getByLabelText('Email lain'), 'qc@x.com');
-  await userEvent.click(screen.getByRole('button', { name: 'Tambah email' }));
+  await addMailAddress(TO_FIELD, 'qc@x.com');
   const before = calls('serialSettings.get').length;
   await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
   expect(await screen.findByRole('alert')).toHaveTextContent('Data sudah diubah orang lain');
@@ -204,7 +219,7 @@ test('saran penerima dari daftar user hanya bagi yang boleh melihat Akses', asyn
   renderView();
   await screen.findByRole('heading', { name: 'Pengaturan Serial Number' });
   await waitFor(() => expect(calls('access.users.list').length).toBeGreaterThan(0));
-  expect(screen.getByRole('combobox', { name: 'Penerima email' })).toBeInTheDocument();
+  expect(screen.getByRole('combobox', { name: TO_FIELD })).toBeInTheDocument();
 });
 
 test('tanpa izin Akses daftar user tidak dimuat dan placeholder meminta email manual', async () => {

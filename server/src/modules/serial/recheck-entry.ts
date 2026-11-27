@@ -16,12 +16,13 @@ import type {
 } from '@shared/contract';
 import {
   normalizeSerial,
+  publicActorName,
   recheckBuCandidates,
   SERIAL_STATUSES,
   type SerialStatus,
   serialProblem,
 } from '@shared/serials';
-import { canWriteBu, writableBuIds } from './access';
+import { canWriteBu, readableBuIds, writableBuIds } from './access';
 import { stickerRaise } from './act';
 import { involvedBuIds, moveBuStatements } from './bu-history';
 import { loadStampItemInfo, planProofAttach } from './proof/attach';
@@ -329,7 +330,9 @@ interface ExistingRow {
   serial: string;
   item_id: string;
   bu_id: string;
+  location_id: string;
   bu_code: string;
+  bu_name: string;
   status: string;
   open_case_id: string;
   brand_name: string | null;
@@ -340,7 +343,9 @@ interface ExistingRow {
 
 /**
  * Draft Catat: serial yang sudah ada, dengan pengungkapan MINIMAL lintas BU (spek §5.4, §7): item, BU saat ini, status,
- * laporan aktif, aturan foto, dan BU yang boleh dipilih pengguna ini. Tanpa catatan, riwayat, lokasi, atau pelaku.
+ * laporan aktif, aturan foto, dan BU yang boleh dipilih pengguna ini. Tanpa catatan atau riwayat. Field tambahan
+ * (nama BU, lokasi unit, waktu dan pelaku kejadian terakhir) hanya untuk serial yang BU saat ininya terbaca lewat
+ * `serial`/`serialservice` (`readableBuIds`); pemegang `serialwh` tidak membukanya.
  */
 export async function lookupSerialsMany(
   env: Env,
@@ -355,7 +360,7 @@ export async function lookupSerialsMany(
   if (serials.length === 0) return { found: [] };
   const marks = serials.map(() => '?').join(', ');
   const rows = await env.DB.prepare(
-    `SELECT s.id, s.serial, s.item_id, s.bu_id, bu.code AS bu_code, s.status, s.open_case_id, b.name AS brand_name, i.model, i.proof_required, i.proof_min FROM serials s JOIN business_units bu ON bu.id = s.bu_id LEFT JOIN items i ON i.id = s.item_id LEFT JOIN brands b ON b.id = i.brand_id WHERE ${liveWhere('s')} AND s.serial IN (${marks}) ORDER BY ${SERIAL_PICK_ORDER_SQL}`,
+    `SELECT s.id, s.serial, s.item_id, s.bu_id, s.location_id, bu.code AS bu_code, bu.name AS bu_name, s.status, s.open_case_id, b.name AS brand_name, i.model, i.proof_required, i.proof_min FROM serials s JOIN business_units bu ON bu.id = s.bu_id LEFT JOIN items i ON i.id = s.item_id LEFT JOIN brands b ON b.id = i.brand_id WHERE ${liveWhere('s')} AND s.serial IN (${marks}) ORDER BY ${SERIAL_PICK_ORDER_SQL}`,
   )
     .bind(...serials)
     .all<ExistingRow>();
@@ -378,6 +383,8 @@ export async function lookupSerialsMany(
   }
   // BU nonaktif tidak dapat menjadi tujuan (server menolaknya); BU saat ini tetap boleh walau nonaktif.
   const writableAll = writableBuIds(user);
+  // Pengungkapan lintas BU tetap minimal (keputusan pemilik 2026-11-25): nama BU hanya untuk BU yang terbaca pengguna.
+  const readable = new Set(readableBuIds(user));
   const activeWritable = new Set(
     writableAll.length === 0
       ? []
@@ -389,9 +396,42 @@ export async function lookupSerialsMany(
             .all<{ id: string }>()
         ).results.map((bu) => bu.id.trim()),
   );
+  // Posisi unit dan kejadian terbaru hanya untuk serial yang BU saat ininya terbaca pengguna (peringatan scan ulang);
+  // selain itu pengungkapan tetap minimal. Satu kueri per jenis untuk seluruh batch (tanpa N+1).
+  const visible = chosen.filter((entry) => readable.has(entry.bu_id.trim()));
+  const latest = new Map<string, { at: string; actor: string }>();
+  const locationNames = new Map<string, string>();
+  if (visible.length > 0) {
+    const visibleIds = visible.map((entry) => entry.id.trim());
+    const events = await env.DB.prepare(
+      `SELECT e.serial_id, e.created_at, e.actor_name FROM serial_events e JOIN (SELECT serial_id, MAX(seq) AS seq FROM serial_events WHERE serial_id IN (${visibleIds.map(() => '?').join(', ')}) GROUP BY serial_id) m ON m.serial_id = e.serial_id AND m.seq = e.seq`,
+    )
+      .bind(...visibleIds)
+      .all<{ serial_id: string; created_at: string; actor_name: string }>();
+    for (const event of events.results) {
+      latest.set(event.serial_id.trim(), { at: event.created_at.trim(), actor: event.actor_name });
+    }
+    const locationIds = [
+      ...new Set(visible.map((entry) => entry.location_id.trim()).filter((v) => v !== '')),
+    ];
+    if (locationIds.length > 0) {
+      const locations = await env.DB.prepare(
+        `SELECT id, name FROM locations WHERE ${liveWhere()} AND id IN (${locationIds.map(() => '?').join(', ')})`,
+      )
+        .bind(...locationIds)
+        .all<{ id: string; name: string }>();
+      for (const location of locations.results)
+        locationNames.set(location.id.trim(), location.name);
+    }
+  }
   const found = chosen.map((entry): SerialExistingDto => {
     const id = entry.id.trim();
     const buId = entry.bu_id.trim();
+    // Satu gerbang untuk semua field tambahan: BU saat ini harus terbaca pengguna.
+    const reveal = readable.has(buId);
+    const last = reveal ? latest.get(id) : undefined;
+    const unitLocationId = entry.location_id.trim();
+    const unitLocationLabel = reveal ? locationNames.get(unitLocationId) : undefined;
     const status = entry.status.trim();
     const required = Number(entry.proof_required ?? 0) === 1;
     return {
@@ -401,10 +441,14 @@ export async function lookupSerialsMany(
       itemLabel: `${entry.brand_name ?? ''} ${(entry.model ?? '').trim()}`.trim(),
       buId,
       buCode: entry.bu_code.trim(),
+      ...(reveal ? { buName: entry.bu_name.trim() } : {}),
       status: (SERIAL_STATUS_SET.includes(status) ? status : 'good') as SerialStatus,
       hasOpenCase: entry.open_case_id.trim() !== '',
       proofRequired: required,
       proofMin: Number(entry.proof_min ?? 1),
+      ...(reveal && unitLocationId !== '' ? { unitLocationId } : {}),
+      ...(unitLocationLabel !== undefined ? { unitLocationLabel } : {}),
+      ...(last ? { lastEventAt: last.at, lastActorName: publicActorName(last.actor) } : {}),
       recheckBuIds: recheckBuCandidates({
         currentBuId: buId,
         involvedBuIds: [...(involved.get(id) ?? []), buId],

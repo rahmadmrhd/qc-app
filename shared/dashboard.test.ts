@@ -16,9 +16,9 @@ import {
 } from './dashboard';
 
 describe('registry widget', () => {
-  test('id unik, 27 widget, tiap grup punya minimal satu', () => {
+  test('id unik, 29 widget, tiap grup punya minimal satu', () => {
     expect(new Set(WIDGET_IDS).size).toBe(WIDGET_IDS.length);
-    expect(WIDGET_IDS.length).toBe(27);
+    expect(WIDGET_IDS.length).toBe(29);
     expect(WIDGETS.length).toBe(WIDGET_IDS.length);
     for (const group of DASHBOARD_GROUPS) {
       expect(WIDGETS.some((widget) => widget.group === group)).toBe(true);
@@ -33,7 +33,6 @@ describe('registry widget', () => {
     }
     expect(widgetMeta('rp.opened').deltaGood).toBe('down');
     expect(widgetMeta('hs.created').deltaGood).toBe('up');
-    expect(widgetMeta('sn.recorded').deltaGood).toBe('up');
   });
 
   test('judul hs.avgDuration menyebut satuan jam', () => {
@@ -72,11 +71,11 @@ describe('registry widget', () => {
       delta: true,
     });
     expect(widgetMeta('hs.active').date).toEqual({ kind: 'none' });
-    expect(widgetMeta('sn.recorded')).toMatchObject({ bu: true, location: 'serial', delta: true });
+    expect(widgetMeta('sn.status')).toMatchObject({ bu: true, location: 'serial' });
     expect(widgetMeta('st.low')).toMatchObject({ bu: false, location: 'stock' });
-    expect(widgetMeta('pt.condition')).toMatchObject({ bu: false, location: 'none' });
-    expect(widgetMeta('pt.condition').access).toEqual([
-      { module: 'sticker', level: 'view', scope: 'global' },
+    expect(widgetMeta('st.postel')).toMatchObject({ bu: false, location: 'none' });
+    expect(widgetMeta('st.postel').access).toEqual([
+      { module: 'stickerstock', level: 'view', scope: 'location' },
     ]);
     expect(widgetMeta('hs.oldest').access).toEqual([
       { module: 'handover', level: 'view', scope: 'location' },
@@ -154,5 +153,46 @@ describe('rentang tanggal', () => {
       from: '2026-02-01',
       to: '2026-02-28',
     });
+  });
+});
+
+describe('tata letak widget (keputusan pemilik 2026-11-25)', () => {
+  test('grup dashboard: Postel dihapus; 29 widget', () => {
+    expect([...DASHBOARD_GROUPS]).toEqual(['handover', 'serial', 'report', 'sticker']);
+    expect(WIDGET_IDS.length).toBe(29);
+  });
+
+  test('setiap widget punya baris dan lebar kolom (dari 12)', () => {
+    for (const meta of WIDGETS) {
+      expect(meta.row.length).toBeGreaterThan(0);
+      expect(meta.span).toBeGreaterThanOrEqual(1);
+      expect(meta.span).toBeLessThanOrEqual(12);
+    }
+  });
+
+  test('satu baris tidak pernah mencampur number card dengan jenis lain, kecuali baris split', () => {
+    for (const group of DASHBOARD_GROUPS) {
+      const byRow = new Map<string, Set<boolean>>();
+      for (const meta of WIDGETS.filter((entry) => entry.group === group)) {
+        const kinds = byRow.get(meta.row) ?? new Set<boolean>();
+        kinds.add(meta.visual === 'number');
+        byRow.set(meta.row, kinds);
+      }
+      for (const [row, kinds] of byRow) expect([group, row, kinds.size]).toEqual([group, row, 1]);
+    }
+  });
+
+  test('number card berada paling atas di tiap grup', () => {
+    for (const group of DASHBOARD_GROUPS) {
+      const visuals = WIDGETS.filter((entry) => entry.group === group).map((meta) => meta.visual);
+      const lastNumber = visuals.lastIndexOf('number');
+      const firstOther = visuals.findIndex((visual) => visual !== 'number');
+      if (lastNumber >= 0 && firstOther >= 0) expect(lastNumber).toBeLessThan(firstOther);
+    }
+  });
+
+  test('filter brand hanya di grup Serial', () => {
+    expect(GROUP_FILTERS.serial.some((field) => field.key === 'brand')).toBe(true);
+    expect(GROUP_FILTERS.sticker.some((field) => field.key === 'brand')).toBe(false);
   });
 });

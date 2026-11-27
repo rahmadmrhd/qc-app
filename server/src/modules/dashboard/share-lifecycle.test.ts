@@ -30,7 +30,7 @@ const BODY: CreateShareInput = {
   filter: { from: '2026-11-01', to: '2026-11-23' },
   range: { mode: 'fixed', from: '2026-11-01', to: '2026-11-23' },
   widgets: [
-    { id: 'sn.recorded', filters: {} },
+    { id: 'sn.status', filters: {} },
     { id: 'hs.created', filters: { customer: ['c1'], status: ['done'] } },
   ],
   offers: ['customer'],
@@ -100,14 +100,14 @@ describe('dashboardShares.get', () => {
     expect(own.revokedBy).toBe('');
     expect(own.visitCount).toBe(0);
     expect(own.visits).toEqual([]);
-    expect(own.scope.buNames).toEqual(['BU Ex']);
+    expect(own.scope.buNames).toEqual(['X - BU Ex']);
     expect(own.scope.buDeleted).toEqual([false]);
     expect(own.scope.locationDeleted).toEqual([false]);
     expect(own.scope.locationNames).toEqual(['Lokasi A']);
     expect(own.scope.range).toEqual({ mode: 'fixed', from: '2026-11-01', to: '2026-11-23' });
     expect(own.scope.offers).toEqual(['customer']);
     expect(own.scope.widgets.map((widget: { id: string }) => widget.id)).toEqual([
-      'sn.recorded',
+      'sn.status',
       'hs.created',
     ]);
     expect(own.scope.valueNames).toEqual({ c1: 'PT Maju' });
@@ -222,7 +222,7 @@ describe('dashboardShares.get', () => {
       .bind(new Date(NOW).toISOString())
       .run();
     const detail = (await jsonOf(await getDetail(id))) as Json;
-    expect(detail.scope.buNames).toEqual(['BU Ex']);
+    expect(detail.scope.buNames).toEqual(['X - BU Ex']);
     expect(detail.scope.buDeleted).toEqual([true]);
     expect(detail.scope.locationNames).toEqual(['Lokasi A']);
     expect(detail.scope.locationDeleted).toEqual([true]);

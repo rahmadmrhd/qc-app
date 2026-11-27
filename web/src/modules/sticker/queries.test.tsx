@@ -154,7 +154,15 @@ test('pengaturan Postel: GET /api/v1/postel-settings dengan kunci sendiri', asyn
 
 test('simpan pengaturan Postel: PUT dengan If-Match, hasil dipasang ke cache (bukan memuat ulang)', async () => {
   const saved = {
-    alert: { enabled: true, recipients: [], sendHour: 8, thresholds: [30], repeatEveryDays: 0 },
+    alert: {
+      enabled: true,
+      recipients: [],
+      cc: [],
+      bcc: [],
+      sendHour: 8,
+      thresholds: [30],
+      repeatEveryDays: 0,
+    },
     updatedAt: '2026-11-12 09:00:00',
     smtpConfigured: true,
   };
@@ -179,7 +187,15 @@ test('simpan pengaturan Postel: PUT dengan If-Match, hasil dipasang ke cache (bu
 
 test('simpan pengaturan Postel menandai daftar Postel, detail, dan item basi tanpa memuat ulang; pengaturan tetap segar', async () => {
   const saved = {
-    alert: { enabled: true, recipients: [], sendHour: 8, thresholds: [60], repeatEveryDays: 0 },
+    alert: {
+      enabled: true,
+      recipients: [],
+      cc: [],
+      bcc: [],
+      sendHour: 8,
+      thresholds: [60],
+      repeatEveryDays: 0,
+    },
     updatedAt: '2026-11-12 09:00:00',
     smtpConfigured: true,
   };

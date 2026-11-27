@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { ApiError } from '@/lib/api/api-error';
 import { installIntersectionObserver } from '@/test/intersection-observer';
 import { pickLink } from '@/test/link-field';
+import { addMailAddress, BCC_FIELD, CC_FIELD, TO_FIELD, typeInMailField } from '@/test/mail-lists';
 import { makeMe } from '@/test/make-me';
 import { renderInRouter } from '@/test/render-in-router';
 
@@ -18,7 +19,7 @@ vi.mock('@/lib/api', async (importOriginal) => ({
 let me: MeDto;
 vi.mock('@/modules/auth/use-me', () => ({ useMe: () => me }));
 
-import { parseRecipients, ReportFormPage } from './report-form-page';
+import { ReportFormPage } from './report-form-page';
 
 const SAVED: DashboardReportDto = {
   id: 'r1',
@@ -31,10 +32,12 @@ const SAVED: DashboardReportDto = {
     buIds: ['b1'],
     locationIds: [],
     locationFiltered: false,
-    widgets: [{ id: 'sn.recorded', filters: {} }],
+    widgets: [{ id: 'sn.status', filters: {} }],
     offers: [],
   },
   recipients: ['lama@contoh.id'],
+  cc: [],
+  bcc: [],
   recipientCount: 1,
   linkDays: 14,
   lastStatus: '',
@@ -62,7 +65,7 @@ beforeEach(() => {
         code: 'B1',
         name: 'BU Satu',
         status: 'active',
-        permissions: { item: 'none', serial: 'view', serialservice: 'none' },
+        permissions: { item: 'none', serial: 'view', serialservice: 'none', serialwh: 'none' },
       },
     ],
   });
@@ -81,12 +84,12 @@ const form = (report?: DashboardReportDto) =>
 const goTab = (name: string) => userEvent.click(screen.getByRole('tab', { name }));
 
 /** Isi minimal: nama, satu widget (tab Isi), dan penerima (tab Penerima). */
-async function fillValid(recipients: string) {
+async function fillValid(recipients: string[]) {
   await userEvent.type(screen.getByLabelText('Nama laporan'), 'Uji');
   await goTab('Isi');
-  await userEvent.click(await screen.findByRole('checkbox', { name: 'Serial dicatat' }));
+  await userEvent.click(await screen.findByRole('checkbox', { name: 'Komposisi status' }));
   await goTab('Penerima');
-  await userEvent.type(screen.getByLabelText('Alamat surel penerima'), recipients);
+  for (const address of recipients) await addMailAddress(TO_FIELD, address);
 }
 
 const saveInput = () =>
@@ -95,40 +98,44 @@ const saveInput = () =>
     unknown
   >;
 
-describe('parseRecipients', () => {
-  test('dipisah baris, koma, titik koma, atau spasi; huruf kecil; duplikat dibuang', () => {
-    expect(parseRecipients('A@x.id, b@y.id;\n a@x.id  c@z.id\n\n')).toEqual([
-      'a@x.id',
-      'b@y.id',
-      'c@z.id',
-    ]);
-    expect(parseRecipients('   ')).toEqual([]);
-  });
-});
-
 describe('ReportFormPage: laporan baru', () => {
   test('isian kosong: galat per field, tidak memanggil server', async () => {
     await form();
     await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
     expect(await screen.findByText('Nama wajib diisi')).toBeTruthy();
     expect(screen.getByText('Pilih minimal satu widget')).toBeTruthy();
-    expect(screen.getByText('Isi minimal satu alamat surel')).toBeTruthy();
+    expect(screen.getByText('Isi minimal satu alamat surel (Kepada, CC, atau BCC)')).toBeTruthy();
     expect(apiMock.mock.calls.some((call) => call[0] === 'dashboardReports.save')).toBe(false);
   });
 
-  test('alamat bernama atau rusak ditolak sebelum dikirim', async () => {
+  test('alamat bernama atau rusak tidak jadi chip, jadi simpan tetap ditolak sebagai kosong', async () => {
     await form();
-    await fillValid('A <a@x.id>');
+    await fillValid([]);
+    await typeInMailField(TO_FIELD, 'A <a@x.id>');
+    expect(await screen.findByText(/Ketik alamat email lengkap/)).toBeTruthy();
+    await userEvent.keyboard('{Enter}');
     await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
-    expect(await screen.findByText(/Ada alamat yang tidak sah/)).toBeTruthy();
+    expect(
+      await screen.findByText('Isi minimal satu alamat surel (Kepada, CC, atau BCC)'),
+    ).toBeTruthy();
     expect(apiMock.mock.calls.some((call) => call[0] === 'dashboardReports.save')).toBe(false);
+  });
+
+  test('alamat yang sudah ada di satu daftar tidak ditawarkan di daftar lain', async () => {
+    await form();
+    await goTab('Penerima');
+    await addMailAddress(TO_FIELD, 'satu@contoh.id');
+    await typeInMailField(BCC_FIELD, 'satu@contoh.id');
+    expect(screen.queryByRole('option', { name: 'satu@contoh.id' })).toBeNull();
   });
 
   test('menyimpan: konfirmasi dulu, lalu masukan lengkap tanpa id dan tanpa expectedUpdatedAt', async () => {
     await form();
-    await fillValid('Satu@Contoh.id{Enter}dua@contoh.id{Enter}satu@contoh.id');
+    await fillValid(['Satu@Contoh.id', 'dua@contoh.id']);
+    await addMailAddress(CC_FIELD, 'Tembus@Contoh.id');
+    await addMailAddress(BCC_FIELD, 'rahasia@contoh.id');
     await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
-    expect(await screen.findByText('Simpan laporan dan kirim ke 2 alamat?')).toBeTruthy();
+    expect(await screen.findByText('Simpan laporan dan kirim ke 4 alamat?')).toBeTruthy();
     expect(apiMock.mock.calls.some((call) => call[0] === 'dashboardReports.save')).toBe(false);
     await userEvent.click(screen.getByRole('button', { name: 'Simpan', hidden: false }));
     await waitFor(() => expect(onDone).toHaveBeenCalledWith('r1'));
@@ -139,16 +146,18 @@ describe('ReportFormPage: laporan baru', () => {
       period: 'lastWeek',
       filter: { from: '', to: '' },
       locationFiltered: false,
-      widgets: [{ id: 'sn.recorded', filters: {} }],
+      widgets: [{ id: 'sn.status', filters: {} }],
       offers: [],
       recipients: ['satu@contoh.id', 'dua@contoh.id'],
+      cc: ['tembus@contoh.id'],
+      bcc: ['rahasia@contoh.id'],
       linkDays: 14,
     });
   });
 
   test('Periksa lagi menutup konfirmasi tanpa menyimpan', async () => {
     await form();
-    await fillValid('a@contoh.id');
+    await fillValid(['a@contoh.id']);
     await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
     await userEvent.click(await screen.findByRole('button', { name: 'Periksa lagi' }));
     await waitFor(() => expect(screen.queryByText(/kirim ke 1 alamat/)).toBeNull());
@@ -176,7 +185,7 @@ describe('ReportFormPage: ubah laporan', () => {
   test('mengubah penerima meminta konfirmasi', async () => {
     await form(SAVED);
     await goTab('Penerima');
-    await userEvent.type(screen.getByLabelText('Alamat surel penerima'), '{Enter}baru@contoh.id');
+    await addMailAddress(TO_FIELD, 'baru@contoh.id');
     await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
     expect(await screen.findByText('Simpan laporan dan kirim ke 2 alamat?')).toBeTruthy();
   });
@@ -230,7 +239,7 @@ describe('ReportFormPage: cakupan lokasi tidak berubah saat menyimpan ulang (I1)
       locationFiltered,
       widgets: [
         { id: 'hs.created', filters: {} },
-        { id: 'sn.recorded', filters: {} },
+        { id: 'sn.status', filters: {} },
       ],
       offers: [],
     },
@@ -282,7 +291,7 @@ describe('ReportFormPage: himpunan beku BU/lokasi lebih dari 20 tidak dikosongka
         buIds,
         locationIds,
         locationFiltered: true,
-        widgets: [{ id: 'sn.recorded', filters: {} }],
+        widgets: [{ id: 'sn.status', filters: {} }],
         offers: [],
       },
     });
@@ -310,14 +319,14 @@ describe('ReportFormPage: laporan milik orang lain', () => {
     me = { ...me, isSuperAdmin: true };
     await form({ ...SAVED, owner: 'lain@x.com' });
     await goTab('Isi');
-    await screen.findByRole('checkbox', { name: 'Serial dicatat' });
+    await screen.findByRole('checkbox', { name: 'Komposisi status' });
     expect(screen.queryByText(/Laporan ini milik/)).toBeNull();
   });
 
   test('laporan milik sendiri tidak memuat penjelasan itu', async () => {
     await form(SAVED);
     await goTab('Isi');
-    await screen.findByRole('checkbox', { name: 'Serial dicatat' });
+    await screen.findByRole('checkbox', { name: 'Komposisi status' });
     expect(screen.queryByText(/Laporan ini milik/)).toBeNull();
   });
 });

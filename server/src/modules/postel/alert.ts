@@ -34,6 +34,8 @@ function defaults(): PostelAlertSettings {
   return {
     enabled: POSTEL_ALERT_DEFAULTS.enabled,
     recipients: [...POSTEL_ALERT_DEFAULTS.recipients],
+    cc: [],
+    bcc: [],
     sendHour: POSTEL_ALERT_DEFAULTS.sendHour,
     thresholds: [...POSTEL_ALERT_DEFAULTS.thresholds],
     repeatEveryDays: POSTEL_ALERT_DEFAULTS.repeatEveryDays,
@@ -71,6 +73,12 @@ function parseStored(raw: string): StoredAlert | null {
       enabled: value.enabled === true,
       recipients: Array.isArray(value.recipients)
         ? value.recipients.filter((item): item is string => typeof item === 'string')
+        : [],
+      cc: Array.isArray(value.cc)
+        ? value.cc.filter((item): item is string => typeof item === 'string')
+        : [],
+      bcc: Array.isArray(value.bcc)
+        ? value.bcc.filter((item): item is string => typeof item === 'string')
         : [],
       sendHour:
         typeof hour === 'number' && Number.isInteger(hour) && hour >= 0 && hour <= 23
@@ -118,6 +126,8 @@ function auditView(alert: PostelAlertSettings) {
   return {
     enabled: alert.enabled,
     recipients: alert.recipients.join(','),
+    cc: alert.cc.join(','),
+    bcc: alert.bcc.join(','),
     sendHour: alert.sendHour,
     thresholds: alert.thresholds.join(','),
     repeatEveryDays: alert.repeatEveryDays,

@@ -69,6 +69,9 @@ export interface DashboardShareDto {
 
 /** Cakupan beku untuk halaman View tautan: BU dan lokasi dengan NAMA (bukan id), filter grup mentah + nama nilai relasi. */
 export interface ShareScopeDetailDto {
+  /** Id BU dan lokasi beku (untuk mengisi form ubah); urutannya sama dengan `buNames`/`locationNames`. */
+  buIds: string[];
+  locationIds: string[];
   /** Nama BU beku, termasuk yang sudah dihapus; `buDeleted[i]` menandai `buNames[i]` terhapus (kit: penanda Terhapus). */
   buNames: string[];
   buDeleted: boolean[];
@@ -113,6 +116,20 @@ export interface CreateShareInput {
    * Dipakai pilihan "Tanggal tertentu"; server yang menyetel jam akhir hari (bukan jam pembuatan).
    */
   expiresOn?: string;
+}
+
+/**
+ * Ubah tautan buatan manual (keputusan pemilik 2026-11-25): isi sama dengan pembuatan ditambah `id`. Seluruh isi
+ * diganti (PUT utuh) dan cakupan dibekukan ulang dengan hak pengubah. Tautan terbitan laporan terjadwal tidak dapat
+ * diubah di sini (ubah lewat laporannya).
+ */
+export interface UpdateShareInput extends CreateShareInput {
+  id: string;
+  /**
+   * `true` = pertahankan masa berlaku yang sekarang (tidak mengirim `expiresInDays`/`expiresOn`); URL tautan tetap
+   * sama. Mengganti masa berlaku mengubah token, jadi URL BARU hanya bila masa berlaku diganti.
+   */
+  keepExpiry?: boolean;
 }
 
 /** Epoch ms akhir hari WIB (23:59:59.999) pada `day` (`YYYY-MM-DD`); `NaN` bila bukan tanggal sah. */

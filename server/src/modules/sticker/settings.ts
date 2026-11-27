@@ -29,6 +29,8 @@ export const STICKER_SETTINGS_STALE_MESSAGE =
 const DEFAULT_ALERT: StickerAlertSettings = {
   enabled: false,
   recipients: [],
+  cc: [],
+  bcc: [],
   digestHour: 8,
   intervalDays: 1,
 };
@@ -48,6 +50,12 @@ function parseStored(raw: string): StoredAlert | null {
       enabled: value.enabled === true,
       recipients: Array.isArray(value.recipients)
         ? value.recipients.filter((item): item is string => typeof item === 'string')
+        : [],
+      cc: Array.isArray(value.cc)
+        ? value.cc.filter((item): item is string => typeof item === 'string')
+        : [],
+      bcc: Array.isArray(value.bcc)
+        ? value.bcc.filter((item): item is string => typeof item === 'string')
         : [],
       digestHour:
         Number.isInteger(hour) && hour >= 0 && hour <= 23 ? hour : DEFAULT_ALERT.digestHour,
@@ -116,7 +124,8 @@ export async function saveStickerSettings(
     throw staleError(STICKER_SETTINGS_STALE_MESSAGE);
   }
   const knownTypes = new Map(types.map((type) => [type.id, type]));
-  for (const row of input.defaults) {
+  const defaults = input.defaults ?? [];
+  for (const row of defaults) {
     if (!knownTypes.has(row.typeId)) {
       const message = 'Jenis stiker tidak ditemukan';
       throw appError('VALIDATION', message, { defaults: message });
@@ -125,7 +134,7 @@ export async function saveStickerSettings(
   const now = nowIso(env);
   const stored: StoredAlert = { ...input.alert, updatedAt: now };
   const value = JSON.stringify(stored);
-  const changedDefaults = input.defaults.filter(
+  const changedDefaults = defaults.filter(
     (row) => knownTypes.get(row.typeId)?.defaultMinQty !== row.defaultMinQty,
   );
   const statements: DbStatement[] =
@@ -146,10 +155,11 @@ export async function saveStickerSettings(
         ];
   for (const row of changedDefaults) {
     statements.push(
-      env.DB.prepare('UPDATE sticker_types SET default_min_qty = ? WHERE id = ?').bind(
-        row.defaultMinQty,
-        row.typeId,
-      ),
+      // `updated_at` ikut naik: form Jenis (yang juga memuat minimum bawaan) yang dibuka sebelumnya menjadi usang,
+      // bukan menimpa diam-diam perubahan dari halaman ini (satu kolom data, dua pintu; keputusan 2026-11-25).
+      env.DB.prepare(
+        'UPDATE sticker_types SET default_min_qty = ?, updated_at = ?, updated_by = ? WHERE id = ?',
+      ).bind(row.defaultMinQty, now, actor.email, row.typeId),
     );
   }
   statements.push(
@@ -161,12 +171,16 @@ export async function saveStickerSettings(
       before: {
         enabled: current.alert.enabled,
         recipients: current.alert.recipients.join(','),
+        cc: current.alert.cc.join(','),
+        bcc: current.alert.bcc.join(','),
         digestHour: current.alert.digestHour,
         intervalDays: current.alert.intervalDays,
       },
       after: {
         enabled: input.alert.enabled,
         recipients: input.alert.recipients.join(','),
+        cc: input.alert.cc.join(','),
+        bcc: input.alert.bcc.join(','),
         digestHour: input.alert.digestHour,
         intervalDays: input.alert.intervalDays,
         defaults: changedDefaults

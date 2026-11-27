@@ -180,7 +180,7 @@ test('daftar tampil di kit: tabel, nama menaut ke View, BU menaut ke halaman BU'
     'href',
     '/qrcode/default/p1',
   );
-  expect(screen.getByRole('link', { name: 'Spectrum' })).toHaveAttribute(
+  expect(screen.getByRole('link', { name: 'SPC - Spectrum' })).toHaveAttribute(
     'href',
     '/access/business-units/bu1',
   );

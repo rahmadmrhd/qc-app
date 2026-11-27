@@ -364,6 +364,8 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
       typeIds: 'list',
     },
   },
+  // Katalog nama Item untuk saran editor checklist (statis, SEBELUM `/items/{id}`).
+  'items.nameOptions': { verb: 'GET', path: '/items/name-options' },
   'items.get': { verb: 'GET', path: '/items/{id}', etag: 'updatedAt' },
   'items.save': {
     verb: 'PUT',
@@ -477,6 +479,11 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
     path: '/serials/item-options',
     query: { query: 'string', cursor: 'string', limit: 'number', itemIds: 'list' },
   },
+  'serials.creatorOptions': {
+    verb: 'GET',
+    path: '/serials/creator-options',
+    query: { query: 'string', ids: 'list', cursor: 'string', limit: 'number' },
+  },
   'serials.stickerOptions': {
     verb: 'GET',
     path: '/serials/sticker-options',
@@ -508,7 +515,10 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
       from: 'string',
       to: 'string',
       createdBy: 'string',
+      createdBys: 'list',
       deleted: 'boolean',
+      whRecorded: 'string',
+      needsProof: 'boolean',
       cursor: 'string',
       limit: 'number',
     },
@@ -585,6 +595,115 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
   },
   // Rute statis `/serial-cases` (daftar) terdaftar di atas, sebelum yang berparameter.
   'serialCases.get': { verb: 'GET', path: '/serial-cases/{id}' },
+  // Keluar Gudang (WH). Jalur statis SEBELUM yang berparameter (urutan tabel = urutan pendaftaran).
+  'serialWarehouse.itemOptions': {
+    verb: 'GET',
+    path: '/serial-warehouse/item-options',
+    query: { query: 'string', buId: 'string', ids: 'list', cursor: 'string', limit: 'number' },
+  },
+  'serialWarehouse.options': { verb: 'GET', path: '/serial-warehouse/options' },
+  'serialWarehouse.serials': {
+    verb: 'GET',
+    path: '/serial-warehouse/serials',
+    query: {
+      itemId: 'string',
+      buIds: 'list',
+      locationId: 'string',
+      testDate: 'string',
+      query: 'string',
+      hideRecordedBuId: 'string',
+      forMode: 'string',
+      cursor: 'string',
+      limit: 'number',
+    },
+  },
+  'serialWarehouse.lookup': { verb: 'POST', path: '/serial-warehouse/lookup', status: 200 },
+  'serialWarehouse.orderOptions': {
+    verb: 'GET',
+    path: '/serial-warehouse/order-options',
+    query: { query: 'string', buId: 'string', ids: 'list', cursor: 'string', limit: 'number' },
+  },
+  'serialWarehouse.handoverCandidates': {
+    verb: 'GET',
+    path: '/serial-warehouse/handover-candidates',
+    query: {
+      customerId: 'string',
+      customerName: 'string',
+      query: 'string',
+      includeFinished: 'boolean',
+      orderId: 'string',
+      itemId: 'string',
+      cursor: 'string',
+      limit: 'number',
+    },
+  },
+  'serialWarehouse.handoverContext': {
+    verb: 'GET',
+    path: '/serial-warehouse/handover-context/{handoverId}',
+  },
+  'serialWarehouse.submit': { verb: 'POST', path: '/serial-warehouse/dispatches', status: 200 },
+  'serialWarehouse.dispatchSerials': {
+    verb: 'GET',
+    path: '/serial-warehouse/dispatches/{id}/serials',
+    query: { cursor: 'string', limit: 'number' },
+  },
+  'serialWarehouse.copyText': { verb: 'GET', path: '/serial-warehouse/dispatches/{id}/text' },
+  'serialWarehouse.listOrders': {
+    verb: 'GET',
+    path: '/serial-warehouse/orders',
+    query: {
+      query: 'string',
+      customerIds: 'list',
+      buIds: 'list',
+      from: 'string',
+      to: 'string',
+      status: 'string',
+      cursor: 'string',
+      limit: 'number',
+    },
+  },
+  'serialWarehouse.setLinks': {
+    verb: 'PUT',
+    path: '/serial-warehouse/orders/{id}/handovers',
+    ifMatch: 'expectedUpdatedAt',
+    etag: 'updatedAt',
+  },
+  'serialWarehouse.getOrder': {
+    verb: 'GET',
+    path: '/serial-warehouse/orders/{id}',
+    etag: 'updatedAt',
+  },
+  // Catat ready (tanpa SO). Jalur statis SEBELUM yang berparameter.
+  'serialWarehouse.readyList': {
+    verb: 'GET',
+    path: '/serial-warehouse/ready',
+    query: {
+      buIds: 'list',
+      from: 'string',
+      to: 'string',
+      status: 'string',
+      cursor: 'string',
+      limit: 'number',
+    },
+  },
+  'serialWarehouse.ready': { verb: 'GET', path: '/serial-warehouse/ready/{id}' },
+  // Riwayat gabungan Penjualan + Ready Stock (per pengeluaran). `submit` memakai POST pada jalur yang sama.
+  'serialWarehouse.dispatchList': {
+    verb: 'GET',
+    path: '/serial-warehouse/dispatches',
+    query: {
+      query: 'string',
+      kind: 'string',
+      customerIds: 'list',
+      buIds: 'list',
+      from: 'string',
+      to: 'string',
+      status: 'string',
+      cursor: 'string',
+      limit: 'number',
+    },
+  },
+  'serialWarehouse.dispatchGet': { verb: 'GET', path: '/serial-warehouse/dispatches/{id}' },
   // Bukti foto QC Serial Number. `serialProofs.get` TANPA `etag` dan memakai `cache: 'revalidate'` (`private, no-cache`): isi pada
   // id yang sama berubah dari foto asli (draft/antre) menjadi hasil bercap (selesai), jadi ETag `id` atau `immutable`
   // akan menyajikan foto basi; tanpa validator, tiap tampilan mengunduh ulang berkasnya.
@@ -695,6 +814,7 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
   'dashboardShares.list': { verb: 'GET', path: '/dashboard-shares' },
   'dashboardShares.get': { verb: 'GET', path: '/dashboard-shares/{id}' },
   'dashboardShares.create': { verb: 'POST', path: '/dashboard-shares', status: 201 },
+  'dashboardShares.update': { verb: 'PUT', path: '/dashboard-shares/{id}' },
   'dashboardShares.revoke': { verb: 'POST', path: '/dashboard-shares/{id}/revoke' },
   // Laporan dashboard terjadwal (spek dashboard 7a.7): `save` = PUT utuh ber-CAS `updatedAt`, `create` = 201.
   'dashboardReports.list': { verb: 'GET', path: '/dashboard-reports' },

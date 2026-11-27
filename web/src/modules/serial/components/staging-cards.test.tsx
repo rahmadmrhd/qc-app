@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expect, test, vi } from 'vitest';
 import type { UploadEntry } from '@/components/file-dialog/use-background-uploads';
@@ -9,17 +9,19 @@ import { StagingCards } from './staging-cards';
 function renderCards(rows = [makeRow('AAA111'), makeRow('BBB222')], over = {}) {
   const onSelect = vi.fn();
   const onSelectAll = vi.fn();
+  const onSelectMany = vi.fn();
   const onOpenDetail = vi.fn();
   const view = render(
     <StagingCards
       rows={rows}
       onSelect={onSelect}
       onSelectAll={onSelectAll}
+      onSelectMany={onSelectMany}
       onOpenDetail={onOpenDetail}
       {...over}
     />,
   );
-  return { ...view, onSelect, onSelectAll, onOpenDetail };
+  return { ...view, onSelect, onSelectAll, onSelectMany, onOpenDetail };
 }
 
 test('merender kartu tanpa elemen table: serial, item dan BU, lokasi dan tanggal', () => {
@@ -59,16 +61,51 @@ test('tombol "Pilih baris draft" masuk mode pilih tanpa gestur (review I6)', asy
 });
 
 test('mode pilih (ada baris terpilih): kotak centang tampil dan Pilih semua di header mode pilih', async () => {
-  const { onSelectAll, onSelect } = renderCards([
+  const { onSelectMany, onSelect } = renderCards([
     makeRow('AAA111', { selected: true }),
     makeRow('BBB222'),
   ]);
   expect(screen.getByRole('checkbox', { name: 'Pilih baris AAA111' })).toBeChecked();
   await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih semua' }));
-  expect(onSelectAll).toHaveBeenCalledWith(true);
+  expect(onSelectMany).toHaveBeenCalledWith(['id-AAA111', 'id-BBB222'], true);
   // Ketukan kartu di mode pilih mengubah pilihan, bukan membuka dialog.
   await userEvent.click(screen.getByRole('button', { name: 'Ubah baris BBB222' }));
   expect(onSelect).toHaveBeenCalledWith('id-BBB222', true);
+});
+
+test('mode pilih: seret dari lajur kotak centang kartu ke-2 ke kartu ke-4 memilih tiga baris lewat onSelectMany', () => {
+  const rows = [
+    makeRow('A1', { selected: true }),
+    makeRow('B2'),
+    makeRow('C3'),
+    makeRow('D4'),
+    makeRow('E5'),
+  ];
+  const { onSelectMany } = renderCards(rows);
+  const items = screen.getAllByRole('listitem');
+  const original = document.elementFromPoint;
+  document.elementFromPoint = (_x: number, y: number) => items[Math.round(y / 100) - 1] ?? null;
+  try {
+    const lane = screen
+      .getByRole('checkbox', { name: 'Pilih baris B2' })
+      .closest('[data-select-lane]');
+    expect(lane).not.toBeNull();
+    fireEvent.pointerDown(lane as HTMLElement, {
+      clientX: 10,
+      clientY: 200,
+      button: 0,
+      pointerType: 'touch',
+    });
+    fireEvent.pointerMove(lane as HTMLElement, { clientX: 10, clientY: 400 });
+    fireEvent.pointerUp(lane as HTMLElement);
+  } finally {
+    document.elementFromPoint = original;
+  }
+  const added = onSelectMany.mock.calls
+    .filter(([, on]) => on === true)
+    .flatMap(([ids]) => ids as string[]);
+  expect(new Set(added)).toEqual(new Set(['id-B2', 'id-C3', 'id-D4']));
+  expect(added).not.toContain('id-E5');
 });
 
 test('semua baris terpilih: Pilih semua tercentang', () => {

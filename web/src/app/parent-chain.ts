@@ -72,6 +72,10 @@ export function parentChainFor(path: string, patterns: readonly string[]): strin
       chain.push(prefix);
     }
   }
+  // Detail SO: `/riwayat/so` sendiri bukan halaman (cocok dengan `$dispatchId`), jadi dibuang dari rantai.
+  if (path.startsWith('/serial/gudang/riwayat/so/')) {
+    return chain.filter((entry) => entry !== '/serial/gudang/riwayat/so');
+  }
   return chain;
 }
 

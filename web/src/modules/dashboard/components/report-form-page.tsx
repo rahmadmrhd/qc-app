@@ -6,10 +6,12 @@ import {
   type SaveDashboardReportInput,
   validateSchedule,
 } from '@shared/dashboard-report';
-import { isPostelRecipient } from '@shared/postel';
+import { type MailLists, mailListsCount, mailListsOf, sameMailLists } from '@shared/mail-lists';
+import { useQuery } from '@tanstack/react-query';
 import { type FormEvent, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { useUnsavedChanges } from '@/app/pwa/unsaved-changes';
+import { MailListsFields, type RecipientSuggestion } from '@/components/mail-lists-field';
 import { FormPage } from '@/components/page/form-page';
 import { FormTabs } from '@/components/page/form-tabs';
 import { Select } from '@/components/select';
@@ -26,9 +28,10 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 import { ApiError } from '@/lib/api/api-error';
 import { describeError } from '@/lib/api/describe-error';
+import { usersQueryOptions } from '@/modules/access/queries';
+import { can } from '@/modules/auth/permissions';
 import { useMe } from '@/modules/auth/use-me';
 import { isStaleSaveError, STALE_SAVE_MESSAGE } from '@/modules/sticker/lib/stale';
 import { visibleWidgetsByGroup } from '../lib/access';
@@ -43,7 +46,15 @@ const DEFAULT_SCHEDULE: ReportSchedule = { frequency: 'weekly', hour: 8, weekday
 const FREEZE_NOTE =
   'BU dan lokasi dibekukan saat laporan disimpan. Dikosongkan = semua yang Anda punya hak saat ini; BU atau lokasi yang ditambahkan kemudian tidak ikut sampai laporan disimpan ulang. Isi surel tetap dihitung dari hak Anda saat dikirim.';
 
-type FieldKey = 'name' | 'schedule' | 'period' | 'widgets' | 'recipients' | 'linkDays';
+type FieldKey =
+  | 'name'
+  | 'schedule'
+  | 'period'
+  | 'widgets'
+  | 'recipients'
+  | 'cc'
+  | 'bcc'
+  | 'linkDays';
 type FieldErrors = Partial<Record<FieldKey, string>>;
 const FIELD_KEYS: readonly FieldKey[] = [
   'name',
@@ -51,6 +62,8 @@ const FIELD_KEYS: readonly FieldKey[] = [
   'period',
   'widgets',
   'recipients',
+  'cc',
+  'bcc',
   'linkDays',
 ];
 const TAB_OF: Record<FieldKey, string> = {
@@ -59,6 +72,8 @@ const TAB_OF: Record<FieldKey, string> = {
   period: 'dasar',
   widgets: 'isi',
   recipients: 'penerima',
+  cc: 'penerima',
+  bcc: 'penerima',
   linkDays: 'tautan',
 };
 
@@ -73,7 +88,7 @@ interface FormState {
    * mengubah pilihan lokasi.
    */
   locationFiltered: boolean;
-  recipientsText: string;
+  lists: MailLists;
   linkDays: string;
 }
 
@@ -89,21 +104,9 @@ function initialState(report: DashboardReportDto | undefined): FormState {
       offers: report?.scope.offers ?? [],
     },
     locationFiltered: report?.scope.locationFiltered ?? false,
-    recipientsText: (report?.recipients ?? []).join('\n'),
+    lists: mailListsOf(report ?? {}),
     linkDays: String(report?.linkDays ?? REPORT_LIMITS.linkDaysDefault),
   };
-}
-
-/** Alamat dari kolom teks: dipisah baris, koma, titik koma, atau spasi; huruf kecil, duplikat dibuang. */
-export function parseRecipients(text: string): string[] {
-  return [
-    ...new Set(
-      text
-        .split(/[\s,;]+/)
-        .map((entry) => entry.trim().toLowerCase())
-        .filter((entry) => entry !== ''),
-    ),
-  ];
 }
 
 function validate(state: FormState): FieldErrors {
@@ -119,12 +122,13 @@ function validate(state: FormState): FieldErrors {
   else if (state.scope.widgets.length > REPORT_LIMITS.widgetsMax) {
     errors.widgets = `Maksimal ${REPORT_LIMITS.widgetsMax} widget per laporan`;
   }
-  const recipients = parseRecipients(state.recipientsText);
-  if (recipients.length === 0) errors.recipients = 'Isi minimal satu alamat surel';
-  else if (recipients.length > REPORT_LIMITS.recipientsMax) {
-    errors.recipients = `Maksimal ${REPORT_LIMITS.recipientsMax} alamat`;
-  } else if (recipients.some((entry) => !isPostelRecipient(entry))) {
-    errors.recipients = 'Ada alamat yang tidak sah; tulis satu alamat polos per baris';
+  if (mailListsCount(state.lists) === 0) {
+    errors.recipients = 'Isi minimal satu alamat surel (Kepada, CC, atau BCC)';
+  }
+  for (const key of ['recipients', 'cc', 'bcc'] as const) {
+    if (state.lists[key].length > REPORT_LIMITS.recipientsMax) {
+      errors[key] = `Maksimal ${REPORT_LIMITS.recipientsMax} alamat`;
+    }
   }
   const days = Number(state.linkDays);
   if (!Number.isInteger(days) || days < 1 || days > REPORT_LIMITS.linkDaysMax) {
@@ -158,7 +162,9 @@ export function toInput(
     locationFiltered: state.locationFiltered && locationIds.length > 0,
     widgets: state.scope.widgets,
     offers: state.scope.offers,
-    recipients: parseRecipients(state.recipientsText),
+    recipients: state.lists.recipients,
+    cc: state.lists.cc,
+    bcc: state.lists.bcc,
     linkDays: Number(state.linkDays),
   };
 }
@@ -182,10 +188,7 @@ function needsConfirmation(state: FormState, report: DashboardReportDto | undefi
   if (!report) return true;
   const widgetsNow = state.scope.widgets.map((widget) => widget.id).sort();
   const widgetsBefore = report.scope.widgets.map((widget) => widget.id).sort();
-  return (
-    !sameList(parseRecipients(state.recipientsText).sort(), [...report.recipients].sort()) ||
-    !sameList(widgetsNow, widgetsBefore)
-  );
+  return !sameMailLists(state.lists, mailListsOf(report)) || !sameList(widgetsNow, widgetsBefore);
 }
 
 export interface ReportFormPageProps {
@@ -203,6 +206,16 @@ export interface ReportFormPageProps {
  */
 export function ReportFormPage({ report, onDone, onCancel }: ReportFormPageProps) {
   const me = useMe();
+  // Saran penerima dari daftar user hanya bagi yang boleh melihat Akses; selainnya cukup mengetik email.
+  const canReadUsers = can(me, 'access', 'view');
+  const users = useQuery({ ...usersQueryOptions(), enabled: canReadUsers, retry: false });
+  const suggestions: RecipientSuggestion[] = (canReadUsers ? (users.data ?? []) : []).map(
+    (user) => ({
+      name: user.name,
+      email: user.email,
+      active: user.status === 'active',
+    }),
+  );
   const save = useSaveReport();
   const initial = useMemo(() => initialState(report), [report]);
   const [state, setState] = useState<FormState>(initial);
@@ -265,7 +278,6 @@ export function ReportFormPage({ report, onDone, onCancel }: ReportFormPageProps
     else void send();
   };
 
-  const recipients = parseRecipients(state.recipientsText);
   const tabs = [
     {
       id: 'dasar',
@@ -347,39 +359,26 @@ export function ReportFormPage({ report, onDone, onCancel }: ReportFormPageProps
     {
       id: 'penerima',
       label: 'Penerima',
-      hasError: Boolean(errors.recipients),
+      hasError: Boolean(errors.recipients || errors.cc || errors.bcc),
       content: (
         <div className="space-y-3">
           <Alert color="warning">
             <AlertDescription>
               Isi laporan dihitung dari hak Anda dan terkirim ke semua alamat ini, termasuk yang di
-              luar perusahaan. Penerima tidak saling melihat alamat. Tidak ada tautan berhenti
-              berlangganan: penerima menghubungi Anda untuk berhenti.
+              luar perusahaan. Alamat di Kepada dan CC saling terlihat oleh semua penerima; alamat
+              di BCC tersembunyi. Tidak ada tautan berhenti berlangganan: penerima menghubungi Anda
+              untuk berhenti.
             </AlertDescription>
           </Alert>
-          <div className="space-y-1.5">
-            <Label htmlFor="report-recipients" required>
-              Alamat surel penerima
-            </Label>
-            <Textarea
-              id="report-recipients"
-              rows={6}
-              value={state.recipientsText}
-              placeholder="satu alamat per baris"
-              aria-required="true"
-              aria-invalid={errors.recipients ? true : undefined}
-              onChange={(event) => patch({ recipientsText: event.target.value })}
-            />
-            <p className="text-xs text-muted-foreground">
-              {recipients.length} dari maksimal {REPORT_LIMITS.recipientsMax} alamat. Tulis satu
-              alamat polos per baris (tanpa nama); huruf besar disamakan dan alamat kembar dibuang.
-            </p>
-            {errors.recipients ? (
-              <p role="alert" className="text-sm text-destructive-text">
-                {errors.recipients}
-              </p>
-            ) : null}
-          </div>
+          <MailListsFields
+            idPrefix="report"
+            value={state.lists}
+            onChange={(lists) => patch({ lists })}
+            suggestions={suggestions}
+            max={REPORT_LIMITS.recipientsMax}
+            errors={{ recipients: errors.recipients, cc: errors.cc, bcc: errors.bcc }}
+            toHint="Isi minimal satu alamat di salah satu daftar."
+          />
         </div>
       ),
     },
@@ -431,7 +430,7 @@ export function ReportFormPage({ report, onDone, onCancel }: ReportFormPageProps
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              Simpan laporan dan kirim ke {recipients.length} alamat?
+              Simpan laporan dan kirim ke {mailListsCount(state.lists)} alamat?
             </AlertDialogTitle>
             <AlertDialogDescription>
               Surel laporan berisi data dari hak Anda dan akan dikirim ke semua alamat penerima,

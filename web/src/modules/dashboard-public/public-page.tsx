@@ -7,11 +7,13 @@ import {
 import type { PublicDashboardDto } from '@shared/dashboard-public';
 import { wibDateIso } from '@shared/postel';
 import { useQuery } from '@tanstack/react-query';
-import { type ReactNode, useEffect, useRef } from 'react';
+import { type ReactNode, useEffect, useRef, useState } from 'react';
+import { LINE_TAB_LIST_CLASS, LINE_TAB_TRIGGER_CLASS } from '@/components/page/tab-styles';
 import { Button } from '@/components/ui/button';
-import { spanClass } from '../dashboard/components/group-section';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { type PublicWidgetResult, WidgetCard } from '../dashboard/components/widgets/widget-card';
 import { formatDayLabel, formatRangeLabel } from '../dashboard/lib/format';
+import { cellClass, ROW_CLASS, rowsOf } from '../dashboard/lib/layout';
 import type { DashboardSearch } from '../dashboard/lib/search';
 import { PublicDashboardError, recordPublicVisit } from './public-api';
 import { PublicGlobalFilters, PublicGroupFilters, viewerFromSearch } from './public-filters';
@@ -45,7 +47,7 @@ function usePublicMeta(): void {
 
 function Shell({ children }: { children: ReactNode }) {
   return (
-    <div className="min-h-svh bg-muted/40 p-4">
+    <div className="min-h-svh bg-background p-4">
       <main className="mx-auto max-w-7xl space-y-5 py-4">{children}</main>
     </div>
   );
@@ -182,6 +184,7 @@ export function PublicDashboardPage({ token, search, onSearchChange }: PublicDas
   usePublicMeta();
   const viewer = viewerFromSearch(search);
   const query = useQuery(publicDashboardQuery(token, viewer));
+  const [tab, setTab] = useState<DashboardGroupId | null>(null);
   // Kunjungan = halaman dibuka: dicatat SEKALI per pemasangan dan token, sesudah data berhasil dimuat (token sah). Ref
   // bertahan melewati pemasangan ganda StrictMode; pemasangan baru (halaman dibuka ulang) atau token baru mencatat lagi.
   // Penyegaran, ganti filter, dan Coba lagi tidak menyentuh ini; galatnya ditelan di `recordPublicVisit`.
@@ -236,32 +239,43 @@ export function PublicDashboardPage({ token, search, onSearchChange }: PublicDas
     <Shell>
       <Header dto={dto} />
       <PublicGlobalFilters dto={dto} search={search} onChange={onSearchChange} />
-      {groups.map(({ group, widgets }) => (
-        <section key={group} aria-labelledby={`public-group-${group}`} className="space-y-3">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <h2 id={`public-group-${group}`} className="text-lg font-semibold">
+      <Tabs
+        value={(groups.find((entry) => entry.group === tab) ?? groups[0])?.group}
+        onValueChange={(value) => setTab(DASHBOARD_GROUPS.find((group) => group === value) ?? null)}
+        className="gap-4"
+      >
+        <TabsList variant="line" className={LINE_TAB_LIST_CLASS}>
+          {groups.map(({ group }) => (
+            <TabsTrigger key={group} value={group} className={LINE_TAB_TRIGGER_CLASS}>
               {GROUP_LABELS[group]}
-            </h2>
+            </TabsTrigger>
+          ))}
+        </TabsList>
+        {groups.map(({ group, widgets }) => (
+          <TabsContent key={group} value={group} className="space-y-3">
             <PublicGroupFilters group={group} dto={dto} search={search} onChange={onSearchChange} />
-          </div>
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-12">
-            {widgets.map((widget) => {
-              const meta = widgetMeta(widget.id);
-              return (
-                <div key={widget.id} className={`min-w-0 ${spanClass(meta)}`}>
-                  <WidgetCard
-                    meta={meta}
-                    result={resultOf(widget)}
-                    loading={false}
-                    filterState={filterState}
-                    onRetry={() => void query.refetch()}
-                  />
-                </div>
-              );
-            })}
-          </div>
-        </section>
-      ))}
+            {rowsOf(widgets.map((widget) => widgetMeta(widget.id))).map((row) => (
+              <div key={row[0]?.id} className={ROW_CLASS}>
+                {row.map((meta) => {
+                  const widget = widgets.find((item) => item.id === meta.id);
+                  if (!widget) return null;
+                  return (
+                    <div key={meta.id} className={`min-w-0 ${cellClass(meta)}`}>
+                      <WidgetCard
+                        meta={meta}
+                        result={resultOf(widget)}
+                        loading={false}
+                        filterState={filterState}
+                        onRetry={() => void query.refetch()}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
+          </TabsContent>
+        ))}
+      </Tabs>
     </Shell>
   );
 }

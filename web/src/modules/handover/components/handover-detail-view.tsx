@@ -44,6 +44,8 @@ export interface HandoverDetailViewProps {
   onRestore?: () => void;
   onMarkDone: () => void;
   onReopen: () => void;
+  /** Buka form Keluar Gudang dari task ini; hanya diberikan bagi pengguna `serialwh: edit` (aksi tersembunyi tanpa ini). */
+  onWarehouse?: () => void;
   onCheck: (item: { index: number; text: string }, checked: boolean) => void;
   onComment: (input: {
     quote: string;
@@ -78,6 +80,7 @@ export function HandoverDetailView({
   onRestore,
   onMarkDone,
   onReopen,
+  onWarehouse,
   onCheck,
   onComment,
 }: HandoverDetailViewProps) {
@@ -201,6 +204,12 @@ export function HandoverDetailView({
             primary: true,
             hidden: !actions.edit || deleted,
             onSelect: onEdit,
+          },
+          {
+            id: 'warehouse',
+            action: 'warehouse',
+            hidden: deleted || onWarehouse === undefined,
+            onSelect: () => onWarehouse?.(),
           },
           {
             id: 'abort',

@@ -45,7 +45,12 @@ function meWith(): MeDto {
     code,
     name: code,
     status: 'active' as const,
-    permissions: { item: 'none' as const, serial: 'edit' as const, serialservice: 'none' as const },
+    permissions: {
+      item: 'none' as const,
+      serial: 'edit' as const,
+      serialservice: 'none' as const,
+      serialwh: 'none' as const,
+    },
   });
   return {
     email: 'a@gmail.com',
@@ -64,6 +69,7 @@ function meWith(): MeDto {
       stickerstock: 'none',
       serial: 'edit',
       serialservice: 'none',
+      serialwh: 'none',
       countrylock: 'none',
       dashboard: 'none',
     },
@@ -78,14 +84,16 @@ const MOVED: SerialDto = {
     {
       buId: 'b1',
       buCode: 'BU1',
+      buName: 'BU1',
       firstAt: '2026-11-01T00:00:00.000Z',
       leftAt: '2026-11-05T00:00:00.000Z',
     },
-    { buId: 'b2', buCode: 'BU2', firstAt: '2026-11-05T00:00:00.000Z', leftAt: '' },
+    { buId: 'b2', buCode: 'BU2', buName: 'BU2', firstAt: '2026-11-05T00:00:00.000Z', leftAt: '' },
   ],
   id: 's1',
   buId: 'b2',
   buCode: 'BU2',
+  buName: 'BU2',
   serial: 'ABC123',
   itemId: 'i1',
   itemLabel: 'Cisco C9200',
@@ -168,13 +176,13 @@ beforeEach(() => {
 
 test('Cek ulang lolos: field BU bawaan BU saat ini; BU yang pernah ditinggalkan tidak ditawarkan', async () => {
   renderDialog(MOVED);
-  await expectLinkValue(screen, 'Business Unit', 'BU2');
-  expect(await linkOptionNames(screen, 'Business Unit')).toEqual(['BU2', 'BU3']);
+  await expectLinkValue(screen, 'Business Unit', 'BU2 - BU2');
+  expect(await linkOptionNames(screen, 'Business Unit')).toEqual(['BU2 - BU2', 'BU3 - BU3']);
 });
 
 test('tanpa mengganti BU, buId tidak dikirim (kosong = BU saat ini)', async () => {
   renderDialog(MOVED);
-  await expectLinkValue(screen, 'Business Unit', 'BU2');
+  await expectLinkValue(screen, 'Business Unit', 'BU2 - BU2');
   await userEvent.click(screen.getByRole('button', { name: 'Simpan cek ulang' }));
   await waitFor(() => expect(lastAct()).toBeDefined());
   expect(lastAct()).toMatchObject({ action: 'recheck', result: 'pass' });
@@ -183,7 +191,7 @@ test('tanpa mengganti BU, buId tidak dikirim (kosong = BU saat ini)', async () =
 
 test('memilih BU lain pada hasil lolos mengirim buId', async () => {
   renderDialog(MOVED);
-  await pickLink(screen, 'Business Unit', 'BU3');
+  await pickLink(screen, 'Business Unit', 'BU3 - BU3');
   await userEvent.click(screen.getByRole('button', { name: 'Simpan cek ulang' }));
   await waitFor(() => expect(lastAct()).toBeDefined());
   expect(lastAct()).toMatchObject({ action: 'recheck', result: 'pass', buId: 'b3' });
@@ -191,7 +199,7 @@ test('memilih BU lain pada hasil lolos mengirim buId', async () => {
 
 test('hasil tidak lolos menyembunyikan field BU dan tidak mengirim buId', async () => {
   renderDialog(MOVED);
-  await pickLink(screen, 'Business Unit', 'BU3');
+  await pickLink(screen, 'Business Unit', 'BU3 - BU3');
   await pickSelect(screen, 'Hasil cek ulang', 'Tidak lolos');
   expect(screen.queryByRole('combobox', { name: 'Business Unit' })).toBeNull();
   await userEvent.type(screen.getByRole('textbox', { name: 'Catatan' }), 'Gagal lagi');
@@ -203,7 +211,7 @@ test('hasil tidak lolos menyembunyikan field BU dan tidak mengirim buId', async 
 
 test('Cek ulang pada Dilaporkan (recheck_pass) juga dapat memindahkan BU; recheck_fail tidak', async () => {
   const first = renderDialog(REPORTED);
-  await pickLink(screen, 'Business Unit', 'BU3');
+  await pickLink(screen, 'Business Unit', 'BU3 - BU3');
   await userEvent.click(screen.getByRole('button', { name: 'Simpan cek ulang' }));
   await waitFor(() => expect(lastAct()).toBeDefined());
   expect(lastAct()).toMatchObject({ action: 'recheck_pass', buId: 'b3' });
@@ -221,7 +229,7 @@ test('Cek ulang pada Dilaporkan (recheck_pass) juga dapat memindahkan BU; rechec
 
 test('stiker dimuat dengan serialId serial yang dicek ulang (item nonaktif/tak terlihat tidak menghalangi)', async () => {
   renderDialog(MOVED);
-  await expectLinkValue(screen, 'Business Unit', 'BU2');
+  await expectLinkValue(screen, 'Business Unit', 'BU2 - BU2');
   await waitFor(() =>
     expect(apiMock).toHaveBeenCalledWith('serials.stickerOptions', {
       itemId: 'i1',
@@ -230,7 +238,7 @@ test('stiker dimuat dengan serialId serial yang dicek ulang (item nonaktif/tak t
     }),
   );
   // BU tujuan diganti: daftar stiker mengikuti BU tujuan, tetap dengan serialId yang sama.
-  await pickLink(screen, 'Business Unit', 'BU3');
+  await pickLink(screen, 'Business Unit', 'BU3 - BU3');
   await waitFor(() =>
     expect(apiMock).toHaveBeenCalledWith('serials.stickerOptions', {
       itemId: 'i1',

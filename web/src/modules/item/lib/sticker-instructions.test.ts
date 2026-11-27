@@ -114,10 +114,17 @@ test('markLabel: stiker aktif memakai namanya; nonaktif diberi tanda', () => {
   );
 });
 
-test('markLabel: jenis diawali "Jenis" dan nonaktif diberi tanda', () => {
-  const types = [type({}), type({ id: 't2', name: 'Garansi', status: 'inactive' })];
-  expect(markLabel({ kind: 'type', typeId: 't1' }, [], types)).toBe('Jenis Postel');
-  expect(markLabel({ kind: 'type', typeId: 't2' }, [], types)).toBe('Jenis Garansi — nonaktif');
+test('markLabel: jenis memakai keterangan aturan dan nonaktif diberi tanda', () => {
+  const types = [
+    type({ rule: 'bu' }),
+    type({ id: 't2', name: 'Garansi', status: 'inactive', rule: 'group' }),
+    type({ id: 't3', name: 'Bebas', rule: 'none' }),
+  ];
+  expect(markLabel({ kind: 'type', typeId: 't1' }, [], types)).toBe('Postel (Berdasarkan BU)');
+  expect(markLabel({ kind: 'type', typeId: 't2' }, [], types)).toBe(
+    'Garansi (Berdasarkan Item) — nonaktif',
+  );
+  expect(markLabel({ kind: 'type', typeId: 't3' }, [], types)).toBe('Bebas');
 });
 
 test('markLabel: id kosong menghasilkan teks kosong; id tak dikenal diberi petunjuk', () => {

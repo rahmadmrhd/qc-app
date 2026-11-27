@@ -69,6 +69,10 @@ function over(fg: Rgb, bg: Rgb, alpha: number): Rgb {
 const MODES = { light: block(':root {'), dark: block('.dark {') } as const;
 const COLORS = ['primary', 'secondary', 'success', 'warning', 'info', 'destructive'] as const;
 const AA = 4.5;
+/** WCAG 1.4.11: komponen grafis (irisan, garis, batang) minimal 3:1 terhadap latar. */
+const GRAPHIC = 3;
+/** Komponen nonaktif dikecualikan dari WCAG 1.4.3, tetapi teksnya tetap harus terbaca (>= 3:1). */
+const DISABLED_MIN = 3;
 /** Tint badge soft (15%) dan alert/banner (10%), sama dengan `variant-style.ts` dan `alert.tsx`. */
 const SOFT_ALPHA = 0.15;
 const ALERT_ALPHA = 0.1;
@@ -88,7 +92,19 @@ describe('kontras WCAG AA token warna', () => {
         ).toBeGreaterThanOrEqual(AA);
       });
 
+      it(`${mode}: --${color}-disabled-foreground di atas --${color}-disabled >= ${DISABLED_MIN}`, () => {
+        expect(
+          contrast(token(vars, `${color}-disabled-foreground`), token(vars, `${color}-disabled`)),
+        ).toBeGreaterThanOrEqual(DISABLED_MIN);
+      });
+
       for (const [surfaceName, surface] of Object.entries(surfaces)) {
+        // Varian outline/ghost/link nonaktif memakai `--X-disabled-foreground` langsung di atas latar halaman/kartu.
+        it(`${mode}: --${color}-disabled-foreground di atas ${surfaceName} >= ${DISABLED_MIN}`, () => {
+          expect(
+            contrast(token(vars, `${color}-disabled-foreground`), surface),
+          ).toBeGreaterThanOrEqual(DISABLED_MIN);
+        });
         const text = textOf(vars, color);
         it(`${mode}: teks ${color} di atas ${surfaceName} >= ${AA}`, () => {
           expect(contrast(text, surface)).toBeGreaterThanOrEqual(AA);
@@ -115,10 +131,46 @@ describe('kontras WCAG AA token warna', () => {
       expect(contrast(mutedForeground, token(vars, 'card'))).toBeGreaterThanOrEqual(AA);
     });
 
+    it(`${mode}: warna grafik --chart-1..8 berwarna (bukan netral) dan >= ${GRAPHIC} di atas --card`, () => {
+      for (let n = 1; n <= 8; n++) {
+        const color = token(vars, `chart-${n}`);
+        // Keputusan pemilik 2026-11-25: grafik tidak boleh memakai warna netral (abu-abu, hitam, putih).
+        expect(
+          Math.max(...color) - Math.min(...color),
+          `--chart-${n} netral`,
+        ).toBeGreaterThanOrEqual(60);
+        expect(contrast(color, token(vars, 'card')), `--chart-${n}`).toBeGreaterThanOrEqual(
+          GRAPHIC,
+        );
+      }
+    });
+
     it(`${mode}: --foreground di atas --muted (badge soft primary) >= ${AA}`, () => {
       expect(contrast(token(vars, 'foreground'), token(vars, 'muted'))).toBeGreaterThanOrEqual(AA);
     });
   }
+
+  it('secondary tidak seperti nonaktif: lebih gelap dari muted-foreground, berkroma (slate)', () => {
+    for (const vars of Object.values(MODES)) {
+      const sec = token(vars, 'secondary');
+      expect(Math.max(...sec) - Math.min(...sec)).toBeGreaterThanOrEqual(20);
+      expect(token(vars, 'secondary-disabled')).not.toEqual(sec);
+    }
+  });
+
+  it('teks secondary enabled jauh lebih kontras daripada teks nonaktifnya (tak terkesan nonaktif)', () => {
+    // Soft/outline/ghost secondary memakai `secondary-text` di atas latar halaman; versi nonaktifnya memakai
+    // `secondary-disabled-foreground`. Selisih kontras >= 3 agar keduanya jelas berbeda (keputusan pemilik 2026-11-25).
+    for (const [name, vars] of Object.entries(MODES)) {
+      const background = token(vars, 'background');
+      const enabled = contrast(token(vars, 'secondary-text'), background);
+      const disabled = contrast(token(vars, 'secondary-disabled-foreground'), background);
+      expect(
+        enabled - disabled,
+        `${name}: ${enabled.toFixed(1)} vs ${disabled.toFixed(1)}`,
+      ).toBeGreaterThanOrEqual(3);
+    }
+  });
 
   it('konversi oklch sesuai nilai acuan (putih, hitam, abu)', () => {
     expect(oklchToRgb(1, 0, 0)).toEqual([255, 255, 255]);

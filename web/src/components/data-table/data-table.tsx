@@ -13,6 +13,7 @@ import { useIsDesktop } from '@/hooks/use-is-desktop';
 import { useViewportFit } from '@/lib/viewport-fit';
 import { DataCards } from './data-cards';
 import { type RowAction, RowActions } from './row-actions';
+import { useRangeSelect } from './use-range-select';
 import { type RowSelection, usePruneSelection } from './use-row-selection';
 
 /**
@@ -69,6 +70,8 @@ interface DataTableBase<T> {
   rowTo?: (row: T) => RowTarget | null;
   /** Aksi klik badan kartu selain navigasi (mis. buka dialog); `rowTo` menang bila keduanya ada. */
   onOpen?: (row: T) => void;
+  /** Baris yang disorot sebentar (mis. hasil scan terakhir): latar hijau lembut; bukan pilihan. */
+  rowHighlighted?: (row: T) => boolean;
   /**
    * Desktop: `viewport` = pembungkus gulir dua sumbu setinggi sisa layar (header tetap menempel, scrollbar horizontal
    * selalu terlihat di dasar layar); `content` = hanya gulir horizontal tanpa batas tinggi (tabel yang tertanam di View
@@ -99,7 +102,7 @@ const HEAD_STICKY = 'sticky top-0 z-20 bg-muted';
 const CHECK_COL = 'w-10 min-w-10 max-w-10 px-0';
 /** Latar sel yang menempel harus opak agar kolom lain tak tembus; keadaan hover/terpilih dikomposit ke `--background`. */
 const STICKY_CELL_BG =
-  'bg-background group-hover/row:bg-[color-mix(in_oklab,var(--muted)_50%,var(--background))] group-has-aria-expanded/row:bg-[color-mix(in_oklab,var(--muted)_50%,var(--background))] group-data-[state=selected]/row:bg-[color-mix(in_oklab,var(--info-text)_8%,var(--background))]';
+  'bg-background group-hover/row:bg-[color-mix(in_oklab,var(--muted)_50%,var(--background))] group-has-aria-expanded/row:bg-[color-mix(in_oklab,var(--muted)_50%,var(--background))] group-data-[state=selected]/row:bg-[color-mix(in_oklab,var(--info-text)_8%,var(--background))] group-data-[highlight]/row:bg-[color-mix(in_oklab,var(--success-text)_15%,var(--background))]';
 /**
  * Garis dan bayangan tepi kolom menempel terakhir; bayangan hanya tampil saat tabel tergulir ke kanan. Warna bayangan
  * hitam (bukan `foreground`, yang terang di mode gelap sehingga tampak seperti pita cahaya), lebih pekat di mode gelap.
@@ -155,6 +158,7 @@ function DataTableImpl<T>({
   rowSelectable,
   rowTo,
   onOpen,
+  rowHighlighted,
   fit: fitProp,
 }: DataTableProps<T>) {
   const desktop = useIsDesktop();
@@ -196,6 +200,15 @@ function DataTableImpl<T>({
   const ids = rows.map(rowKey);
   const selectableIds = rows.filter(isSelectable).map(rowKey);
   usePruneSelection(selection, ids, !isLoading);
+  // Shift-klik memilih rentang baris yang dapat dipilih (5.13); baris tanpa checkbox tak ikut.
+  const { checkboxProps } = useRangeSelect({
+    ids: selectableIds,
+    isSelected: (id) => selection?.selected.has(id) ?? false,
+    apply: (rangeIds, on) => {
+      selection?.setAll(rangeIds, on);
+      return undefined;
+    },
+  });
 
   const selectedCount = selection
     ? selectableIds.filter((id) => selection.selected.has(id)).length
@@ -276,8 +289,9 @@ function DataTableImpl<T>({
                 <TableRow
                   key={id}
                   data-state={isSelected ? 'selected' : undefined}
+                  data-highlight={rowHighlighted?.(row) ? '' : undefined}
                   className={cn(
-                    'group/row data-[state=selected]:bg-info-text/8',
+                    'group/row transition-colors data-[highlight]:bg-success-text/15 data-[state=selected]:bg-info-text/8',
                     openRow && 'cursor-pointer',
                   )}
                   {...(openRow
@@ -304,6 +318,7 @@ function DataTableImpl<T>({
                             aria-label={`Pilih ${nameOf(row)}`}
                             checked={isSelected}
                             onCheckedChange={() => selection.toggle(id)}
+                            {...checkboxProps(id)}
                           />
                         </div>
                       ) : null}
@@ -373,6 +388,7 @@ function DataTableImpl<T>({
             actions={actions}
             isLoading={isLoading}
             openOf={openOf}
+            isHighlighted={rowHighlighted}
           />
         )}
       </ListState>

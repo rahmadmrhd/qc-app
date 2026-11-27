@@ -34,6 +34,22 @@ const SERIES_COLORS = ['#1d4ed8', '#b45309', '#047857', '#b91c1c', '#6d28d9', '#
 const OTHER_COLOR = '#4b5563';
 
 const FONT = 'font-family:Arial,Helvetica,sans-serif';
+
+/**
+ * Aturan responsif untuk layar sempit (Gmail, Apple Mail, dan sebagian besar aplikasi ponsel mendukung `@media`;
+ * klien yang tidak mendukung tetap memakai tata letak inline berlebar 600 px yang sudah terbaca). Tidak ada URL atau
+ * font eksternal di sini.
+ */
+const MOBILE_CSS =
+  '@media only screen and (max-width:480px){' +
+  '.outer{padding:8px 0 !important}' +
+  '.px{padding-left:16px !important;padding-right:16px !important}' +
+  '.pad-cards{padding-left:8px !important;padding-right:8px !important}' +
+  '.ncell{display:block !important;width:100% !important;box-sizing:border-box}' +
+  '.vals{display:none !important}' +
+  '.cta a{display:block !important;padding:14px 16px !important;font-size:16px !important}' +
+  '.title{font-size:18px !important;line-height:24px !important}' +
+  '}';
 /** Sel yang hanya berisi warna (tanpa tinggi baris dari teks). */
 const BLOCK = 'font-size:0;line-height:0';
 
@@ -125,6 +141,11 @@ export function formatNumber(value: number): string {
 // ---------------------------------------------------------------------------------------------------------------
 // Delta periode lalu
 
+/** Selisih bertanda: `+14`, `-2.380`. */
+function signedDiff(diff: number): string {
+  return `${diff > 0 ? '+' : '-'}${formatNumber(Math.abs(diff))}`;
+}
+
 interface Delta {
   arrow: string;
   text: string;
@@ -141,10 +162,10 @@ function deltaOf(meta: WidgetMeta, data: NumberData): Delta | null {
   const word = up ? 'Naik' : 'Turun';
   let text: string;
   if (previous === 0) {
-    text = `${word} dari periode lalu (0)`;
+    text = `${word} ${signedDiff(value - previous)} dari periode lalu (0)`;
   } else {
     const percent = Math.round((Math.abs(value - previous) / Math.abs(previous)) * 100);
-    text = `${word} ${percent === 0 ? '<1' : percent}% dari periode lalu`;
+    text = `${word} ${percent === 0 ? '<1' : percent}% (${signedDiff(value - previous)}) dari periode lalu (${formatNumber(previous)})`;
   }
   // Warna menurut baik/buruk widget (K7): searah `deltaGood` = hijau, berlawanan = merah; arah nyata tetap tertulis.
   const good = meta.deltaGood;
@@ -177,12 +198,15 @@ function numberCell(item: EmailWidgetInput, data: NumberData): string {
   const deltaRow = delta
     ? `<tr><td style="${FONT};font-size:12px;line-height:16px;color:${delta.color};padding-top:2px">${delta.arrow} ${esc(delta.text)}</td></tr>`
     : '';
-  return `<td width="33%" valign="top" style="padding:4px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="#ffffff" style="border:1px solid ${BORDER};border-radius:8px"><tr><td style="padding:12px 12px 2px;${FONT};font-size:12px;line-height:16px;color:${MUTED}">${esc(item.meta.title)}</td></tr><tr><td style="padding:0 12px;${FONT};font-size:28px;line-height:34px;font-weight:bold;color:${TEXT}">${esc(formatNumber(data.value))}</td></tr>${deltaRow}<tr><td height="10" style="${BLOCK}">&nbsp;</td></tr></table></td>`;
+  const noteRow = data.note
+    ? `<tr><td style="${FONT};font-size:12px;line-height:16px;color:${MUTED};padding-top:2px">${esc(data.note)}</td></tr>`
+    : '';
+  return `<td class="ncell" width="50%" valign="top" style="padding:4px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="#ffffff" style="border:1px solid ${BORDER};border-radius:8px"><tr><td style="padding:12px 12px 2px;${FONT};font-size:13px;line-height:18px;color:${MUTED}">${esc(item.meta.title)}</td></tr><tr><td style="padding:0 12px;${FONT};font-size:30px;line-height:36px;font-weight:bold;color:${TEXT}">${esc(formatNumber(data.value))}</td></tr>${deltaRow}${noteRow}<tr><td height="10" style="${BLOCK}">&nbsp;</td></tr></table></td>`;
 }
 
 function numberRow(items: { item: EmailWidgetInput; data: NumberData }[]): string {
   const cells = items.map(({ item, data }) => numberCell(item, data));
-  while (cells.length < 3) cells.push('<td width="33%" style="padding:4px">&nbsp;</td>');
+  while (cells.length < 2) cells.push('<td class="ncell" width="50%" style="padding:4px"></td>');
   return `<tr><td style="padding:4px 0"><table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>${cells.join('')}</tr></table></td></tr>`;
 }
 
@@ -271,7 +295,7 @@ function horizontalBars(data: PartsData): string {
   const rows = slices
     .map((slice) => {
       const width = Math.max(1, Math.round((slice.value / max) * 100));
-      return `<tr><td width="34%" style="padding:3px 8px 3px 0;${FONT};font-size:12px;line-height:16px;color:${TEXT}">${esc(slice.label)}</td><td width="54%" style="padding:3px 0"><table role="presentation" width="${width}%" cellpadding="0" cellspacing="0"><tr><td bgcolor="${PRIMARY}" height="12" style="height:12px;${BLOCK}">&nbsp;</td></tr></table></td><td align="right" style="padding:3px 0 3px 6px;${FONT};font-size:12px;line-height:16px;font-weight:bold;color:${TEXT}">${esc(formatNumber(slice.value))}</td></tr>`;
+      return `<tr><td style="padding:6px 8px 2px 0;${FONT};font-size:13px;line-height:18px;color:${TEXT}">${esc(slice.label)}</td><td align="right" style="padding:6px 0 2px 8px;${FONT};font-size:13px;line-height:18px;font-weight:bold;color:${TEXT}">${esc(formatNumber(slice.value))}</td></tr><tr><td colspan="2" style="padding:0 0 4px"><table role="presentation" width="${width}%" cellpadding="0" cellspacing="0"><tr><td bgcolor="${PRIMARY}" height="10" style="height:10px;${BLOCK}">&nbsp;</td></tr></table></td></tr>`;
     })
     .join('');
   return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0">${rows}</table>`;
@@ -349,7 +373,7 @@ function seriesColumns(data: SeriesData, tier: Tier): string {
       return `<td align="center" style="${FONT};font-size:10px;line-height:13px;color:${MUTED}">${shown ? esc(point.label, 12) : ''}</td>`;
     })
     .join('');
-  const chart = `<table role="presentation" width="100%" cellpadding="0" cellspacing="0">${showValues ? `<tr>${valueCells}</tr>` : ''}<tr>${barCells}</tr><tr>${labelCells}</tr></table>`;
+  const chart = `<table role="presentation" width="100%" cellpadding="0" cellspacing="0">${showValues ? `<tr class="vals">${valueCells}</tr>` : ''}<tr>${barCells}</tr><tr>${labelCells}</tr></table>`;
 
   const legend = grouped
     ? `<table role="presentation" cellpadding="0" cellspacing="0" style="margin-top:6px"><tr>${series
@@ -372,10 +396,27 @@ function seriesColumns(data: SeriesData, tier: Tier): string {
 function listTable(data: EmailWidgetData & { kind: 'list' }, tier: Tier): string {
   if (data.rows.length === 0) return emptyNote('Tidak ada data');
   const rows = data.rows.slice(0, tier.listRows);
+  const note = `<div style="${FONT};font-size:12px;line-height:16px;color:${MUTED};padding-top:4px">Menampilkan ${rows.length} dari ${esc(formatNumber(Math.max(data.total, data.rows.length)))}</div>`;
+  const [first, ...others] = data.columns;
+  // Lebih dari dua kolom terlalu sempit di ponsel: tiap baris menjadi blok (kolom pertama = judul, sisanya "Label: nilai").
+  if (first && others.length > 1) {
+    const blocks = rows
+      .map((row) => {
+        const details = others
+          .map(
+            (column) =>
+              `<div style="${FONT};font-size:13px;line-height:19px;color:${TEXT}"><span style="color:${MUTED}">${esc(column.label, 30)}:</span> ${esc(row[column.key] ?? '')}</div>`,
+          )
+          .join('');
+        return `<tr><td style="padding:8px 0;border-bottom:1px solid ${BORDER}"><div style="${FONT};font-size:14px;line-height:20px;font-weight:bold;color:${TEXT}">${esc(row[first.key] ?? '')}</div>${details}</td></tr>`;
+      })
+      .join('');
+    return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0">${blocks}</table>${note}`;
+  }
   const head = data.columns
     .map(
       (column) =>
-        `<td style="padding:4px 6px 4px 0;border-bottom:1px solid ${BORDER};${FONT};font-size:11px;line-height:14px;color:${MUTED}">${esc(column.label, 30)}</td>`,
+        `<td style="padding:4px 6px 4px 0;border-bottom:1px solid ${BORDER};${FONT};font-size:12px;line-height:16px;color:${MUTED}">${esc(column.label, 30)}</td>`,
     )
     .join('');
   const body = rows
@@ -384,13 +425,12 @@ function listTable(data: EmailWidgetData & { kind: 'list' }, tier: Tier): string
         `<tr>${data.columns
           .map(
             (column) =>
-              `<td valign="top" style="padding:5px 6px 5px 0;border-bottom:1px solid ${BORDER};${FONT};font-size:12px;line-height:16px;color:${TEXT}">${esc(row[column.key] ?? '')}</td>`,
+              `<td valign="top" style="padding:6px 6px 6px 0;border-bottom:1px solid ${BORDER};${FONT};font-size:13px;line-height:18px;color:${TEXT}">${esc(row[column.key] ?? '')}</td>`,
           )
           .join('')}</tr>`,
     )
     .join('');
-  const total = Math.max(data.total, data.rows.length);
-  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>${head}</tr>${body}</table><div style="${FONT};font-size:11px;line-height:15px;color:${MUTED};padding-top:4px">Menampilkan ${rows.length} dari ${esc(formatNumber(total))}</div>`;
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>${head}</tr>${body}</table>${note}`;
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -421,8 +461,8 @@ function assembleHtml(input: EmailReportInput, tier: Tier): string {
   const blocks: string[] = [];
   let run: { item: EmailWidgetInput; data: NumberData }[] = [];
   const flush = () => {
-    for (let index = 0; index < run.length; index += 3)
-      blocks.push(numberRow(run.slice(index, index + 3)));
+    for (let index = 0; index < run.length; index += 2)
+      blocks.push(numberRow(run.slice(index, index + 2)));
     run = [];
   };
   for (const item of input.widgets) {
@@ -443,11 +483,11 @@ function assembleHtml(input: EmailReportInput, tier: Tier): string {
   const trimmedNote = input.trimmed
     ? `<div style="${FONT};font-size:12px;line-height:16px;font-weight:bold;color:${BAD};padding-bottom:4px">${esc(TRIMMED_NOTE)}</div>`
     : '';
-  const header = `<tr><td style="padding:20px 24px 12px" bgcolor="#ffffff"><table role="presentation" width="100%" cellpadding="0" cellspacing="0">${testNotice}</table>${trimmedNote}<div style="${FONT};font-size:20px;line-height:26px;font-weight:bold;color:${TEXT}">${name}</div><div style="${FONT};font-size:13px;line-height:19px;color:${MUTED};padding-top:6px">Periode: ${esc(input.periodLabel)}<br>Cakupan: ${esc(input.scopeLabel, 200)}<br>Jadwal: ${esc(input.scheduleLabel)}</div></td></tr>`;
-  const cta = `<tr><td align="center" style="padding:16px 24px 8px" bgcolor="#ffffff"><table role="presentation" cellpadding="0" cellspacing="0"><tr><td bgcolor="${PRIMARY}" style="border-radius:6px"><a href="${esc(input.ctaUrl, 2000)}" style="display:inline-block;padding:12px 24px;${FONT};font-size:15px;font-weight:bold;color:#ffffff;text-decoration:none">Buka dashboard lengkap</a></td></tr></table><div style="${FONT};font-size:12px;line-height:17px;color:${MUTED};padding-top:8px">${esc(input.linkExpiresLabel)}. Tautan hanya menampilkan periode dan cakupan laporan ini.</div></td></tr>`;
-  const footer = `<tr><td style="padding:12px 24px 20px" bgcolor="#ffffff"><div style="${FONT};font-size:12px;line-height:17px;color:${MUTED}">Laporan &ldquo;${name}&rdquo; dikirim atas nama ${esc(input.ownerName)}. Hubungi pemilik untuk berhenti atau mengubah isinya.</div></td></tr>`;
+  const header = `<tr><td class="px" style="padding:20px 24px 12px" bgcolor="#ffffff"><table role="presentation" width="100%" cellpadding="0" cellspacing="0">${testNotice}</table>${trimmedNote}<div class="title" style="${FONT};font-size:20px;line-height:26px;font-weight:bold;color:${TEXT}">${name}</div><div style="${FONT};font-size:13px;line-height:19px;color:${MUTED};padding-top:6px">Periode: ${esc(input.periodLabel)}<br>Cakupan: ${esc(input.scopeLabel, 200)}<br>Jadwal: ${esc(input.scheduleLabel)}</div></td></tr>`;
+  const cta = `<tr><td align="center" class="px cta" style="padding:16px 24px 8px" bgcolor="#ffffff"><table role="presentation" cellpadding="0" cellspacing="0"><tr><td bgcolor="${PRIMARY}" style="border-radius:6px"><a href="${esc(input.ctaUrl, 2000)}" style="display:inline-block;padding:12px 24px;${FONT};font-size:15px;font-weight:bold;color:#ffffff;text-decoration:none">Buka dashboard lengkap</a></td></tr></table><div style="${FONT};font-size:12px;line-height:17px;color:${MUTED};padding-top:8px">${esc(input.linkExpiresLabel)}. Tautan hanya menampilkan periode dan cakupan laporan ini.</div></td></tr>`;
+  const footer = `<tr><td class="px" style="padding:12px 24px 20px" bgcolor="#ffffff"><div style="${FONT};font-size:12px;line-height:17px;color:${MUTED}">Laporan &ldquo;${name}&rdquo; dikirim atas nama ${esc(input.ownerName)}. Hubungi pemilik untuk berhenti atau mengubah isinya.</div></td></tr>`;
 
-  return `<!doctype html><html lang="id"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"><title>${name}</title></head><body style="margin:0;padding:0;background:${PAGE_BG}" bgcolor="${PAGE_BG}"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="${PAGE_BG}"><tr><td align="center" style="padding:16px 8px"><table role="presentation" width="600" cellpadding="0" cellspacing="0" style="width:600px;max-width:100%">${header}<tr><td style="padding:0 16px" bgcolor="#ffffff"><table role="presentation" width="100%" cellpadding="0" cellspacing="0">${blocks.join('')}</table></td></tr>${cta}${footer}</table></td></tr></table></body></html>`;
+  return `<!doctype html><html lang="id"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"><style>${MOBILE_CSS}</style><title>${name}</title></head><body style="margin:0;padding:0;background:${PAGE_BG}" bgcolor="${PAGE_BG}"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="${PAGE_BG}"><tr><td align="center" class="outer" style="padding:16px 8px"><table role="presentation" width="600" cellpadding="0" cellspacing="0" style="width:600px;max-width:100%">${header}<tr><td class="pad-cards" style="padding:0 16px" bgcolor="#ffffff"><table role="presentation" width="100%" cellpadding="0" cellspacing="0">${blocks.join('')}</table></td></tr>${cta}${footer}</table></td></tr></table></body></html>`;
 }
 
 // --- Teks polos ------------------------------------------------------------------------------------------------------

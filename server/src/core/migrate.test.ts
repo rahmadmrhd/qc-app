@@ -62,6 +62,11 @@ const EXPECTED_TABLES = [
   'sticker_types',
   'stickers',
   'users',
+  'warehouse_dispatch_chunks',
+  'warehouse_dispatch_serials',
+  'warehouse_dispatches',
+  'warehouse_order_handovers',
+  'warehouse_orders',
 ];
 
 let admin: Db;
@@ -305,7 +310,7 @@ describe('skema baseline', () => {
     await db.close();
   });
 
-  test('46 tabel aplikasi + schema_migrations; terapan dua kali tak mengubah apa pun', async () => {
+  test('51 tabel aplikasi + schema_migrations; terapan dua kali tak mengubah apa pun', async () => {
     const before = await tableNames(db);
     expect(before).toEqual(EXPECTED_TABLES);
     expect(await applyMigrations(db)).toEqual([]);
@@ -355,6 +360,11 @@ describe('skema baseline', () => {
       { name: '0035_dashboard_reports.sql' },
       { name: '0036_buang_indeks_serials_created_id.sql' },
       { name: '0037_dashboard_share_expiry_index.sql' },
+      { name: '0038_dashboard_report_cc_bcc.sql' },
+      { name: '0039_serial_created_by_index.sql' },
+      { name: '0040_serial_keluar_gudang.sql' },
+      { name: '0041_serial_ready_wh.sql' },
+      { name: '0042_serial_wh_nomor_riwayat.sql' },
     ]);
   });
 
@@ -557,13 +567,16 @@ describe('skema baseline', () => {
         'serial_proof_photos.serial_proof_photos_state',
         'serial_stickers.serial_stickers_sticker',
         'serials.serials_bu_created',
+        'serials.serials_bu_deleted_created_by',
         'serials.serials_bu_serial',
         'serials.serials_client_id',
+        'serials.serials_created_by',
         'serials.serials_custody',
         'serials.serials_item',
         'serials.serials_live_created',
         'serials.serials_location',
         'serials.serials_status',
+        'serials.serials_wh_created',
         'sticker_business_units.sticker_business_units_bu',
         'sticker_guide_images.sticker_guide_images_name',
         'sticker_stock_entries.sticker_stock_entries_client_id',
@@ -574,6 +587,17 @@ describe('skema baseline', () => {
         'stickers.stickers_type',
         'stickers.stickers_type_name_unique_live',
         'users.users_email',
+        'warehouse_dispatch_serials.warehouse_dispatch_serials_order_serial',
+        'warehouse_dispatch_serials.warehouse_dispatch_serials_serial',
+        'warehouse_dispatches.warehouse_dispatches_client_id',
+        'warehouse_dispatches.warehouse_dispatches_kind_bu',
+        'warehouse_dispatches.warehouse_dispatches_number',
+        'warehouse_dispatches.warehouse_dispatches_order',
+        'warehouse_dispatches.warehouse_dispatches_status',
+        'warehouse_order_handovers.warehouse_order_handovers_handover',
+        'warehouse_orders.warehouse_orders_bu_updated',
+        'warehouse_orders.warehouse_orders_customer',
+        'warehouse_orders.warehouse_orders_key',
       ].sort(),
     );
     const pk = await db

@@ -5,7 +5,13 @@ import { getSetting, putSetting } from '@server/core/settings';
 import { seedLocation } from '@server-test/access-fixtures';
 import { seedSticker, seedStickerType } from '@server-test/sticker-fixtures';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
-import { checkLowStockDigest, SETTING_STICKER_DIGEST_LAST_DATE, stockDigestRows } from './digest';
+import {
+  buildStockDigestMail,
+  checkLowStockDigest,
+  type DigestStockRow,
+  SETTING_STICKER_DIGEST_LAST_DATE,
+  stockDigestRows,
+} from './digest';
 import { SETTING_STICKER_ALERT } from './settings';
 
 setDefaultTimeout(60_000);
@@ -87,12 +93,14 @@ describe('stockDigestRows', () => {
     expect(rows.low.map((row) => row.name)).toEqual(['s-edge', 's-low']);
     expect(rows.out.map((row) => row.name)).toEqual(['s-neg', 's-negmin', 's-nomin', 's-zero']);
     expect(rows.low.find((row) => row.name === 's-low')).toEqual({
+      id: 's-low',
       name: 's-low',
       typeName: 'QC',
       total: 4,
       minQty: 10,
     });
     expect(rows.out.find((row) => row.name === 's-neg')).toEqual({
+      id: 's-neg',
       name: 's-neg',
       typeName: 'QC',
       total: -2,
@@ -323,5 +331,81 @@ describe('checkLowStockDigest', () => {
     await env.DB.prepare('DELETE FROM settings WHERE `key` = ?').bind(SETTING_STICKER_ALERT).run();
     await withMinimum('s1', 10);
     expect(await checkLowStockDigest(env)).toBe('skipped');
+  });
+});
+
+describe('buildStockDigestMail (HTML)', () => {
+  const row = (i: number, total: number, minQty = 10): DigestStockRow => ({
+    id: `id${i}`,
+    name: `Stiker ${i}`,
+    typeName: 'QC',
+    total,
+    minQty,
+  });
+  const FORBIDDEN = /<(script|img|link|iframe|object|embed|form)\b|javascript:/i;
+
+  test('html dan teks polos ada; subjek tetap; Kurang N; tautan stiker dan tombol Lihat stok', () => {
+    const mail = buildStockDigestMail({
+      out: [row(1, -4, 5)],
+      low: [row(2, 3)],
+      origin: 'https://qc.test/',
+    });
+    expect(mail.subject).toBe('Stok stiker: 1 habis, 1 menipis');
+    expect(mail.html).toContain('<html lang="id">');
+    expect(mail.html).toContain('Kurang 4');
+    expect(mail.html).toContain('href="https://qc.test/sticker/id1"');
+    expect(mail.html).toContain('href="https://qc.test/sticker"');
+    expect(mail.html).toContain('Lihat stok');
+    expect(mail.html).toContain('total semua lokasi');
+    expect(mail.html).toContain('Minimum');
+    expect(mail.html).not.toMatch(FORBIDDEN);
+    expect(mail.text).toContain('Stiker 1 (QC): stok Kurang 4');
+    expect(mail.text).toContain('Stiker 2 (QC): stok 3, minimum 10');
+    expect(mail.text).toContain('Lihat stok: https://qc.test/sticker');
+    expect(mail.text.indexOf('Habis')).toBeLessThan(mail.text.indexOf('Menipis'));
+  });
+
+  test('nilai berbahaya tidak bocor mentah dan subjek satu baris', () => {
+    const mail = buildStockDigestMail({
+      out: [{ ...row(1, 0), name: '<script>alert("x")</script>‮\u0007\nBcc: a@b.co' }],
+      low: [],
+      origin: 'https://qc.test',
+    });
+    expect(mail.html).not.toContain('<script>');
+    expect(mail.html).not.toContain('‮');
+    expect(mail.html).not.toContain('\u0007');
+    expect(mail.html).toContain('&lt;script&gt;');
+    expect(mail.text).not.toMatch(/\nBcc:/);
+    expect(mail.subject).not.toMatch(/[\r\n]/);
+  });
+
+  test('batas 50 baris per bagian + "dan N lainnya"; data besar tetap <= 90 KB', () => {
+    const out = Array.from({ length: 120 }, (_, i) => row(i, 0));
+    const low = Array.from({ length: 380 }, (_, i) => row(1000 + i, 3));
+    const mail = buildStockDigestMail({ out, low, origin: 'https://qc.test' });
+    expect(mail.html).toContain('dan 70 lainnya');
+    expect(mail.html).toContain('dan 330 lainnya');
+    expect(mail.text).toContain('dan 70 lainnya');
+    expect(mail.html).toContain('(120)');
+    expect(mail.html).toContain('(380)');
+    expect(mail.html).not.toContain('sticker/id50"');
+    expect(Buffer.byteLength(mail.html, 'utf8')).toBeLessThanOrEqual(90 * 1024);
+    const styles = [...mail.html.matchAll(/<style>([\s\S]*?)<\/style>/g)];
+    expect(styles).toHaveLength(1);
+    expect(styles[0]?.[1]).toStartWith('@media');
+  });
+
+  test('tanpa origin: tanpa tautan dan tombol', () => {
+    const mail = buildStockDigestMail({ out: [row(1, 0)], low: [], origin: '' });
+    expect(mail.html).not.toContain('href=');
+    expect(mail.text).not.toContain('Lihat stok:');
+  });
+
+  test('checkLowStockDigest mengirim html bersama teks polos', async () => {
+    await withMinimum('h1', 5);
+    await stock('h1', 2);
+    expect(await checkLowStockDigest(env)).toBe('sent');
+    expect(sent[0]?.html).toContain('h1');
+    expect(sent[0]?.text).toContain('h1 (QC)');
   });
 });

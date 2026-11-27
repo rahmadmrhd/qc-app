@@ -91,8 +91,15 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   'serial.proof_remove': 'Foto bukti Serial Number dihapus',
   'serial.proof_reupload': 'Foto bukti Serial Number diunggah ulang',
   'serial.proof_retention': 'Foto bukti gagal dibuang otomatis',
+  'serialwh.dispatch_create': 'Penjualan Gudang dicatat',
+  'serialwh.dispatch_done': 'Penjualan Gudang selesai',
+  'serialwh.dispatch_cancel': 'Penjualan Gudang dibatalkan otomatis',
+  'serialwh.ready_create': 'Ready Stock dicatat',
+  'serialwh.ready_done': 'Ready Stock selesai',
+  'serialwh.links_update': 'Tautan task SO diubah',
   'export.sheets': 'Data diekspor ke Sheets',
   'dashboard.share_create': 'Tautan dashboard dibuat',
+  'dashboard.share_update': 'Tautan dashboard diubah',
   'dashboard.share_revoke': 'Tautan dashboard dicabut',
   'dashboard.share_expire': 'Tautan dashboard kedaluwarsa',
   'dashboard.report_create': 'Laporan terjadwal dibuat',
@@ -148,6 +155,11 @@ const AUDIT_FIELD_LABELS: Record<string, string> = {
   rule: 'Aturan',
   fileId: 'Gambar',
   minQty: 'Minimum stok',
+  defaultMinQty: 'Minimum stok bawaan',
+  openingStock: 'Total stok awal',
+  openingStocks: 'Stok awal per lokasi',
+  // Entri audit lama (sebelum 2026-11-26) mencatat id lokasi mentah.
+  openingStockLocation: 'Lokasi stok awal',
   presetId: 'Preset',
   buId: 'Business Unit',
   title: 'Judul',
@@ -171,13 +183,39 @@ const AUDIT_FIELD_LABELS: Record<string, string> = {
   recipientCount: 'Jumlah penerima',
   recipientsMark: 'Daftar penerima',
   linkDays: 'Masa berlaku tautan',
+  dispatchId: 'Pengeluaran',
+  dispatchedOn: 'Tanggal keluar',
+  itemId: 'Tipe',
+  serialTotal: 'Jumlah serial',
+  serialCount: 'Serial Number masuk',
+  createdCount: 'Serial baru',
+  skippedCount: 'Serial dilewati',
+  newOrder: 'SO baru',
 };
 
 export function auditFieldLabel(key: string): string {
   return AUDIT_FIELD_LABELS[key] ?? key;
 }
 
-export function auditActionLabel(action: string): string {
+/** Aksi Keluar Gudang yang berbagi kunci antara mode SO dan ready; label ready dipilih menurut jenis/target. */
+const READY_ACTION_LABELS: Record<string, string> = {
+  'serialwh.dispatch_cancel': 'Ready Stock dibatalkan otomatis',
+};
+
+/**
+ * Label aksi audit. `context` (jenis aktivitas `warehouseReady` atau target jejak berawalan "Ready ") memilih label
+ * mode ready untuk aksi yang kuncinya dipakai bersama mode SO.
+ */
+export function auditActionLabel(
+  action: string,
+  context?: { kind?: string; target?: string },
+): string {
+  const ready =
+    context?.kind === 'warehouseReady' || context?.target?.startsWith('Ready ') === true;
+  if (ready) {
+    const label = READY_ACTION_LABELS[action];
+    if (label) return label;
+  }
   return AUDIT_ACTION_LABELS[action] ?? action;
 }
 

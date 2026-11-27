@@ -12,7 +12,6 @@ import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 import { beforeEach, expect, test, vi } from 'vitest';
-import { installIntersectionObserver } from '@/test/intersection-observer';
 import { closeFilterChip, pickSelect } from '@/test/link-field';
 import { renderInRouter } from '@/test/render-in-router';
 import { type DashboardSearch, parseDashboardSearch } from '../lib/search';
@@ -36,18 +35,23 @@ const NONE_LEVELS = {
   stickerstock: 'none',
   serial: 'none',
   serialservice: 'none',
+  serialwh: 'none',
   countrylock: 'none',
   dashboard: 'none',
 } as MeDto['permissions'];
 
-function makeUser(options: { handover?: boolean; serial?: boolean }): MeDto {
+function makeUser(options: {
+  handover?: boolean;
+  serial?: boolean;
+  dashboard?: 'view' | 'edit' | 'manage';
+}): MeDto {
   return {
     email: 'a@x.com',
     name: 'A',
     isSuperAdmin: false,
     canManageSerialSettings: false,
     sharedAccount: false,
-    permissions: NONE_LEVELS,
+    permissions: options.dashboard ? { ...NONE_LEVELS, dashboard: options.dashboard } : NONE_LEVELS,
     locations: options.handover
       ? [
           {
@@ -65,7 +69,7 @@ function makeUser(options: { handover?: boolean; serial?: boolean }): MeDto {
             code: 'B1',
             name: 'BU Satu',
             status: 'active',
-            permissions: { item: 'none', serial: 'view', serialservice: 'none' },
+            permissions: { item: 'none', serial: 'view', serialservice: 'none', serialwh: 'none' },
           },
         ]
       : [],
@@ -119,6 +123,7 @@ beforeEach(() => {
           : option.label.toLowerCase().includes((request.query ?? '').toLowerCase()),
       );
       return {
+        brands: [],
         customers: request.kind === 'customers' || !request.kind ? all : [],
         items: [],
         stickerTypes: [],
@@ -162,10 +167,10 @@ async function openChip(label: string) {
 test('pengguna hanya Serah Terima: hanya grup Serah Terima yang tampil', async () => {
   me = makeUser({ handover: true });
   await renderInRouter(<Harness />);
-  expect(await screen.findByRole('heading', { name: 'Serah Terima' })).toBeTruthy();
-  expect(screen.queryByRole('heading', { name: 'Serial Number' })).toBeNull();
-  expect(screen.queryByRole('heading', { name: 'Stok Stiker' })).toBeNull();
-  expect(screen.queryByRole('heading', { name: 'Postel' })).toBeNull();
+  expect(await screen.findByRole('tab', { name: 'Serah Terima' })).toBeTruthy();
+  expect(screen.queryByRole('tab', { name: 'Serial Number' })).toBeNull();
+  expect(screen.queryByRole('tab', { name: 'Stok Stiker' })).toBeNull();
+  expect(screen.queryByRole('tab', { name: 'Postel' })).toBeNull();
   // Widget Serah Terima saja yang diminta dari server.
   await waitFor(() => expect(callsOf('hs.').length).toBeGreaterThan(0));
   expect(queryCalls().every((input) => input.widgets.every((w) => w.id.startsWith('hs.')))).toBe(
@@ -180,10 +185,26 @@ test('tanpa izin apa pun: pesan tanpa akses dan tanpa permintaan', async () => {
   expect(queryCalls()).toHaveLength(0);
 });
 
+test('izin Lihat dashboard: tanpa tombol Bagikan dan Tautan dibagikan', async () => {
+  me = makeUser({ handover: true, dashboard: 'view' });
+  await renderInRouter(<Harness />);
+  expect(await screen.findByRole('tab', { name: 'Serah Terima' })).toBeTruthy();
+  expect(screen.queryByRole('button', { name: 'Bagikan' })).toBeNull();
+  expect(screen.queryByRole('link', { name: 'Tautan dibagikan' })).toBeNull();
+});
+
+test('izin Ubah dashboard: tombol Bagikan tampil sebagai aksi utama (solid primary)', async () => {
+  me = makeUser({ handover: true, dashboard: 'edit' });
+  await renderInRouter(<Harness />);
+  const button = await screen.findByRole('button', { name: 'Bagikan' });
+  expect(button.className).toContain('bg-primary');
+  expect(screen.getByRole('link', { name: 'Tautan dibagikan' })).toBeTruthy();
+});
+
 test('mengubah chip Tanggal memanggil dashboard.query dengan rentang baru', async () => {
   me = makeUser({ handover: true });
   await renderInRouter(<Harness />);
-  await screen.findByRole('heading', { name: 'Serah Terima' });
+  await screen.findByRole('tab', { name: 'Serah Terima' });
   await openChip('Tanggal');
   await userEvent.click(await screen.findByRole('button', { name: '7 hari terakhir' }));
   await closeFilterChip();
@@ -195,12 +216,13 @@ test('mengubah chip Tanggal memanggil dashboard.query dengan rentang baru', asyn
   });
 });
 
-test('filter grup mengubah widget grup itu saja', async () => {
+test('filter grup mengubah widget grup itu saja; tab lain baru diminta saat dibuka', async () => {
   me = makeUser({ handover: true, serial: true });
   await renderInRouter(<Harness />);
-  await screen.findByRole('heading', { name: 'Serial Number' });
-  await waitFor(() => expect(callsOf('sn.').length).toBeGreaterThan(0));
-  const serialBefore = callsOf('sn.').length;
+  await screen.findByRole('tab', { name: 'Serah Terima' });
+  await waitFor(() => expect(callsOf('hs.').length).toBeGreaterThan(0));
+  // Hanya tab aktif yang dimuat.
+  expect(callsOf('sn.')).toHaveLength(0);
   await openChip('Status papan');
   await pickSelect(screen, 'Filter Status papan', 'Selesai');
   await closeFilterChip();
@@ -208,14 +230,27 @@ test('filter grup mengubah widget grup itu saja', async () => {
     const last = callsOf('hs.').at(-1);
     expect(last?.widgets[0]?.filters).toEqual({ status: ['done'] });
   });
-  expect(callsOf('sn.').length).toBe(serialBefore);
+  await userEvent.click(screen.getByRole('tab', { name: 'Serial Number' }));
+  await waitFor(() => expect(callsOf('sn.').length).toBeGreaterThan(0));
   expect(callsOf('sn.').at(-1)?.widgets[0]?.filters).toBeUndefined();
+});
+
+test('tab aktif mengikuti search param tab dan mengubahnya saat diklik', async () => {
+  me = makeUser({ handover: true, serial: true });
+  await renderInRouter(<Harness initial={{ tab: 'serial' }} />);
+  expect(
+    (await screen.findByRole('tab', { name: 'Serial Number' })).getAttribute('aria-selected'),
+  ).toBe('true');
+  await waitFor(() => expect(callsOf('sn.').length).toBeGreaterThan(0));
+  expect(callsOf('hs.')).toHaveLength(0);
+  await userEvent.click(screen.getByRole('tab', { name: 'Serah Terima' }));
+  await waitFor(() => expect(callsOf('hs.').length).toBeGreaterThan(0));
 });
 
 test('filter BU aktif memunculkan "BU tidak berlaku" pada widget Serah Terima', async () => {
   me = makeUser({ handover: true, serial: true });
   await renderInRouter(<Harness initial={{ bu: ['b1'] }} />);
-  await screen.findByRole('heading', { name: 'Serah Terima' });
+  await screen.findByRole('tab', { name: 'Serah Terima' });
   await waitFor(() => expect(screen.getAllByText('BU tidak berlaku').length).toBeGreaterThan(0));
   // Widget Serial mengikuti BU, jadi tak pernah bertanda "BU tidak berlaku": jumlahnya = widget Serah Terima.
   const handoverWidgets = document.querySelectorAll('[data-widget^="hs."]').length;
@@ -225,7 +260,7 @@ test('filter BU aktif memunculkan "BU tidak berlaku" pada widget Serah Terima', 
 test('tanpa filter BU, tak ada penanda "BU tidak berlaku"', async () => {
   me = makeUser({ handover: true, serial: true });
   await renderInRouter(<Harness />);
-  await screen.findByRole('heading', { name: 'Serah Terima' });
+  await screen.findByRole('tab', { name: 'Serah Terima' });
   expect(screen.queryByText('BU tidak berlaku')).toBeNull();
 });
 
@@ -244,7 +279,7 @@ test('galat satu widget tidak menyembunyikan widget lain', async () => {
 test('ponsel: kisi dua kolom, kartu angka satu kolom dan kartu lain selebar dua kolom', async () => {
   me = makeUser({ handover: true });
   await renderInRouter(<Harness />);
-  await screen.findByRole('heading', { name: 'Serah Terima' });
+  await screen.findByRole('tab', { name: 'Serah Terima' });
   const wrapperOf = (id: string) => {
     const card = document.querySelector(`[data-widget="${id}"]`);
     expect(card).not.toBeNull();
@@ -259,32 +294,6 @@ test('ponsel: kisi dua kolom, kartu angka satu kolom dan kartu lain selebar dua 
   expect(trend.className).toMatch(/(^|\s)col-span-2(\s|$)/);
 });
 
-test('grup di luar layar tidak diminta; diminta begitu mendekat; berhenti saat menjauh', async () => {
-  const fake = installIntersectionObserver();
-  try {
-    me = makeUser({ handover: true, serial: true });
-    await renderInRouter(<Harness />);
-    const handover = (await screen.findByRole('heading', { name: 'Serah Terima' })).closest(
-      'section',
-    ) as HTMLElement;
-    const serial = screen
-      .getByRole('heading', { name: 'Serial Number' })
-      .closest('section') as HTMLElement;
-    expect(queryCalls()).toHaveLength(0);
-    fake.setIntersecting(handover, true);
-    await waitFor(() => expect(callsOf('hs.').length).toBe(1));
-    expect(callsOf('sn.')).toHaveLength(0);
-    fake.setIntersecting(serial, true);
-    await waitFor(() => expect(callsOf('sn.').length).toBe(1));
-    // Menjauh lalu mendekat lagi dengan data masih segar: tanpa permintaan baru.
-    fake.setIntersecting(serial, false);
-    fake.setIntersecting(serial, true);
-    expect(callsOf('sn.')).toHaveLength(1);
-  } finally {
-    fake.restore();
-  }
-});
-
 const optionCalls = () =>
   apiMock.mock.calls
     .filter((call) => call[0] === 'dashboard.options')
@@ -293,7 +302,7 @@ const optionCalls = () =>
 test('filter relasi: mengetik mencari ke server (bukan menyaring daftar lokal)', async () => {
   me = makeUser({ handover: true });
   await renderInRouter(<Harness />);
-  await screen.findByRole('heading', { name: 'Serah Terima' });
+  await screen.findByRole('tab', { name: 'Serah Terima' });
   await openChip('Customer');
   await userEvent.type(await screen.findByRole('combobox', { name: 'Filter Customer' }), 'dua');
   await waitFor(() =>
@@ -326,7 +335,7 @@ test('ada halaman berikutnya: petunjuk persempit pencarian', async () => {
   optionsNext = true;
   me = makeUser({ handover: true });
   await renderInRouter(<Harness />);
-  await screen.findByRole('heading', { name: 'Serah Terima' });
+  await screen.findByRole('tab', { name: 'Serah Terima' });
   await openChip('Customer');
   await userEvent.click(await screen.findByRole('combobox', { name: 'Filter Customer' }));
   expect(await screen.findByText('Ada hasil lain, persempit pencarian')).toBeTruthy();
@@ -348,7 +357,7 @@ function makeGate() {
 test('memilih nilai baru (belum ada nilai terkomit): label di input dan di tombol chip tak pernah "Memuat..." atau "tidak dikenal"', async () => {
   me = makeUser({ handover: true });
   await renderInRouter(<Harness />);
-  await screen.findByRole('heading', { name: 'Serah Terima' });
+  await screen.findByRole('tab', { name: 'Serah Terima' });
   await openChip('Customer');
   await pickSelect(screen, 'Filter Customer', 'PT Dua');
   // Chip di dalam input memakai nama dari hasil pencarian yang baru diterima.
@@ -389,32 +398,28 @@ test('memilih nilai baru di atas nilai terkomit: kedua nama tampil di input dan 
   expect(screen.getByRole('button', { name: /^Customer: PT Satu, PT Dua/ })).toBeTruthy();
 });
 
-test('grup di luar layar tidak dimuat ulang oleh selang 60 dtk; kembali ke layar menyegarkan data basi', async () => {
+test('tab yang tidak aktif tidak dimuat ulang oleh selang 60 dtk; kembali ke tab itu menyegarkan data basi', async () => {
   vi.useFakeTimers({
     toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date'],
     shouldAdvanceTime: true,
   });
-  const fake = installIntersectionObserver();
   try {
-    me = makeUser({ handover: true });
+    me = makeUser({ handover: true, serial: true });
     await renderInRouter(<Harness />);
-    const handover = (await screen.findByRole('heading', { name: 'Serah Terima' })).closest(
-      'section',
-    ) as HTMLElement;
-    fake.setIntersecting(handover, true);
+    await screen.findByRole('tab', { name: 'Serah Terima' });
     await waitFor(() => expect(callsOf('hs.').length).toBe(1));
-    // Kontrol: selagi tampil, selang 60 dtk memuat ulang (tanpa ini asersi "tidak" di bawah tak bermakna).
+    // Kontrol: selagi tab tampil, selang 60 dtk memuat ulang (tanpa ini asersi "tidak" di bawah tak bermakna).
     await vi.advanceTimersByTimeAsync(61_000);
     await waitFor(() => expect(callsOf('hs.').length).toBe(2));
-    fake.setIntersecting(handover, false);
+    await userEvent.click(screen.getByRole('tab', { name: 'Serial Number' }));
+    await waitFor(() => expect(callsOf('sn.').length).toBeGreaterThan(0));
     const before = callsOf('hs.').length;
     await vi.advanceTimersByTimeAsync(300_000);
     expect(callsOf('hs.').length).toBe(before);
-    // Mendekat lagi dengan data yang sudah basi: dimuat ulang sekali.
-    fake.setIntersecting(handover, true);
-    await waitFor(() => expect(callsOf('hs.').length).toBe(before + 1));
+    // Kembali ke tab dengan data yang sudah basi: dimuat ulang.
+    await userEvent.click(screen.getByRole('tab', { name: 'Serah Terima' }));
+    await waitFor(() => expect(callsOf('hs.').length).toBeGreaterThan(before));
   } finally {
-    fake.restore();
     vi.useRealTimers();
   }
 });

@@ -26,7 +26,12 @@ export function makeMe({
   permissions?: Partial<PermissionMap>;
   businessUnits?: MeDto['businessUnits'];
 } = {}): MeDto {
-  const buPermissions: BuPermissionMap = { item: itemLevel, serial: 'none', serialservice: 'none' };
+  const buPermissions: BuPermissionMap = {
+    item: itemLevel,
+    serial: 'none',
+    serialservice: 'none',
+    serialwh: 'none',
+  };
   return {
     email: 'a@x.com',
     name: 'A',

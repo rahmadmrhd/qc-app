@@ -17,6 +17,7 @@ import {
   liveBuIdsWithLevelOf,
   locationsWith,
   serialActorModules,
+  warehouseCancelTarget,
 } from './permissions';
 
 const me: MeDto = {
@@ -36,6 +37,7 @@ const me: MeDto = {
     stickerstock: 'none',
     serial: 'none',
     serialservice: 'none',
+    serialwh: 'none',
     countrylock: 'none',
     dashboard: 'none',
   },
@@ -101,7 +103,12 @@ function bu(
     code: id.toUpperCase(),
     name: id,
     status,
-    permissions: { item: level, serial: 'none' as const, serialservice: 'none' as const },
+    permissions: {
+      item: level,
+      serial: 'none' as const,
+      serialservice: 'none' as const,
+      serialwh: 'none' as const,
+    },
   };
 }
 
@@ -155,7 +162,12 @@ test('helper BU tahan terhadap me hasil pemulihan cache lama tanpa businessUnits
 function serialBu(id: string, level: 'none' | 'view' | 'edit' | 'manage') {
   return {
     ...bu(id, 'none'),
-    permissions: { item: 'none' as const, serial: level, serialservice: 'none' as const },
+    permissions: {
+      item: 'none' as const,
+      serial: level,
+      serialservice: 'none' as const,
+      serialwh: 'none' as const,
+    },
   };
 }
 
@@ -196,7 +208,12 @@ test('canUseSerialLocationOptions: hanya serial: edit global (gerbang serials.lo
 function serviceBu(id: string, level: 'none' | 'view' | 'edit' | 'manage') {
   return {
     ...bu(id, 'none'),
-    permissions: { item: 'none' as const, serial: 'none' as const, serialservice: level },
+    permissions: {
+      item: 'none' as const,
+      serial: 'none' as const,
+      serialservice: level,
+      serialwh: 'none' as const,
+    },
   };
 }
 
@@ -204,7 +221,7 @@ test('serialActorModules: modul yang dipegang pada level edit di BU itu (campura
   const user = meWithBus([
     {
       ...serialBu('a', 'edit'),
-      permissions: { item: 'none', serial: 'edit', serialservice: 'view' },
+      permissions: { item: 'none', serial: 'edit', serialservice: 'view', serialwh: 'none' },
     },
     serviceBu('b', 'edit'),
     serialBu('c', 'view'),
@@ -257,7 +274,7 @@ test('serialActorModules dan canReportSerials: BU serial terhapus tetap memberi 
   const user = meWithBus([
     {
       ...deletedBu('s', 'view'),
-      permissions: { item: 'none', serial: 'edit', serialservice: 'none' },
+      permissions: { item: 'none', serial: 'edit', serialservice: 'none', serialwh: 'none' },
     },
   ]);
   expect(serialActorModules(user, 's').serial).toBe(true);
@@ -284,4 +301,25 @@ test('canManageAnyItem: manage pada minimal satu BU (juga nonaktif)', () => {
   expect(canManageAnyItem(meWithBus([bu('a', 'view'), bu('b', 'manage')]))).toBe(true);
   expect(canManageAnyItem(meWithBus([]))).toBe(false);
   expect(canManageAnyItem(null)).toBe(false);
+});
+
+test('warehouseCancelTarget: tujuan Batal menurut izin, pemegang serialwh saja tidak ke /serial', () => {
+  const whBu = {
+    ...bu('a', 'none'),
+    permissions: { ...bu('a', 'none').permissions, serialwh: 'edit' as const },
+  };
+  const whOnly = {
+    ...meWithBus([whBu]),
+    permissions: { ...me.permissions, serialwh: 'edit' as const },
+  };
+  expect(warehouseCancelTarget(whOnly)).toBe('/serial/gudang/riwayat');
+  const withSerial = { ...whOnly, permissions: { ...whOnly.permissions, serial: 'view' as const } };
+  expect(warehouseCancelTarget(withSerial)).toBe('/serial');
+  const serviceOnly = {
+    ...whOnly,
+    permissions: { ...whOnly.permissions, serialservice: 'view' as const },
+  };
+  expect(warehouseCancelTarget(serviceOnly)).toBe('/serial');
+  expect(warehouseCancelTarget(meWithBus([bu('a', 'none')]))).toBe('/');
+  expect(warehouseCancelTarget(null)).toBe('/');
 });

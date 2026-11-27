@@ -16,6 +16,7 @@ import {
   House,
   Images,
   LayoutDashboard,
+  Link2,
   ListChecks,
   Lock,
   MapPin,
@@ -108,27 +109,14 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { label: 'Beranda', to: '/', icon: House },
       // Tampil bagi pemegang izin sumber widget mana pun (BU atau lokasi; bukan satu izin modul, jadi `visible`).
+      // Menu biasa tanpa submenu (keputusan pemilik 2026-11-25); laporan terjadwal dan tautan dibagikan ada di section
+      // "Laporan" di bawahnya.
       {
-        id: 'dashboard',
         label: 'Dashboard',
+        to: '/dashboard',
         icon: LayoutDashboard,
-        // Pengguna tanpa `dashboard: edit` hanya punya Ringkasan: tampil sebagai butir "Dashboard" biasa.
-        collapseSingle: true,
-        children: [
-          {
-            label: 'Ringkasan',
-            to: '/dashboard',
-            icon: LayoutDashboard,
-            excludes: ['/dashboard/laporan'],
-            visible: canSeeDashboard,
-          },
-          {
-            label: 'Laporan terjadwal',
-            to: '/dashboard/laporan',
-            icon: CalendarClock,
-            permission: { module: 'dashboard', level: 'edit' },
-          },
-        ],
+        excludes: ['/dashboard/laporan', '/dashboard/tautan'],
+        visible: canSeeDashboard,
       },
       // Daftar unduhan aplikasi desktop; di dalam aplikasi desktop tautan unduh tak berfungsi, jadi hanya di peramban.
       {
@@ -169,7 +157,7 @@ export const NAV_GROUPS: NavGroup[] = [
             label: 'Daftar',
             to: '/serial',
             icon: ListChecks,
-            excludes: ['/serial/settings', '/serial/report', '/serial/reports'],
+            excludes: ['/serial/settings', '/serial/report', '/serial/reports', '/serial/gudang'],
             permission: [
               { module: 'serial', level: 'view' },
               { module: 'serialservice', level: 'view' },
@@ -185,6 +173,14 @@ export const NAV_GROUPS: NavGroup[] = [
               { module: 'serial', level: 'view' },
               { module: 'serialservice', level: 'view' },
             ],
+          },
+          {
+            label: 'Riwayat Gudang',
+            to: '/serial/gudang/riwayat',
+            icon: History,
+            // Form pencatatan dibuka dari tombol "Catat Serial WH" di daftar ini (bukan menu sendiri).
+            alsoActiveOn: ['/serial/gudang'],
+            permission: { module: 'serialwh', level: 'view' },
           },
           {
             label: 'Pengaturan',
@@ -237,7 +233,7 @@ export const NAV_GROUPS: NavGroup[] = [
         icon: Sticker,
         children: [
           {
-            label: 'Katalog',
+            label: 'Katalog & Stok',
             to: '/sticker',
             icon: Sticker,
             excludes: ['/sticker/types', '/sticker/library', '/sticker/settings'],
@@ -296,6 +292,24 @@ export const NAV_GROUPS: NavGroup[] = [
         to: '/postel',
         icon: FileBadge,
         permission: { module: 'sticker', level: 'view' },
+      },
+    ],
+  },
+  {
+    // Section tersendiri (bukan submenu Dashboard): pengelolaan laporan terjadwal dan tautan yang dibagikan.
+    label: 'Laporan',
+    items: [
+      {
+        label: 'Laporan terjadwal',
+        to: '/dashboard/laporan',
+        icon: CalendarClock,
+        permission: { module: 'dashboard', level: 'edit' },
+      },
+      {
+        label: 'Tautan dibagikan',
+        to: '/dashboard/tautan',
+        icon: Link2,
+        permission: { module: 'dashboard', level: 'edit' },
       },
     ],
   },

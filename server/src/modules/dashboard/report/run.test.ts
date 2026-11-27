@@ -53,7 +53,7 @@ const BODY: SaveDashboardReportInput = {
   schedule: { frequency: 'weekly', hour: 8, weekday: 1, monthDay: 1 },
   period: 'lastWeek',
   filter: { from: '', to: '' },
-  widgets: [{ id: 'sn.recorded', filters: {} }],
+  widgets: [{ id: 'sn.status', filters: {} }],
   offers: [],
   recipients: [RECIPIENT],
   linkDays: 14,
@@ -83,8 +83,8 @@ describe('checkDashboardReports', () => {
     expect(summary).toEqual({ sent: 1, skipped: 0, errors: 0 });
     expect(sent).toHaveLength(1);
     const mail = sent[0] as MailMessage;
-    expect(mail.to).toEqual([]);
-    expect(mail.bcc).toEqual([RECIPIENT]);
+    expect(mail.bcc).toEqual([]);
+    expect(mail.to).toEqual([RECIPIENT]);
     expect(mail.subject).toBe('[QC] Ringkasan mingguan, Minggu lalu (16 Nov 2026 - 22 Nov 2026)');
     expect(mail.html).toContain('https://qc.test/dashboard-publik/v1.');
     expect(mail.text).toContain('https://qc.test/dashboard-publik/v1.');
@@ -231,7 +231,7 @@ describe('checkDashboardReports', () => {
       .run();
     const id = await dueReport({
       widgets: [
-        { id: 'sn.recorded', filters: {} },
+        { id: 'sn.status', filters: {} },
         { id: 'hs.created', filters: {} },
       ],
     });
@@ -241,11 +241,11 @@ describe('checkDashboardReports', () => {
       .run();
     const summary = await checkDashboardReports(env, NOW);
     expect(summary.sent).toBe(1);
-    expect(sent[0]?.html).toContain('Serial dicatat');
+    expect(sent[0]?.html).toContain('Komposisi status');
     expect(sent[0]?.html).not.toContain('Task dibuat');
     const link = (await listSharesOfReport(env.DB, id, 10))[0];
     expect(JSON.parse(link?.scope ?? '{}').widgets.map((w: { id: string }) => w.id)).toEqual([
-      'sn.recorded',
+      'sn.status',
     ]);
   });
 
@@ -282,7 +282,7 @@ describe('runReport mode uji dan pratinjau', () => {
     const outcome = await runReport(env, await reportOf(id), NOW, 'test');
     expect(outcome.status).toBe('ok');
     expect(sent).toHaveLength(1);
-    expect(sent[0]?.bcc).toEqual([OWNER]);
+    expect(sent[0]?.to).toEqual([OWNER]);
     expect(sent[0]?.subject.startsWith('[UJI] [QC] ')).toBe(true);
     // Surel uji tidak pernah menerbitkan tautan publik; tombolnya ke halaman Dashboard (perlu masuk).
     expect(sent[0]?.html).toContain('href="https://qc.test/dashboard"');
@@ -387,7 +387,7 @@ describe('keadaan laporan TERKINI saat klaim dan kirim (I2, M2)', () => {
 
     const second = await checkDashboardReports(env, NOW + 5 * 60_000);
     expect(second.sent).toBe(1);
-    expect(sent[0]?.bcc).toEqual(['baru@contoh.id']);
+    expect(sent[0]?.to).toEqual(['baru@contoh.id']);
   });
 
   test('penerima diubah SETELAH klaim, sebelum tautan terbit: tidak terkirim, tak ada tautan, klaim tidak dilepas', async () => {

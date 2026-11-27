@@ -201,7 +201,7 @@ test('penanda bersasaran nonaktif: ringkasan dengan tanda "nonaktif" tampil dulu
   expect(rows).toHaveLength(2);
   expect(rows[0]).toHaveTextContent('Stiker Postel — nonaktif');
   expect(rows[0]).toHaveTextContent('nonaktif');
-  expect(rows[1]).toHaveTextContent('Jenis Segel');
+  expect(rows[1]).toHaveTextContent('Segel (Berdasarkan BU)');
   expect(rows[1]).not.toHaveTextContent('nonaktif');
   expect(screen.getByRole('status')).toHaveTextContent('1 penanda bersasaran nonaktif');
   expect(onCopy).not.toHaveBeenCalled();

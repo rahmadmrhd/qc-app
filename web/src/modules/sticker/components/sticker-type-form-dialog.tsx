@@ -18,6 +18,8 @@ export interface StickerTypeSaveInput {
   expectedUpdatedAt?: string;
   name: string;
   rule: StickerRule;
+  /** Hanya dikirim bila pengguna boleh mengubahnya (`sticker: manage`) dan nilainya berubah/baru. */
+  defaultMinQty?: number;
 }
 
 /** Galat simpan: pesan umum dan, bila server menyebut field, pesan khusus field itu. */
@@ -25,6 +27,7 @@ export interface StickerTypeSaveFailure {
   message: string;
   name?: string;
   rule?: string;
+  defaultMinQty?: string;
 }
 
 export type StickerTypeSaveResult = string | StickerTypeSaveFailure | null;
@@ -32,7 +35,7 @@ export type StickerTypeSaveResult = string | StickerTypeSaveFailure | null;
 /** Mengubah galat API menjadi hasil simpan dialog (dipakai pemanggil yang memanggil API jenis stiker). */
 export function stickerTypeSaveFailure(error: unknown): StickerTypeSaveFailure {
   if (isStaleSaveError(error)) return { message: STALE_SAVE_MESSAGE };
-  const fields = pickFieldErrors(error, ['name', 'rule'] as const);
+  const fields = pickFieldErrors(error, ['name', 'rule', 'defaultMinQty'] as const);
   return { message: describeError(error), ...fields };
 }
 
@@ -40,7 +43,13 @@ export interface StickerTypeFormDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   /** Jenis yang diubah; kosong = jenis baru. */
-  type?: Pick<StickerTypeDto, 'id' | 'name' | 'rule' | 'stickerCount' | 'updatedAt'>;
+  type?: Pick<StickerTypeDto, 'id' | 'name' | 'rule' | 'stickerCount' | 'updatedAt'> &
+    Partial<Pick<StickerTypeDto, 'defaultMinQty' | 'systemKind'>>;
+  /**
+   * Boleh mengubah minimum stok bawaan (`sticker: manage`, sama dengan Konfigurasi Stiker). Tanpa ini kolomnya hanya
+   * tampil dan tidak dikirim.
+   */
+  canSetDefaultMin?: boolean;
   /** `null` = berhasil (dialog menutup sendiri); string/objek = galat yang tampil di dialog. */
   onSave: (input: StickerTypeSaveInput) => Promise<StickerTypeSaveResult>;
 }
@@ -49,6 +58,7 @@ export interface StickerTypeFormProps {
   /** Id elemen `<form>`: tombol Simpan ada di luar form (footer dialog) dan memakai `form={formId}`. */
   formId: string;
   type?: StickerTypeFormDialogProps['type'];
+  canSetDefaultMin?: boolean;
   onSave: StickerTypeFormDialogProps['onSave'];
   /** Dipanggil setelah simpan berhasil. */
   onClose: () => void;
@@ -65,6 +75,7 @@ export interface StickerTypeFormProps {
 export function StickerTypeForm({
   formId,
   type,
+  canSetDefaultMin = false,
   onSave,
   onClose,
   onBusyChange,
@@ -72,27 +83,48 @@ export function StickerTypeForm({
 }: StickerTypeFormProps) {
   // Ponsel: tanpa fokus otomatis (papan ketik layar akan menutupi separuh form).
   const desktop = useIsDesktop();
+  // Jenis sistem (Manual Book, Postel): nama dan aturan terkunci; hanya minimum bawaan yang boleh diubah.
+  const system = type?.systemKind !== undefined && type.systemKind !== '';
   const [name, setName] = useState(type?.name ?? '');
   const [rule, setRule] = useState<StickerRule>(type?.rule ?? 'bu');
   const [nameError, setNameError] = useState<string | null>(null);
   const [ruleError, setRuleError] = useState<string | null>(null);
+  const initialDefaultMin = String(type?.defaultMinQty ?? 0);
+  const [defaultMin, setDefaultMin] = useState(initialDefaultMin);
+  const [defaultMinError, setDefaultMinError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  useUnsavedChanges(name !== (type?.name ?? '') || rule !== (type?.rule ?? 'bu'));
+  useUnsavedChanges(
+    name !== (type?.name ?? '') ||
+      rule !== (type?.rule ?? 'bu') ||
+      (canSetDefaultMin && defaultMin !== initialDefaultMin),
+  );
   // Versi saat form dibuka: tidak ikut berubah bila daftar dimuat ulang, agar versi usang tetap terdeteksi.
   const [expectedUpdatedAt] = useState(type?.updatedAt);
   useEffect(() => {
     onBlockedChange?.(name.trim() === '');
   }, [name, onBlockedChange]);
   /** Aturan terkunci sesudah jenis dipakai stiker (server menolak perubahannya). */
-  const ruleLocked = type !== undefined && type.stickerCount > 0;
+  const ruleLocked = system || (type !== undefined && type.stickerCount > 0);
 
   async function submit() {
     if (busy) return;
-    const parsed = stickerTypeFormSchema.safeParse({ name, rule });
+    const parsed = stickerTypeFormSchema.safeParse({
+      name,
+      // Aturan jenis sistem (mis. `group`) di luar pilihan pengguna: tak diperiksa dan dikirim apa adanya.
+      rule: system ? 'none' : rule,
+      defaultMinQty: defaultMin.trim() === '' ? 0 : Number(defaultMin),
+    });
     if (!parsed.success) {
-      setNameError(parsed.error.issues[0]?.message ?? 'Isian tidak valid');
+      const issue = parsed.error.issues[0];
+      if (issue?.path[0] === 'defaultMinQty') setDefaultMinError(issue.message);
+      else setNameError(issue?.message ?? 'Isian tidak valid');
       return;
     }
+    // Hanya dikirim bila boleh diubah dan berbeda dari nilai saat form dibuka (jenis lama) atau bukan 0 (jenis baru).
+    const sendDefault =
+      canSetDefaultMin && parsed.data.defaultMinQty !== (type?.defaultMinQty ?? 0)
+        ? { defaultMinQty: parsed.data.defaultMinQty }
+        : {};
     setBusy(true);
     onBusyChange?.(true);
     let failure: StickerTypeSaveFailure | null;
@@ -102,9 +134,10 @@ export function StickerTypeForm({
             id: type.id,
             ...(expectedUpdatedAt === undefined ? {} : { expectedUpdatedAt }),
             name: parsed.data.name,
-            rule: parsed.data.rule,
+            rule: system ? rule : parsed.data.rule,
+            ...sendDefault,
           }
-        : { name: parsed.data.name, rule: parsed.data.rule };
+        : { name: parsed.data.name, rule: parsed.data.rule, ...sendDefault };
       const result = await onSave(input);
       failure = typeof result === 'string' ? { message: result } : result;
     } catch {
@@ -113,8 +146,13 @@ export function StickerTypeForm({
     }
     setBusy(false);
     onBusyChange?.(false);
-    setNameError(failure ? (failure.name ?? (failure.rule ? null : failure.message)) : null);
+    setNameError(
+      failure
+        ? (failure.name ?? (failure.rule || failure.defaultMinQty ? null : failure.message))
+        : null,
+    );
     setRuleError(failure?.rule ?? null);
+    setDefaultMinError(failure?.defaultMinQty ?? null);
     if (failure === null) onClose();
   }
 
@@ -136,7 +174,8 @@ export function StickerTypeForm({
         <Input
           id="sticker-type-name"
           aria-required="true"
-          autoFocus={desktop}
+          autoFocus={desktop && !system}
+          disabled={system}
           maxLength={STICKER_LIMITS.nameMax}
           value={name}
           aria-invalid={nameError ? true : undefined}
@@ -158,7 +197,9 @@ export function StickerTypeForm({
             <p className="text-sm font-medium">Aturan</p>
             <p className="text-sm">{STICKER_RULE_LABEL[rule]}</p>
             <p className="text-xs text-muted-foreground">
-              Aturan tidak dapat diubah karena sudah ada stiker pada jenis ini.
+              {system
+                ? 'Aturan jenis sistem dikelola aplikasi dan tidak dapat diubah.'
+                : 'Aturan tidak dapat diubah karena sudah ada stiker pada jenis ini.'}
             </p>
           </>
         ) : (
@@ -181,6 +222,35 @@ export function StickerTypeForm({
           </>
         )}
       </div>
+      <div className="space-y-1.5">
+        <Label htmlFor="sticker-type-default-min">Minimum stok bawaan</Label>
+        <Input
+          id="sticker-type-default-min"
+          type="number"
+          inputMode="numeric"
+          min={0}
+          max={STICKER_LIMITS.qtyMax}
+          step={1}
+          placeholder="0"
+          value={defaultMin}
+          disabled={!canSetDefaultMin}
+          aria-invalid={defaultMinError ? true : undefined}
+          onChange={(event) => {
+            setDefaultMin(event.target.value);
+            setDefaultMinError(null);
+          }}
+        />
+        <p className="text-xs text-muted-foreground">
+          {canSetDefaultMin
+            ? 'Batas minimum awal untuk stiker baru pada jenis ini (boleh diubah per stiker); 0 = tanpa peringatan. Sama dengan pengaturan di Konfigurasi.'
+            : 'Hanya pengguna dengan izin Kelola pada Stiker yang dapat mengubah minimum bawaan.'}
+        </p>
+        {defaultMinError ? (
+          <p role="alert" className="text-sm text-destructive-text">
+            {defaultMinError}
+          </p>
+        ) : null}
+      </div>
       {/* Penerima Enter di kolom isian: tombol Simpan sebenarnya ada di footer dialog (di luar form). */}
       <button type="submit" hidden tabIndex={-1} aria-hidden />
     </form>
@@ -194,6 +264,7 @@ export function StickerTypeFormDialog({
   open,
   onOpenChange,
   type,
+  canSetDefaultMin,
   onSave,
 }: StickerTypeFormDialogProps) {
   const [busy, setBusy] = useState(false);
@@ -213,6 +284,7 @@ export function StickerTypeFormDialog({
           key={type?.id ?? 'new'}
           formId={STICKER_TYPE_FORM_ID}
           type={type}
+          canSetDefaultMin={canSetDefaultMin}
           onSave={onSave}
           onClose={() => onOpenChange(false)}
           onBusyChange={setBusy}

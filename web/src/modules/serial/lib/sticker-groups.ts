@@ -8,6 +8,7 @@ export interface StickerGroup {
   buId: string;
   itemLabel: string;
   buCode: string;
+  buName?: string | undefined;
   /** Id serial kelompok ini, urut kemunculan. */
   ids: string[];
   /** Nomor serial kelompok ini (searah `ids`). */
@@ -36,6 +37,7 @@ export function groupSerialsByItemBu(rows: readonly SerialSummaryDto[]): Sticker
         buId: row.buId,
         itemLabel: row.itemLabel,
         buCode: row.buCode,
+        buName: row.buName,
         ids: [row.id],
         serials: [row.serial],
       });

@@ -43,7 +43,9 @@ export const serialSearchSchema = z.object({
   bu: z.string().max(100).optional().catch(undefined),
   custody: z.enum(SERIAL_CUSTODIES).optional().catch(undefined),
   status: z.enum(SERIAL_STATUSES).optional().catch(undefined),
-  /** Hanya yang dicatat oleh akun yang sedang masuk (`createdBy` = email akun). */
+  /** Pencatat (banyak email = salah satu dari). */
+  createdBys: z.array(z.string().max(254)).max(FILTER_LIST_MAX).optional().catch(undefined),
+  /** Param lama "Dicatat oleh saya" (tautan lama): dibaca sebagai `createdBys` berisi email akun. */
   mine: z.literal(true).optional().catch(undefined),
   /**
    * Tampilan "Terhapus" (soft delete; hanya pemegang `serial: manage`). Kunci tersendiri karena `status` di sini adalah
@@ -51,6 +53,10 @@ export const serialSearchSchema = z.object({
    * terhadap status alur).
    */
   deleted: z.literal(true).optional().catch(undefined),
+  /** Gudang: `yes` = Tercatat WH, `no` = Belum tercatat WH. */
+  whRecorded: z.enum(['yes', 'no']).optional().catch(undefined),
+  /** Hanya serial "Butuh foto". */
+  needsProof: z.literal(true).optional().catch(undefined),
   from: isoDate,
   to: isoDate,
 });
@@ -72,18 +78,10 @@ export function searchLists(search: SerialSearch) {
   };
 }
 
-/** Tambalan search params yang mengganti satu filter jamak dan membuang param tunggal lamanya. */
-export const CLEAR_LEGACY_SINGLE: Pick<
-  SerialSearch,
-  'bu' | 'item' | 'itemLabel' | 'loc' | 'status' | 'custody'
-> = {
-  bu: undefined,
-  item: undefined,
-  itemLabel: undefined,
-  loc: undefined,
-  status: undefined,
-  custody: undefined,
-};
+/** Email pencatat yang berlaku: param jamak, atau `mine` lama sebagai email akun. */
+export function creatorList(search: SerialSearch, userEmail?: string): string[] {
+  return search.createdBys ?? (search.mine && userEmail ? [userEmail] : []);
+}
 
 /**
  * Teks pencarian -> serial ternormalisasi satu per baris. Yang dipertahankan adalah awalan daftar: berhenti di serial
@@ -194,7 +192,7 @@ export function commitSearchLine(
 /**
  * Search params -> masukan `serials.list`. Satu serial dikirim sebagai awalan (`query`, juga cocok persis), dua atau
  * lebih sebagai daftar persis (`serials`); keduanya dalam bentuk ternormalisasi. `userEmail` = akun yang masuk, dipakai
- * untuk sakelar "Dicatat oleh saya" (tidak ada rute opsi pengguna bagi pembaca; default perancang OQ-16).
+ * untuk param lama `mine` (tautan lama).
  */
 export function filterOfSearch(
   search: SerialSearch,
@@ -206,6 +204,7 @@ export function filterOfSearch(
     .text.split('\n')
     .filter((line) => line !== '');
   const lists = searchLists(search);
+  const creators = creatorList(search, userEmail);
   const deletedView = search.deleted === true && canSeeDeleted;
   return {
     ...(lines.length === 1 ? { query: normalizeSerial(lines[0] ?? '') } : {}),
@@ -214,9 +213,11 @@ export function filterOfSearch(
     ...(lists.locationIds.length > 0 ? { locationIds: lists.locationIds } : {}),
     ...(lists.buIds.length > 0 ? { buIds: lists.buIds } : {}),
     ...(lists.custodies.length > 0 ? { custodies: lists.custodies } : {}),
-    ...(search.mine && userEmail ? { createdBy: userEmail } : {}),
+    ...(creators.length > 0 ? { createdBys: creators } : {}),
     ...(lists.statuses.length > 0 ? { statuses: lists.statuses } : {}),
     ...(deletedView ? { deleted: true } : {}),
+    ...(search.whRecorded ? { whRecorded: search.whRecorded } : {}),
+    ...(search.needsProof ? { needsProof: true } : {}),
     ...(search.from ? { from: search.from } : {}),
     ...(search.to ? { to: search.to } : {}),
   };

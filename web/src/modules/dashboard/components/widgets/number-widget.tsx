@@ -31,6 +31,7 @@ export function NumberWidget({
           <span>{change.text}</span>
         </p>
       ) : null}
+      {data.note ? <p className="text-sm text-muted-foreground">{data.note}</p> : null}
     </div>
   );
 }

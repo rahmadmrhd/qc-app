@@ -1,11 +1,11 @@
+import { formatBuLabel } from '@shared/business-units';
 import { useQuery } from '@tanstack/react-query';
 import { useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { LinkMultiField, type LinkOption } from '@/components/link-field';
 import { FilterBar, FilterChip, multiFilterDisplay } from '@/components/page/filter-bar';
 import { useChipDraft } from '@/components/page/filter-draft';
-import { MultiSelect } from '@/components/select';
-import { Checkbox } from '@/components/ui/checkbox';
+import { MultiSelect, Select } from '@/components/select';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -17,6 +17,7 @@ import { useMe } from '@/modules/auth/use-me';
 import { CUSTODY_LABEL, formatDay, STATUS_LABEL, STATUS_OPTIONS } from '../lib/labels';
 import {
   commitSearchLine,
+  creatorList,
   mergeScanned,
   normalizeSearchText,
   SERIAL_SEARCH_MAX,
@@ -32,7 +33,12 @@ import {
   useScanFeedback,
 } from '../lib/scan-feedback';
 import { useSerialLocations } from '../lib/use-serial-locations';
-import { serialItemOptionsQueryOptions, serialItemsByIdQueryOptions } from '../queries';
+import {
+  serialCreatorOptionsQueryOptions,
+  serialCreatorsByIdQueryOptions,
+  serialItemOptionsQueryOptions,
+  serialItemsByIdQueryOptions,
+} from '../queries';
 import { CameraScanButton } from './camera-scan-button';
 
 export interface SerialFiltersProps {
@@ -58,13 +64,24 @@ function exclusiveDeleted(next: string[], previous: readonly string[]): string[]
   return next.filter((value) => value !== DELETED_VIEW);
 }
 
+const WH_FILTER_LABEL = { yes: 'Tercatat WH', no: 'Belum tercatat WH' } as const;
+const WH_FILTER_OPTIONS = [
+  { value: '', label: 'Semua' },
+  { value: 'yes', label: 'Tercatat WH' },
+  { value: 'no', label: 'Belum tercatat WH' },
+];
+const PROOF_FILTER_OPTIONS = [
+  { value: '', label: 'Semua' },
+  { value: 'yes', label: 'Butuh foto' },
+];
+
 const CUSTODY_FILTER_OPTIONS = (Object.keys(CUSTODY_LABEL) as (keyof typeof CUSTODY_LABEL)[]).map(
   (value) => ({ value, label: CUSTODY_LABEL[value] }),
 );
 
 /**
  * Filter daftar serial: pencarian banyak serial (tempel atau pindai; kolom sendiri karena `FilterBar.search` satu baris)
- * dan chip untuk BU, item, lokasi, status, posisi, tanggal uji, dan "Dicatat oleh saya". BU, item, lokasi, status, dan
+ * dan chip untuk BU, item, lokasi, status, posisi, tanggal uji, dan pencatat. BU, item, lokasi, status, dan
  * posisi multi-value (salah satu dari). Chip Status juga memuat "Terhapus" bagi pemegang `serial: manage` (menggantikan
  * chip Tampilan; keputusan pemilik 2026-11-22): memilihnya mengosongkan status alur dan sebaliknya.
  */
@@ -77,7 +94,7 @@ export function SerialFilters({ search, onChange, canSeeDeleted = false }: Seria
   ]);
   const buOptions: LinkOption[] = (me.businessUnits ?? [])
     .filter((bu) => !bu.deleted && readableBuIds.has(bu.id))
-    .map((bu) => ({ id: bu.id, label: `${bu.code} · ${bu.name}` }));
+    .map((bu) => ({ id: bu.id, label: formatBuLabel(bu) }));
   const lists = searchLists(search);
   const [itemTerm, setItemTerm] = useState('');
   const { data, isFetching } = useQuery(serialItemOptionsQueryOptions(itemTerm.trim()));
@@ -97,6 +114,29 @@ export function SerialFilters({ search, onChange, canSeeDeleted = false }: Seria
   });
   for (const item of byId.data?.items ?? []) itemLabels.current.set(item.id, item.label);
   const itemLabel = (id: string) => itemLabels.current.get(id) ?? 'Item tidak dikenal';
+  // Pencatat: "Saya" (email akun) selalu jadi saran pertama; sisanya dicari di server (mulai 2 karakter).
+  const creators = creatorList(search, me.email);
+  // Opsi pencatat HANYA dimuat saat chip terbuka (CreatorField terpasang bersama isi chip). Di luar itu hanya nama nilai
+  // terpilih dari URL yang dimuat menurut email (sekali, tanpa polling).
+  const creatorNames = useRef(new Map<string, string>());
+  const rememberCreators = (items: readonly { email: string; name: string }[]) => {
+    for (const creator of items) {
+      creatorNames.current.set(
+        creator.email,
+        creator.name === creator.email ? creator.email : `${creator.name} (${creator.email})`,
+      );
+    }
+  };
+  const unnamed = creators.filter(
+    (email) => email !== me.email && !creatorNames.current.has(email),
+  );
+  const creatorsById = useQuery({
+    ...serialCreatorsByIdQueryOptions(unnamed.slice(0, FILTER_LIST_MAX)),
+    enabled: unnamed.length > 0,
+  });
+  rememberCreators(creatorsById.data?.items ?? []);
+  const creatorLabel = (email: string) =>
+    email === me.email ? 'Saya' : (creatorNames.current.get(email) ?? email);
   const [text, setText] = useUrlSyncedText(
     search.sn ?? '',
     (value) => onChange({ sn: normalizeSearchText(value).text || undefined }),
@@ -343,6 +383,38 @@ export function SerialFilters({ search, onChange, canSeeDeleted = false }: Seria
           />
         </FilterChip>
         <FilterChip
+          label="Gudang"
+          display={search.whRecorded ? WH_FILTER_LABEL[search.whRecorded] : ''}
+          onClear={() => onChange({ whRecorded: undefined })}
+        >
+          <Select
+            id="serial-filter-wh"
+            label="Filter gudang"
+            hideLabel
+            placeholder="Semua"
+            options={WH_FILTER_OPTIONS}
+            value={search.whRecorded ?? ''}
+            onValueChange={(next) =>
+              onChange({ whRecorded: next === 'yes' || next === 'no' ? next : undefined })
+            }
+          />
+        </FilterChip>
+        <FilterChip
+          label="Butuh foto"
+          display={search.needsProof ? 'Butuh foto' : ''}
+          onClear={() => onChange({ needsProof: undefined })}
+        >
+          <Select
+            id="serial-filter-needs-proof"
+            label="Filter butuh foto"
+            hideLabel
+            placeholder="Semua"
+            options={PROOF_FILTER_OPTIONS}
+            value={search.needsProof ? 'yes' : ''}
+            onValueChange={(next) => onChange({ needsProof: next === 'yes' ? true : undefined })}
+          />
+        </FilterChip>
+        <FilterChip
           label="Tanggal uji"
           display={dateDisplay}
           onClear={() => onChange({ from: undefined, to: undefined })}
@@ -355,13 +427,82 @@ export function SerialFilters({ search, onChange, canSeeDeleted = false }: Seria
         </FilterChip>
         <FilterChip
           label="Pencatat"
-          display={search.mine === true ? 'Saya' : null}
-          onClear={() => onChange({ mine: undefined })}
+          display={multiFilterDisplay(creators.map(creatorLabel))}
+          onClear={() => onChange({ createdBys: undefined, mine: undefined })}
         >
-          <MineCheckbox mine={search.mine === true} onCommit={(mine) => onChange({ mine })} />
+          <CreatorField
+            creators={creators}
+            meEmail={me.email}
+            meName={me.name}
+            labelOf={creatorLabel}
+            remember={rememberCreators}
+            onChange={(next) =>
+              onChange({ createdBys: next.length > 0 ? next : undefined, mine: undefined })
+            }
+          />
         </FilterChip>
       </FilterBar>
     </div>
+  );
+}
+
+/**
+ * Pemilih pencatat di dalam chip: terpasang (dan baru memuat opsi) hanya saat chip terbuka. "Saya" selalu saran pertama;
+ * sisanya dicari di server mulai 2 karakter (1 karakter = daftar awal, disaring lokal).
+ */
+function CreatorField({
+  creators,
+  meEmail,
+  meName,
+  labelOf,
+  remember,
+  onChange,
+}: {
+  creators: string[];
+  meEmail: string;
+  meName: string;
+  labelOf: (email: string) => string;
+  remember: (items: readonly { email: string; name: string }[]) => void;
+  onChange: (next: string[]) => void;
+}) {
+  const [term, setTerm] = useState('');
+  const { data, isFetching } = useQuery(serialCreatorOptionsQueryOptions(term));
+  remember(data?.items ?? []);
+  const lower = term.trim().toLowerCase();
+  const localOnly = lower.length === 1;
+  const showMe =
+    lower === '' ||
+    'saya'.includes(lower) ||
+    meEmail.toLowerCase().includes(lower) ||
+    meName.toLowerCase().includes(lower);
+  const choices: LinkOption[] = [
+    ...(showMe ? [{ id: meEmail, label: 'Saya' }] : []),
+    ...(data?.items ?? [])
+      .filter((creator) => creator.email !== meEmail)
+      .filter(
+        (creator) =>
+          !localOnly ||
+          creator.email.toLowerCase().includes(lower) ||
+          creator.name.toLowerCase().includes(lower),
+      )
+      .map((creator) => ({ id: creator.email, label: labelOf(creator.email) })),
+  ];
+  return (
+    <LinkMultiField
+      maxSelected={FILTER_LIST_MAX}
+      id="serial-filter-creator"
+      label="Filter pencatat"
+      hideLabel
+      placeholder="Semua pencatat"
+      value={creators}
+      labelOf={labelOf}
+      options={choices}
+      loading={isFetching && data === undefined}
+      hasMore={data?.nextCursor != null}
+      onSearchChange={setTerm}
+      searchDebounceMs={200}
+      onChange={onChange}
+    />
   );
 }
 
@@ -408,31 +549,6 @@ function DateRangeFields({
           onChange={(event) => setRange({ ...range, to: event.target.value || undefined })}
         />
       </div>
-    </div>
-  );
-}
-
-/** Centang "Dicatat oleh saya"; di dalam chip ditahan sebagai draf dan diterapkan saat chip menutup. */
-function MineCheckbox({
-  mine,
-  onCommit,
-}: {
-  mine: boolean;
-  onCommit: (mine: true | undefined) => void;
-}) {
-  const [checked, setChecked] = useChipDraft<boolean>(mine, (next) =>
-    onCommit(next ? true : undefined),
-  );
-  return (
-    <div className="flex items-center gap-2">
-      <Checkbox
-        id="serial-filter-mine"
-        checked={checked}
-        onCheckedChange={(on) => setChecked(on === true)}
-      />
-      <Label htmlFor="serial-filter-mine" className="font-normal">
-        Dicatat oleh saya
-      </Label>
     </div>
   );
 }

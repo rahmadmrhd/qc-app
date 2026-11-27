@@ -5,44 +5,25 @@ import type {
   StickerSettingsDto,
   UserDto,
 } from '@shared/contract';
-import { normalizeKey } from '@shared/items';
+import { mailListsOf, sameMailLists } from '@shared/mail-lists';
 import { STICKER_LIMITS } from '@shared/stickers';
 import { useState } from 'react';
 import { useUnsavedChanges } from '@/app/pwa/unsaved-changes';
-import { LinkMultiField, type LinkOption } from '@/components/link-field';
+import { MailListsFields, type RecipientSuggestion } from '@/components/mail-lists-field';
 import { FormPage } from '@/components/page/form-page';
 import { FormTabs } from '@/components/page/form-tabs';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { PostelAlertSettings } from './postel-alert-settings';
 
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-/** Id `<form>` pengaturan stok (tab "Minimum stok" dan "Ringkasan stok" disimpan bersama). */
+/** Id `<form>` pengaturan stok (tab "Ringkasan stok"). */
 export const STICKER_SETTINGS_FORM_ID = 'sticker-settings';
 /** Id `<form>` peringatan Postel (disimpan sendiri, versi CAS terpisah). */
 export const POSTEL_ALERT_FORM_ID = 'postel-alert-settings';
 
-export const SETTINGS_TABS = ['minimum', 'ringkasan', 'postel'] as const;
+export const SETTINGS_TABS = ['ringkasan', 'postel'] as const;
 export type SettingsTab = (typeof SETTINGS_TABS)[number];
-
-function parseQty(raw: string): number | null {
-  const text = raw.trim();
-  if (text === '') return 0;
-  const value = Number(text);
-  return Number.isInteger(value) && value >= 0 && value <= STICKER_LIMITS.qtyMax ? value : null;
-}
-
-function userLabel(user: Pick<UserDto, 'name' | 'email'>): string {
-  return `${user.name} (${user.email})`;
-}
-
-function initialDefaults(settings: StickerSettingsDto): Record<string, string> {
-  return Object.fromEntries(settings.types.map((type) => [type.id, String(type.defaultMinQty)]));
-}
 
 /**
  * Keadaan form pengaturan stok. Dipegang di atas `FormTabs` (satu `<form>` tak dapat membungkus sebagian tab), jadi
@@ -61,13 +42,10 @@ function useStickerSettingsForm({
   onInvalid: (tab: SettingsTab) => void;
 }) {
   const [version, setVersion] = useState(settings.updatedAt);
-  const [defaults, setDefaults] = useState(() => initialDefaults(settings));
   const [enabled, setEnabled] = useState(settings.alert.enabled);
   const [hour, setHour] = useState(String(settings.alert.digestHour));
   const [intervalText, setIntervalText] = useState(String(settings.alert.intervalDays));
-  const [recipients, setRecipients] = useState<string[]>(settings.alert.recipients);
-  const [extra, setExtra] = useState('');
-  const [term, setTerm] = useState('');
+  const [lists, setLists] = useState(() => mailListsOf(settings.alert));
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [serverError, setServerError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -75,13 +53,10 @@ function useStickerSettingsForm({
   if (version !== settings.updatedAt) {
     // Versi tersimpan berubah (simpan berhasil atau dimuat ulang): isian dari data server terbaru.
     setVersion(settings.updatedAt);
-    setDefaults(initialDefaults(settings));
     setEnabled(settings.alert.enabled);
     setHour(String(settings.alert.digestHour));
     setIntervalText(String(settings.alert.intervalDays));
-    setRecipients(settings.alert.recipients);
-    setExtra('');
-    setTerm('');
+    setLists(mailListsOf(settings.alert));
     setErrors({});
     setServerError(null);
   }
@@ -90,21 +65,14 @@ function useStickerSettingsForm({
     enabled !== settings.alert.enabled ||
       hour !== String(settings.alert.digestHour) ||
       intervalText !== String(settings.alert.intervalDays) ||
-      recipients.join('|') !== settings.alert.recipients.join('|') ||
-      extra.trim() !== '' ||
-      settings.types.some((type) => defaults[type.id] !== String(type.defaultMinQty)),
+      !sameMailLists(lists, mailListsOf(settings.alert)),
   );
 
-  const userByEmail = new Map((users ?? []).map((user) => [user.email.toLowerCase(), user]));
-  const chosen = new Set(recipients);
-  const termKey = normalizeKey(term);
-  const options: LinkOption[] = (users ?? [])
-    .filter((user) => user.status === 'active' && !chosen.has(user.email.toLowerCase()))
-    .filter(
-      (user) => termKey === '' || normalizeKey(`${user.name} ${user.email}`).includes(termKey),
-    )
-    .slice(0, 50)
-    .map((user) => ({ id: user.email.toLowerCase(), label: userLabel(user) }));
+  const suggestions: RecipientSuggestion[] = (users ?? []).map((user) => ({
+    name: user.name,
+    email: user.email,
+    active: user.status === 'active',
+  }));
 
   function fail(key: string, message: string | undefined) {
     setErrors((current) => {
@@ -113,35 +81,6 @@ function useStickerSettingsForm({
       else next[key] = message;
       return next;
     });
-  }
-
-  function addRecipients(ids: string[]) {
-    if (ids.length > STICKER_LIMITS.alertRecipientsMax) {
-      fail('recipients', `Maksimal ${STICKER_LIMITS.alertRecipientsMax} penerima`);
-      return;
-    }
-    setRecipients(ids);
-    fail('recipients', undefined);
-  }
-
-  function addExtra() {
-    const email = extra.trim().toLowerCase();
-    if (email === '') return;
-    if (!EMAIL_PATTERN.test(email)) {
-      fail('recipients', 'Format email tidak valid');
-      return;
-    }
-    if (chosen.has(email)) {
-      fail('recipients', 'Email sudah ada dalam daftar');
-      return;
-    }
-    if (recipients.length >= STICKER_LIMITS.alertRecipientsMax) {
-      fail('recipients', `Maksimal ${STICKER_LIMITS.alertRecipientsMax} penerima`);
-      return;
-    }
-    setRecipients([...recipients, email]);
-    setExtra('');
-    fail('recipients', undefined);
   }
 
   async function submit() {
@@ -160,20 +99,10 @@ function useStickerSettingsForm({
     ) {
       next.intervalDays = `Selang harus bilangan bulat 1 sampai ${STICKER_LIMITS.alertIntervalDaysMax} hari`;
     }
-    const changed: SaveStickerSettingsInput['defaults'] = [];
-    for (const type of settings.types) {
-      const qty = parseQty(defaults[type.id] ?? '');
-      if (qty === null) {
-        next[`default-${type.id}`] =
-          `Minimum bawaan ${type.name}: bilangan bulat 0 sampai ${STICKER_LIMITS.qtyMax}`;
-      } else if (qty !== type.defaultMinQty) {
-        changed.push({ typeId: type.id, defaultMinQty: qty });
-      }
-    }
     setErrors(next);
     const keys = Object.keys(next);
     if (keys.length > 0) {
-      onInvalid(keys.some((key) => key.startsWith('default-')) ? 'minimum' : 'ringkasan');
+      onInvalid('ringkasan');
       return;
     }
     setBusy(true);
@@ -182,8 +111,7 @@ function useStickerSettingsForm({
     try {
       message = await onSave({
         expectedUpdatedAt: settings.updatedAt,
-        alert: { enabled, recipients, digestHour, intervalDays },
-        defaults: changed,
+        alert: { enabled, ...lists, digestHour, intervalDays },
       });
     } catch {
       message = 'Gagal menyimpan konfigurasi stiker';
@@ -198,14 +126,8 @@ function useStickerSettingsForm({
     busy,
     serverError,
     errors,
-    hasMinimumError: Object.keys(errors).some((key) => key.startsWith('default-')),
-    hasDigestError: Object.keys(errors).some((key) => !key.startsWith('default-')),
+    hasDigestError: Object.keys(errors).length > 0,
     submit,
-    defaults,
-    setDefault: (typeId: string, value: string) => {
-      setDefaults((current) => ({ ...current, [typeId]: value }));
-      fail(`default-${typeId}`, undefined);
-    },
     enabled,
     setEnabled,
     hour,
@@ -218,70 +140,16 @@ function useStickerSettingsForm({
       setIntervalText(value);
       fail('intervalDays', undefined);
     },
-    recipients,
-    addRecipients,
-    extra,
-    setExtra,
-    addExtra,
-    setTerm,
-    options,
-    userByEmail,
+    lists,
+    setLists: (next: typeof lists) => {
+      setLists(next);
+      fail('recipients', undefined);
+    },
+    suggestions,
   };
 }
 
 type StickerSettingsForm = ReturnType<typeof useStickerSettingsForm>;
-
-/**
- * Isian di luar elemen `<form>` (tab "Minimum stok" dan "Ringkasan stok" satu form tetapi terpisah panel): atribut
- * `form` mengaitkannya agar Enter di kolom isian tetap mengirim form yang benar.
- */
-function MinimumSection({ form }: { form: StickerSettingsForm }) {
-  return (
-    <section className="space-y-3 rounded-lg border p-4">
-      <h2 className="text-base font-semibold">Minimum stok bawaan per jenis</h2>
-      <p className="text-sm text-muted-foreground">
-        Dipakai sebagai batas minimum stiker baru pada jenis itu (0 = tanpa peringatan). Stiker yang
-        sudah ada tidak berubah. Untuk jenis Manual Book, stiker versi pertama memakai nilai ini.
-      </p>
-      <ul className="divide-y rounded-md border">
-        {form.settings.types.map((type) => (
-          <li key={type.id} className="flex flex-wrap items-center justify-between gap-2 p-3">
-            <div className="flex items-center gap-2">
-              <Label htmlFor={`default-${type.id}`} className="font-medium">
-                {`Minimum bawaan ${type.name}`}
-              </Label>
-              {type.systemKind !== '' ? (
-                <Badge variant="outline" color="primary">
-                  Sistem
-                </Badge>
-              ) : null}
-            </div>
-            <div className="space-y-1">
-              <Input
-                id={`default-${type.id}`}
-                form={STICKER_SETTINGS_FORM_ID}
-                type="number"
-                inputMode="numeric"
-                min={0}
-                max={STICKER_LIMITS.qtyMax}
-                step={1}
-                className="w-32"
-                value={form.defaults[type.id] ?? ''}
-                aria-invalid={form.errors[`default-${type.id}`] ? true : undefined}
-                onChange={(event) => form.setDefault(type.id, event.target.value)}
-              />
-              {form.errors[`default-${type.id}`] ? (
-                <p role="alert" className="text-sm text-destructive-text">
-                  {form.errors[`default-${type.id}`]}
-                </p>
-              ) : null}
-            </div>
-          </li>
-        ))}
-      </ul>
-    </section>
-  );
-}
 
 function DigestSection({ form }: { form: StickerSettingsForm }) {
   return (
@@ -366,53 +234,14 @@ function DigestSection({ form }: { form: StickerSettingsForm }) {
           </p>
         ) : null}
       </div>
-      <fieldset aria-label="Penerima ringkasan" className="m-0 min-w-0 space-y-2 border-0 p-0">
-        <LinkMultiField
-          id="sticker-alert-recipients"
-          label="Penerima"
-          placeholder={form.users === null ? 'Tambahkan email di bawah' : 'Pilih user'}
-          value={form.recipients}
-          labelOf={(id) => {
-            const user = form.userByEmail.get(id);
-            return user ? userLabel(user) : id;
-          }}
-          options={form.options}
-          onSearchChange={form.setTerm}
-          searchDebounceMs={0}
-          onChange={form.addRecipients}
-        />
-        <div className="flex flex-wrap items-end gap-2">
-          <div className="space-y-1.5">
-            <Label htmlFor="sticker-alert-extra">Email lain</Label>
-            <Input
-              id="sticker-alert-extra"
-              form={STICKER_SETTINGS_FORM_ID}
-              type="email"
-              className="w-72"
-              value={form.extra}
-              onChange={(event) => form.setExtra(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') {
-                  event.preventDefault();
-                  form.addExtra();
-                }
-              }}
-            />
-          </div>
-          <Button type="button" variant="outline" color="primary" onClick={form.addExtra}>
-            Tambah email
-          </Button>
-        </div>
-        <p className="text-xs text-muted-foreground">
-          Maksimal {STICKER_LIMITS.alertRecipientsMax} penerima; alamat di luar daftar user boleh
-          ditambahkan.
-        </p>
-        {form.errors.recipients ? (
-          <p role="alert" className="text-sm text-destructive-text">
-            {form.errors.recipients}
-          </p>
-        ) : null}
-      </fieldset>
+      <MailListsFields
+        idPrefix="sticker-alert"
+        value={form.lists}
+        onChange={form.setLists}
+        suggestions={form.suggestions}
+        max={STICKER_LIMITS.alertRecipientsMax}
+        errors={{ recipients: form.errors.recipients }}
+      />
     </section>
   );
 }
@@ -432,8 +261,9 @@ export interface StickerSettingsPageProps {
 }
 
 /**
- * Konfigurasi Stiker (`sticker: manage`) di `FormPage` + `FormTabs`: "Minimum stok" dan "Ringkasan stok" satu form
- * (`STICKER_ALERT`, `sticker-settings`), "Peringatan Postel" form sendiri (`postel-alert-settings`). Tombol Simpan di
+ * Konfigurasi Stiker (`sticker: manage`) di `FormPage` + `FormTabs`: "Ringkasan stok" (`STICKER_ALERT`,
+ * `sticker-settings`) dan "Peringatan Postel" (form sendiri, `postel-alert-settings`). Minimum stok bawaan diatur di
+ * form Jenis stiker, bukan di sini. Tombol Simpan di
  * bar judul mengikuti tab aktif; isian semua tab tetap hidup saat berpindah tab (panel hanya disembunyikan).
  */
 export function StickerSettingsPage({
@@ -446,7 +276,7 @@ export function StickerSettingsPage({
   onTabChange,
   onCancel,
 }: StickerSettingsPageProps) {
-  const [localTab, setLocalTab] = useState<SettingsTab>('minimum');
+  const [localTab, setLocalTab] = useState<SettingsTab>('ringkasan');
   const active = tab ?? localTab;
   const changeTab = (next: SettingsTab) => {
     setLocalTab(next);
@@ -464,7 +294,7 @@ export function StickerSettingsPage({
       onCancel={onCancel}
       submitting={onPostelTab ? postelBusy : form.busy}
     >
-      {/* Form pengaturan stok sengaja kosong: isian di dua panel tab terkait lewat atribut `form`. */}
+      {/* Form pengaturan stok sengaja kosong: isian di panel tab terkait lewat atribut `form`. */}
       <form
         id={STICKER_SETTINGS_FORM_ID}
         noValidate
@@ -482,12 +312,6 @@ export function StickerSettingsPage({
         value={active}
         onValueChange={(id) => changeTab(id as SettingsTab)}
         tabs={[
-          {
-            id: 'minimum',
-            label: 'Minimum stok',
-            hasError: form.hasMinimumError,
-            content: <MinimumSection form={form} />,
-          },
           {
             id: 'ringkasan',
             label: 'Ringkasan stok',

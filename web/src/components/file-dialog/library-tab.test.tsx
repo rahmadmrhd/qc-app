@@ -417,3 +417,60 @@ test('hapus ditolak server karena masih dipakai: pesan ramah, gambar tetap, daft
   expect(screen.getByText('Gambar a')).toBeInTheDocument();
   await waitFor(() => expect(list(source).mock.calls.length).toBeGreaterThan(calls));
 });
+
+async function shiftClickBox(name: string) {
+  // Satu instans: keadaan Shift tidak dibagi antar panggilan `userEvent` langsung.
+  const user = userEvent.setup();
+  await user.keyboard('{Shift>}');
+  await user.click(screen.getByRole('checkbox', { name }));
+  await user.keyboard('{/Shift}');
+}
+
+test('Shift+klik kotak centang mode jamak memanggil onSelectRange dengan rentang gambar', async () => {
+  const source = makeSource([
+    { items: ['a', 'b', 'c', 'd'].map((id) => mk(id)), nextCursor: null },
+  ]);
+  const onSelectRange = vi.fn();
+  const { onToggle } = renderTab(source, { onSelectRange });
+  await screen.findByText('Gambar a');
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih Gambar a' }));
+  await shiftClickBox('Pilih Gambar c');
+  expect(onToggle).toHaveBeenCalledTimes(1);
+  expect(onSelectRange).toHaveBeenCalledTimes(1);
+  const [items, on] = onSelectRange.mock.calls[0] ?? [];
+  expect(items.map((item: LibraryItem) => item.id)).toEqual(['a', 'b', 'c']);
+  expect(on).toBe(true);
+});
+
+test('klik pada gambar (bukan kotak) menjadi jangkar untuk Shift+klik kotak berikutnya', async () => {
+  const source = makeSource([
+    { items: ['a', 'b', 'c', 'd'].map((id) => mk(id)), nextCursor: null },
+  ]);
+  const onSelectRange = vi.fn();
+  renderTab(source, { onSelectRange });
+  await screen.findByText('Gambar a');
+  await userEvent.click(screen.getByRole('button', { name: 'Gambar b' }));
+  await shiftClickBox('Pilih Gambar d');
+  expect(onSelectRange).toHaveBeenCalledTimes(1);
+  const [items, on] = onSelectRange.mock.calls[0] ?? [];
+  expect(items.map((item: LibraryItem) => item.id)).toEqual(['b', 'c', 'd']);
+  expect(on).toBe(true);
+});
+
+test('tanpa onSelectRange, Shift+klik sama dengan klik biasa', async () => {
+  const source = makeSource([{ items: [mk('a'), mk('b'), mk('c')], nextCursor: null }]);
+  const { onToggle } = renderTab(source);
+  await screen.findByText('Gambar a');
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih Gambar a' }));
+  await shiftClickBox('Pilih Gambar c');
+  expect(onToggle).toHaveBeenCalledTimes(2);
+});
+
+test('mode single tidak mendukung rentang', async () => {
+  const source = makeSource([{ items: [mk('a'), mk('b')], nextCursor: null }]);
+  const onSelectRange = vi.fn();
+  renderTab(source, { mode: 'single', onSelectRange });
+  await screen.findByText('Gambar a');
+  expect(screen.queryByRole('checkbox')).toBeNull();
+  expect(onSelectRange).not.toHaveBeenCalled();
+});

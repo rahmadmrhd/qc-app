@@ -216,8 +216,19 @@ test('filter BU, posisi, dan "Dicatat oleh saya" masuk masukan serials.list; sch
     custodies: ['transit'],
   });
   // Sakelar mine hanya bermakna bersama email akun.
-  expect(filterOfSearch({ mine: true }, 'a@x.com')).toEqual({ createdBy: 'a@x.com' });
+  expect(filterOfSearch({ mine: true }, 'a@x.com')).toEqual({ createdBys: ['a@x.com'] });
   expect(filterOfSearch({ mine: true })).toEqual({});
+  // createdBys jamak menang atas param lama mine.
+  expect(filterOfSearch({ mine: true, createdBys: ['b@x.com', 'c@x.com'] }, 'a@x.com')).toEqual({
+    createdBys: ['b@x.com', 'c@x.com'],
+  });
+  expect(serialSearchSchema.parse({ createdBys: ['b@x.com'] })).toEqual({
+    createdBys: ['b@x.com'],
+  });
+  // Lebih dari FILTER_LIST_MAX nilai: seluruh larik dibuang (tak dipotong diam-diam).
+  expect(
+    serialSearchSchema.parse({ createdBys: Array.from({ length: 21 }, (_, i) => `u${i}@x.com`) }),
+  ).toEqual({});
   expect(filterOfSearch({}, 'a@x.com')).toEqual({});
   expect(serialSearchSchema.parse({ custody: 'ngawur', mine: false, bu: 'b1' })).toEqual({
     bu: 'b1',

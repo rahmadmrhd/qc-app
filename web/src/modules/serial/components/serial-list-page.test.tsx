@@ -127,6 +127,7 @@ beforeEach(() => {
       stickerstock: 'none',
       serial: 'view',
       serialservice: 'none',
+      serialwh: 'none',
       countrylock: 'none',
       dashboard: 'none',
     },
@@ -159,7 +160,22 @@ beforeEach(() => {
     if (id === 'serials.itemOptions') {
       return Promise.resolve({
         items: [
-          { id: 'i1', label: 'Cisco C9200', buIds: ['b1'], buOptions: [{ id: 'b1', code: 'BU1' }] },
+          {
+            id: 'i1',
+            label: 'Cisco C9200',
+            buIds: ['b1'],
+            buOptions: [{ id: 'b1', code: 'BU1', name: 'Business Unit 1' }],
+          },
+        ],
+        nextCursor: null,
+      });
+    }
+    if (id === 'serials.creatorOptions') {
+      return Promise.resolve({
+        items: [
+          { email: 'budi@x.com', name: 'Budi' },
+          { email: 'a@gmail.com', name: 'A' },
+          { email: 'tanpa@x.com', name: 'tanpa@x.com' },
         ],
         nextCursor: null,
       });
@@ -425,6 +441,7 @@ test('pembaca serialservice: view juga tidak memanggil serials.locationOptions',
       ...me.permissions,
       serial: 'none',
       serialservice: 'view',
+      serialwh: 'none',
       countrylock: 'none',
       dashboard: 'none',
     },
@@ -491,6 +508,7 @@ test('filter item berfungsi bagi pembaca (serial: view): item dimuat dari serial
       ...me.permissions,
       serial: 'none',
       serialservice: 'view',
+      serialwh: 'none',
       countrylock: 'none',
       dashboard: 'none',
     },
@@ -511,7 +529,7 @@ function withBus(
     code: id.toUpperCase(),
     name: `Unit ${id}`,
     status: 'active' as const,
-    permissions: { item: 'none' as const, serial, serialservice },
+    permissions: { item: 'none' as const, serial, serialservice, serialwh: 'none' as const },
   }));
 }
 
@@ -589,12 +607,12 @@ test('filter BU hanya menawarkan BU yang terbaca (serial atau serialservice) dan
   await screen.findByText('ABC123');
   await openChip('BU');
   const names = await linkOptionNames(screen, 'Filter BU');
-  expect(names).toEqual(['B1 · Unit b1', 'B2 · Unit b2']);
+  expect(names).toEqual(['B1 - Unit b1', 'B2 - Unit b2']);
   // Teks bantu hanya selagi filter BU aktif: serial yang pernah di BU itu ikut tampil.
   expect(screen.queryByText(/pernah di BU ini/)).toBeNull();
-  await userEvent.click(await screen.findByRole('option', { name: 'B2 · Unit b2' }));
+  await userEvent.click(await screen.findByRole('option', { name: 'B2 - Unit b2' }));
   // Mode banyak pilihan tetap terbuka: pilihan kedua menambah draf dan daftar baru diminta saat chip menutup.
-  await userEvent.click(await screen.findByRole('option', { name: 'B1 · Unit b1' }));
+  await userEvent.click(await screen.findByRole('option', { name: 'B1 - Unit b1' }));
   expect(lastListInput()).not.toHaveProperty('buIds');
   await closeFilterChip();
   await waitFor(() => expect(lastListInput()).toMatchObject({ buIds: ['b2', 'b1'] }));
@@ -603,19 +621,79 @@ test('filter BU hanya menawarkan BU yang terbaca (serial atau serialservice) dan
   expect(await screen.findByText('Termasuk serial yang pernah di BU ini.')).toBeInTheDocument();
 });
 
-test('sakelar "Dicatat oleh saya" mengisi createdBy dengan email akun', async () => {
+test('filter Pencatat: Saya jadi saran pertama, pilihan banyak diterapkan saat chip menutup', async () => {
   await renderPage();
   await screen.findByText('ABC123');
-  expect(lastListInput()).not.toHaveProperty('createdBy');
+  expect(lastListInput()).not.toHaveProperty('createdBys');
   await openChip('Pencatat');
-  await userEvent.click(screen.getByRole('checkbox', { name: 'Dicatat oleh saya' }));
+  const names = await linkOptionNames(screen, 'Filter pencatat');
+  expect(names[0]).toBe('Saya');
+  // Akun sendiri dari server tidak ditampilkan ganda; entri tanpa nama tampil dengan email.
+  expect(names).toEqual(['Saya', 'Budi (budi@x.com)', 'tanpa@x.com']);
+  await userEvent.click(await screen.findByRole('option', { name: 'Saya' }));
+  await userEvent.click(await screen.findByRole('option', { name: 'Budi (budi@x.com)' }));
+  expect(lastListInput()).not.toHaveProperty('createdBys');
+  await closeFilterChip();
+  await waitFor(() =>
+    expect(lastListInput()).toMatchObject({ createdBys: ['a@gmail.com', 'budi@x.com'] }),
+  );
   expect(lastListInput()).not.toHaveProperty('createdBy');
-  await closeFilterChip();
-  await waitFor(() => expect(lastListInput()).toMatchObject({ createdBy: 'a@gmail.com' }));
+  expect(screen.getByRole('button', { name: /^Pencatat: Saya/ })).toBeInTheDocument();
+});
+
+test('filter Pencatat: pencarian server dimulai dari 2 karakter', async () => {
+  await renderPage();
+  await screen.findByText('ABC123');
   await openChip('Pencatat');
-  await userEvent.click(screen.getByRole('checkbox', { name: 'Dicatat oleh saya' }));
-  await closeFilterChip();
-  await waitFor(() => expect(lastListInput()).not.toHaveProperty('createdBy'));
+  await userEvent.type(screen.getByRole('combobox', { name: 'Filter pencatat' }), 'b');
+  await new Promise((resolve) => setTimeout(resolve, 400));
+  expect(
+    apiMock.mock.calls.some(
+      (call) => call[0] === 'serials.creatorOptions' && 'query' in (call[1] as object),
+    ),
+  ).toBe(false);
+  await userEvent.type(screen.getByRole('combobox', { name: 'Filter pencatat' }), 'u');
+  await waitFor(() =>
+    expect(
+      apiMock.mock.calls.some(
+        (call) =>
+          call[0] === 'serials.creatorOptions' && (call[1] as { query?: string }).query === 'bu',
+      ),
+    ).toBe(true),
+  );
+});
+
+const creatorOptionCalls = () =>
+  apiMock.mock.calls.filter(
+    (call) => call[0] === 'serials.creatorOptions' && !('ids' in (call[1] as object)),
+  );
+
+test('opsi Pencatat tidak dimuat selagi chip tertutup; dibuka memanggilnya sekali', async () => {
+  await renderPage();
+  await screen.findByText('ABC123');
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  expect(apiMock.mock.calls.some((call) => call[0] === 'serials.creatorOptions')).toBe(false);
+  await openChip('Pencatat');
+  await linkOptionNames(screen, 'Filter pencatat');
+  expect(creatorOptionCalls()).toHaveLength(1);
+  // Satu karakter tidak dikirim: kunci cache sama dengan daftar awal, jadi tidak ada permintaan baru.
+  await userEvent.type(screen.getByRole('combobox', { name: 'Filter pencatat' }), 'b');
+  await new Promise((resolve) => setTimeout(resolve, 400));
+  expect(creatorOptionCalls()).toHaveLength(1);
+});
+
+test('param lama mine dibaca sebagai Saya; createdBys dari URL menang', async () => {
+  await renderPage({ mine: true });
+  await screen.findByText('ABC123');
+  await waitFor(() => expect(lastListInput()).toMatchObject({ createdBys: ['a@gmail.com'] }));
+  expect(screen.getByRole('button', { name: /^Pencatat: Saya/ })).toBeInTheDocument();
+});
+
+test('createdBys dari URL: nama nilai terpilih dimuat menurut email', async () => {
+  await renderPage({ createdBys: ['budi@x.com'] });
+  await screen.findByText('ABC123');
+  expect(lastListInput()).toMatchObject({ createdBys: ['budi@x.com'] });
+  expect(await screen.findByRole('button', { name: /^Pencatat: Budi/ })).toBeInTheDocument();
 });
 
 test('filter BU dari URL yang tidak dikenal tidak menampilkan id mentah', async () => {
@@ -701,7 +779,7 @@ function manageMe(level: 'edit' | 'manage' = 'manage'): MeDto {
         code: 'BU1',
         name: 'Satu',
         status: 'active',
-        permissions: { item: 'none', serial: level, serialservice: 'none' },
+        permissions: { item: 'none', serial: level, serialservice: 'none', serialwh: 'none' },
       },
     ],
   };
@@ -1276,4 +1354,36 @@ test('ponsel: bar aksi massal satu baris memuat Tempel stiker; lebih dari 10 kom
   // Sepuluh kelompok: aktif.
   await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih GRUP10' }));
   expect(within(bar).getByRole('button', { name: 'Tempel stiker' })).toBeEnabled();
+});
+
+test('badge Tercatat WH dan Butuh foto tampil sesuai DTO', async () => {
+  apiMock.mockImplementation((id: string) => {
+    if (id === 'serials.list') {
+      return Promise.resolve({
+        items: [
+          row({ id: 's1', serial: 'GUDANG1', whRecorded: true, needsProof: true }),
+          row({ id: 's2', serial: 'BIASA2' }),
+        ],
+        nextCursor: null,
+      });
+    }
+    return Promise.resolve({ locations: [] });
+  });
+  await renderPage();
+  const wh = (await screen.findByRole('link', { name: 'GUDANG1' })).closest('tr') as HTMLElement;
+  const plain = screen.getByRole('link', { name: 'BIASA2' }).closest('tr') as HTMLElement;
+  expect(within(wh).getByText('Tercatat WH')).toBeInTheDocument();
+  expect(within(wh).getByText('Butuh foto')).toBeInTheDocument();
+  expect(within(plain).queryByText('Tercatat WH')).not.toBeInTheDocument();
+  expect(within(plain).queryByText('Butuh foto')).not.toBeInTheDocument();
+});
+
+test('param whRecorded dan needsProof dari URL diteruskan ke serials.list', async () => {
+  await renderPage({ whRecorded: 'no', needsProof: true });
+  await screen.findByText('ABC123');
+  await waitFor(() =>
+    expect(lastListInput()).toMatchObject({ whRecorded: 'no', needsProof: true }),
+  );
+  expect(screen.getByRole('button', { name: /^Gudang: Belum tercatat WH/ })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /^Butuh foto: Butuh foto/ })).toBeInTheDocument();
 });

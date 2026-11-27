@@ -27,6 +27,7 @@ import {
   scheduleLabel,
   wibNow,
 } from '@shared/dashboard-report';
+import { type MailLists, mailListsCount } from '@shared/mail-lists';
 import { wibDateIso } from '@shared/postel';
 import { dashboardScopeOf, mayManageRow } from '../access';
 import { hitLimit } from '../public-limits';
@@ -38,8 +39,8 @@ import {
   listReportRows,
   loadReport,
   ownerLimitGuardStmts,
+  parseMailLists,
   parsePeriod,
-  parseRecipients,
   parseReportScope,
   parseSchedule,
   type ReportRow,
@@ -90,7 +91,7 @@ export function toReportDto(
   links?: DashboardReportDto['links'],
 ): DashboardReportDto {
   const schedule = parseSchedule(row.schedule) ?? FALLBACK_SCHEDULE;
-  const recipients = parseRecipients(row.recipients);
+  const lists = parseMailLists(row);
   const scope = parseReportScope(row.scope) ?? EMPTY_SCOPE;
   const enabled = row.enabled === 1;
   const status = row.last_status as ReportStatus;
@@ -102,8 +103,10 @@ export function toReportDto(
     schedule,
     period: parsePeriod(row.period) ?? FALLBACK_PERIOD,
     scope,
-    recipients,
-    recipientCount: recipients.length,
+    recipients: lists.recipients,
+    cc: lists.cc,
+    bcc: lists.bcc,
+    recipientCount: mailListsCount(lists),
     linkDays: row.link_days,
     lastStatus: status === 'ok' || status === 'skipped' || status === 'error' ? status : '',
     lastNote: row.last_note,
@@ -120,9 +123,13 @@ export function toReportDto(
  * Tanda pendek (HMAC berkunci rahasia sesi) atas daftar penerima: audit mencatat PERUBAHAN penerima tanpa pernah
  * memuat alamat. Tak dapat dibalik tanpa rahasia server.
  */
-function recipientsMark(env: Env, recipients: readonly string[]): string {
+function recipientsMark(env: Env, lists: MailLists): string {
+  const part = (label: string, list: readonly string[]) =>
+    `${label}\n${[...list].sort().join('\n')}`;
   return createHmac('sha256', env.SESSION_SECRET)
-    .update([...recipients].sort().join('\n'))
+    .update(
+      [part('to', lists.recipients), part('cc', lists.cc), part('bcc', lists.bcc)].join('\n--\n'),
+    )
     .digest('hex')
     .slice(0, 12);
 }
@@ -132,12 +139,12 @@ function snapshot(
   env: Env,
   row: Pick<
     ReportRow,
-    'name' | 'enabled' | 'schedule' | 'period' | 'scope' | 'recipients' | 'link_days'
+    'name' | 'enabled' | 'schedule' | 'period' | 'scope' | 'recipients' | 'cc' | 'bcc' | 'link_days'
   >,
 ): Record<string, unknown> {
   const schedule = parseSchedule(row.schedule) ?? FALLBACK_SCHEDULE;
   const scope = parseReportScope(row.scope) ?? EMPTY_SCOPE;
-  const recipients = parseRecipients(row.recipients);
+  const lists = parseMailLists(row);
   return {
     name: row.name,
     enabled: row.enabled === 1,
@@ -147,8 +154,8 @@ function snapshot(
     buCount: scope.buIds.length,
     locationCount: scope.locationIds.length,
     locationFiltered: scope.locationFiltered,
-    recipientCount: recipients.length,
-    recipientsMark: recipientsMark(env, recipients),
+    recipientCount: mailListsCount(lists),
+    recipientsMark: recipientsMark(env, lists),
     linkDays: row.link_days,
   };
 }
@@ -278,6 +285,8 @@ export async function saveDashboardReport(
         );
   const name = cleanReportName(input.name);
   const recipients = normalizeRecipients(input.recipients);
+  const cc = normalizeRecipients(input.cc ?? []);
+  const bcc = normalizeRecipients(input.bcc ?? []);
   const schedule = scheduleJson(input.schedule);
   const wasEnabled = existing === null ? true : existing.enabled === 1;
   const enabled = input.enabled ?? wasEnabled;
@@ -294,6 +303,8 @@ export async function saveDashboardReport(
       period: input.period,
       scope: scopeJson(scope),
       recipients: JSON.stringify(recipients),
+      cc: JSON.stringify(cc),
+      bcc: JSON.stringify(bcc),
       link_days: input.linkDays,
       last_run_key: resetKey,
       last_run_at: '',
@@ -351,6 +362,8 @@ export async function saveDashboardReport(
     period: input.period,
     scope: scopeJson(scope),
     recipients: JSON.stringify(recipients),
+    cc: JSON.stringify(cc),
+    bcc: JSON.stringify(bcc),
     link_days: input.linkDays,
     updated_at: now,
     version: existing.version + 1,
@@ -358,7 +371,7 @@ export async function saveDashboardReport(
   try {
     await env.DB.batch([
       env.DB.prepare(
-        `UPDATE dashboard_reports SET name = ?, enabled = ?, schedule = ?, period = ?, scope = ?, recipients = ?, link_days = ?, ${rescheduled ? 'last_run_key = ?, ' : ''}${CAS_UPDATED_AT_SET}, version = version + 1 WHERE id = ?`,
+        `UPDATE dashboard_reports SET name = ?, enabled = ?, schedule = ?, period = ?, scope = ?, recipients = ?, cc = ?, bcc = ?, link_days = ?, ${rescheduled ? 'last_run_key = ?, ' : ''}${CAS_UPDATED_AT_SET}, version = version + 1 WHERE id = ?`,
       ).bind(
         name,
         after.enabled,
@@ -366,6 +379,8 @@ export async function saveDashboardReport(
         input.period,
         after.scope,
         after.recipients,
+        after.cc,
+        after.bcc,
         input.linkDays,
         ...(rescheduled ? [resetKey] : []),
         existing.updated_at,

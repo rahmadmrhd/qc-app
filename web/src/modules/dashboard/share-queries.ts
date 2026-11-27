@@ -1,4 +1,4 @@
-import type { CreateShareInput } from '@shared/dashboard-share';
+import type { CreateShareInput, UpdateShareInput } from '@shared/dashboard-share';
 import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 
@@ -33,6 +33,15 @@ export function useCreateShare() {
   const client = useQueryClient();
   return useMutation({
     mutationFn: (input: CreateShareInput) => api('dashboardShares.create', input),
+    onSuccess: () => client.invalidateQueries({ queryKey: shareKeys.all }),
+  });
+}
+
+/** Mengubah tautan manual (judul, cakupan, masa berlaku); daftar dan detail dimuat ulang setelah berhasil. */
+export function useUpdateShare() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (input: UpdateShareInput) => api('dashboardShares.update', input),
     onSuccess: () => client.invalidateQueries({ queryKey: shareKeys.all }),
   });
 }

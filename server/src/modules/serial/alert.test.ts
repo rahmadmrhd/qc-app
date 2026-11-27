@@ -145,7 +145,7 @@ describe('declare_broken dan antrean job', () => {
         '',
         'Serial Number: AB12',
         'Item: Merk Alfa',
-        'BU: A (A)',
+        'BU: A - A',
         'Nomor LP: LP/A/2611-0001',
         'Lokasi unit: Surabaya',
         'Dilaporkan: 2026-11-10',
@@ -334,7 +334,7 @@ describe('serialSettings', () => {
   test('bawaan: nonaktif, tanpa penerima; smtpConfigured mengikuti MAILER', async () => {
     const out = await call(MGR, 'serialSettings.get', null);
     expect(out.data).toEqual({
-      alert: { enabled: false, recipients: [] },
+      alert: { enabled: false, recipients: [], cc: [], bcc: [] },
       updatedAt: '',
       smtpConfigured: true,
     });
@@ -359,7 +359,12 @@ describe('serialSettings', () => {
       alert: { enabled: true, recipients: ['  Satu@Contoh.com '] },
     });
     expect(first.ok).toBe(true);
-    expect(first.data.alert).toEqual({ enabled: true, recipients: ['satu@contoh.com'] });
+    expect(first.data.alert).toEqual({
+      enabled: true,
+      recipients: ['satu@contoh.com'],
+      cc: [],
+      bcc: [],
+    });
     expect(first.data.updatedAt).toBe('2026-11-12T03:00:00.000Z');
     env.clock.advance(60_000);
     const second = await call(MGR, 'serialSettings.save', {

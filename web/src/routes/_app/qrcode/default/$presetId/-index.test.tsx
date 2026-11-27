@@ -156,7 +156,7 @@ test('View: tab Detail dan "Dipakai oleh"; klik tab mengganti search param denga
     'Detail',
     'Dipakai oleh',
   ]);
-  expect(screen.getByRole('link', { name: 'Spectrum' })).toHaveAttribute(
+  expect(screen.getByRole('link', { name: 'SPC - Spectrum' })).toHaveAttribute(
     'href',
     '/access/business-units/bu1',
   );

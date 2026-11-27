@@ -7,6 +7,7 @@ import { HANDOVER_LIMITS } from '@shared/handover';
 import { ITEM_LIMITS } from '@shared/items';
 import { POSTEL_LIMITS } from '@shared/postel';
 import { DEFAULT_QR_LAYOUT, DEFAULT_QR_STYLE, QR_LIMITS } from '@shared/qrcode';
+import { WAREHOUSE_LIMITS } from '@shared/serial-warehouse';
 import { SERIAL_LIMITS, SERIAL_PROOF_LIMITS } from '@shared/serials';
 import { GUIDE_LIMITS, INSTRUCTION_LIMITS, STICKER_LIMITS } from '@shared/stickers';
 import { MAX_JSON_BODY_BYTES, MAX_REQUEST_BODY_BYTES } from './body';
@@ -74,6 +75,8 @@ const WORST: Inputs = {
     expectedUpdatedAt: STAMP,
     alert: {
       enabled: true,
+      cc: [],
+      bcc: [],
       recipients: Array.from(
         { length: STICKER_LIMITS.alertRecipientsMax },
         (_, i) => `u${i}-${'x'.repeat(40)}@contoh.com`,
@@ -318,6 +321,38 @@ const WORST: Inputs = {
   'serials.lookupMany': {
     serials: longList(SERIAL_LIMITS.batchRows, () => 'S'.repeat(SERIAL_LIMITS.serialMax)),
   },
+  'serialWarehouse.lookup': {
+    serials: longList(WAREHOUSE_LIMITS.lookupMax, () => 'S'.repeat(SERIAL_LIMITS.serialMax)),
+    ids: longList(WAREHOUSE_LIMITS.lookupMax, (index) => `${'i'.repeat(90)}-${index}`),
+    orderId: UUID,
+  },
+  'serialWarehouse.submit': {
+    clientId: UUID,
+    chunkIndex: 0,
+    header: {
+      dispatchedOn: '2026-11-26',
+      orderNumber: text(WAREHOUSE_LIMITS.orderNumberMax),
+      buId: UUID,
+      customerName: text(255),
+      itemId: UUID,
+      note: '\u{1F600}'.repeat(WAREHOUSE_LIMITS.noteMax),
+      handoverIds: longList(WAREHOUSE_LIMITS.handoverLinksMax, (index) => `${UUID}-${index}`),
+      total: WAREHOUSE_LIMITS.chunkMax,
+      chunkSize: WAREHOUSE_LIMITS.chunkMax,
+    },
+    rows: longList(WAREHOUSE_LIMITS.chunkMax, (index) => ({
+      kind: 'new' as const,
+      clientId: UUID,
+      serial: 'S'.repeat(SERIAL_LIMITS.serialMax),
+      locationId: `${UUID}-${index}`,
+      testDate: '2026-11-26',
+    })),
+  },
+  'serialWarehouse.setLinks': {
+    id: UUID,
+    expectedUpdatedAt: STAMP,
+    handoverIds: longList(WAREHOUSE_LIMITS.handoverLinksMax, (index) => `${UUID}-${index}`),
+  },
   'serials.reportNew': {
     serial: 'S'.repeat(SERIAL_LIMITS.serialMax),
     itemId: UUID,
@@ -349,6 +384,8 @@ const WORST: Inputs = {
     expectedUpdatedAt: STAMP,
     alert: {
       enabled: true,
+      cc: [],
+      bcc: [],
       recipients: longList(
         SERIAL_LIMITS.alertRecipientsMax,
         (index) => `${'x'.repeat(240 - String(index).length)}${index}@abcdefgh.com`,
@@ -359,6 +396,8 @@ const WORST: Inputs = {
     expectedUpdatedAt: STAMP,
     alert: {
       enabled: true,
+      cc: [],
+      bcc: [],
       recipients: longList(
         POSTEL_LIMITS.recipientsMax,
         (index) => `u${index}-${'x'.repeat(40)}@contoh.com`,
@@ -419,6 +458,28 @@ const WORST: Inputs = {
   },
   // Tautan dashboard publik: judul terpanjang, 30 widget masing-masing dengan dua filter grup berisi 20 nilai terpanjang.
   'dashboardShares.create': {
+    title: text(120),
+    filter: {
+      buIds: longList(20, (index) => `${UUID}-${index}`),
+      locationIds: longList(20, (index) => `${UUID}-${index}`),
+      from: '2026-01-01',
+      to: '2026-12-31',
+    },
+    locationFiltered: true,
+    range: { mode: 'fixed', from: '2026-01-01', to: '2026-12-31' },
+    widgets: longList(30, () => ({
+      id: 'hs.created' as const,
+      filters: {
+        customer: longList(20, () => text(100)),
+        status: longList(20, () => text(100)),
+      },
+    })),
+    offers: ['customer', 'item', 'stickerType', 'sticker'],
+    expiresInDays: 365,
+  },
+  // Ubah tautan: isi sama dengan pembuatan ditambah id tautan.
+  'dashboardShares.update': {
+    id: UUID,
     title: text(120),
     filter: {
       buIds: longList(20, (index) => `${UUID}-${index}`),

@@ -1,5 +1,6 @@
 import type { PartsData, SeriesData, WidgetData, WidgetMeta } from '@shared/dashboard';
 import type { PublicWidgetData } from '@shared/dashboard-public';
+import type { WidgetLinks } from '../../lib/links';
 import { LazyCharts } from '../charts/chart-lazy';
 import { ListWidget } from './list-widget';
 import { NumberWidget } from './number-widget';
@@ -24,9 +25,11 @@ function Unsupported() {
 export function WidgetRenderer({
   meta,
   data,
+  links,
 }: {
   meta: WidgetMeta;
   data: WidgetData | PublicWidgetData;
+  links?: WidgetLinks;
 }) {
   switch (meta.visual) {
     case 'number':
@@ -36,7 +39,11 @@ export function WidgetRenderer({
         <Unsupported />
       );
     case 'list':
-      return data.kind === 'list' ? <ListWidget data={data} /> : <Unsupported />;
+      return data.kind === 'list' ? (
+        <ListWidget data={data} label={meta.title} {...(links ? { links } : {})} />
+      ) : (
+        <Unsupported />
+      );
     case 'donut':
     case 'pie':
       return data.kind === 'parts' ? (
@@ -47,6 +54,12 @@ export function WidgetRenderer({
     case 'barH':
       return data.kind === 'parts' ? (
         <LazyCharts.BarListChart data={data} label={meta.title} />
+      ) : (
+        <Unsupported />
+      );
+    case 'barScroll':
+      return data.kind === 'parts' ? (
+        <LazyCharts.ScrollBarChart data={data} label={meta.title} />
       ) : (
         <Unsupported />
       );

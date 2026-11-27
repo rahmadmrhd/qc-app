@@ -19,6 +19,8 @@ export const STICKER_LIMITS = {
   countRows: 20,
   /** Maksimum pasangan stiker×lokasi per stok opname. */
   opnameRows: 100,
+  /** Maksimum baris stok awal (satu per lokasi) saat membuat stiker. */
+  openingRows: 50,
   /** Maksimum penerima email ringkasan stok menipis. */
   alertRecipientsMax: 20,
   /** Interval kirim ringkasan stok menipis terpanjang (hari); 1 = tiap hari. */

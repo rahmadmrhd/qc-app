@@ -261,8 +261,19 @@ export function StickerTypesPage({
 
   const actions = (type: StickerTypeDto): RowAction[] => {
     const busy = pendingStatusId === type.id || rowBusy === type.id;
-    // Jenis sistem dikelola aplikasi (selalu aktif; nama dan aturan terkunci): tanpa aksi apa pun.
-    if (type.systemKind !== '') return [];
+    // Jenis sistem dikelola aplikasi (selalu aktif; nama dan aturan terkunci): hanya Ubah (minimum bawaan, `sticker: manage`).
+    if (type.systemKind !== '') {
+      return [
+        {
+          id: 'edit',
+          action: 'edit',
+          label: `Ubah ${type.name}`,
+          shortLabel: 'Ubah',
+          hidden: !canManage,
+          onSelect: () => setDialog(type),
+        },
+      ];
+    }
     if (type.deleted || deletedView) {
       return [
         {
@@ -412,6 +423,7 @@ export function StickerTypesPage({
         open={dialog !== null}
         onOpenChange={(open) => (open ? undefined : setDialog(null))}
         type={dialog === null || dialog === 'new' ? undefined : dialog}
+        canSetDefaultMin={canManage}
         onSave={onSave}
       />
       <ConfirmDeleteDialog

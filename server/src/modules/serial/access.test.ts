@@ -5,7 +5,13 @@ import type { BuPermissionMap } from '@shared/business-units';
 import { emptyPermissions } from '@shared/permissions';
 import { assertSerialVisible, canWriteBu, readableBuIds, writableBuIds } from './access';
 
-const none = { item: 'none', serial: 'none', serialservice: 'none', countrylock: 'none' } as const;
+const none = {
+  item: 'none',
+  serial: 'none',
+  serialservice: 'none',
+  serialwh: 'none',
+  countrylock: 'none',
+} as const;
 
 function user(businessUnits: Record<string, BuPermissionMap>, isSuperAdmin = false): UserContext {
   return {
@@ -32,7 +38,10 @@ describe('akses BU serial', () => {
   });
 
   test('serialservice: view saja ikut dapat dibaca tetapi tidak ditulis', () => {
-    const ctx = user({ A: { ...none, serialservice: 'view' }, B: { ...none, serial: 'view' } });
+    const ctx = user({
+      A: { ...none, serialservice: 'view', serialwh: 'none' },
+      B: { ...none, serial: 'view' },
+    });
     expect(readableBuIds(ctx).sort()).toEqual(['A', 'B']);
     expect(writableBuIds(ctx)).toEqual([]);
   });
@@ -50,6 +59,7 @@ describe('akses BU serial', () => {
       item: 'manage',
       serial: 'manage',
       serialservice: 'edit',
+      serialwh: 'none',
     } as const;
     const ctx = user({ A: all, B: all }, true);
     expect(readableBuIds(ctx).sort()).toEqual(['A', 'B']);

@@ -50,7 +50,7 @@ async function renderManager(props: Partial<BrandsManagerProps> = {}) {
 test('menampilkan merk, BU bawaan, jumlah item, dan status', async () => {
   await renderManager();
   expect(screen.getByRole('columnheader', { name: 'BU bawaan' })).toBeInTheDocument();
-  expect(screen.getByText('RTL')).toBeInTheDocument();
+  expect(screen.getByText('RTL - Retail')).toBeInTheDocument();
   expect(screen.getByText('—')).toBeInTheDocument();
   expect(screen.getByText('Aktif')).toBeInTheDocument();
   expect(screen.getByText('Nonaktif')).toBeInTheDocument();
@@ -64,13 +64,13 @@ test('nama merk menaut ke View; tidak ada tombol "Lihat"', async () => {
 
 test('kode BU menaut ke halaman BU bila berhak, selain itu lencana', async () => {
   const { unmount } = await renderManager();
-  const link = screen.getByRole('link', { name: 'RTL' });
+  const link = screen.getByRole('link', { name: 'RTL - Retail' });
   expect(link).toHaveAttribute('href', '/access/business-units/bu-a');
   expect(link).toHaveAttribute('title', 'Retail');
   unmount();
   await renderManager({ canOpenBusinessUnit: false });
-  expect(screen.queryByRole('link', { name: 'RTL' })).toBeNull();
-  expect(screen.getByText('RTL')).toHaveAttribute('title', 'Retail');
+  expect(screen.queryByRole('link', { name: 'RTL - Retail' })).toBeNull();
+  expect(screen.getByText('RTL - Retail')).toHaveAttribute('title', 'Retail');
 });
 
 test('jumlah item menaut ke daftar item terfilter merk; nol tanpa tautan', async () => {

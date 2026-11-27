@@ -1,3 +1,4 @@
+import { formatBuLabel } from '@shared/business-units';
 import {
   isIsoDate,
   normalizeSerial,
@@ -5,7 +6,8 @@ import {
   SERIAL_PROOF_LIMITS,
   serialProblem,
 } from '@shared/serials';
-import { memo, useMemo, useState } from 'react';
+import { type KeyboardEvent, type MouseEvent, memo, useMemo, useRef, useState } from 'react';
+import { useRangeSelect } from '@/components/data-table';
 import type { UploadEntry } from '@/components/file-dialog/use-background-uploads';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -19,6 +21,8 @@ export interface StagingTableProps {
   rows: readonly StagingRow[];
   onSelect: (clientId: string, selected: boolean) => void;
   onSelectAll: (selected: boolean) => void;
+  /** Mengubah pilihan hanya untuk baris-baris ini (pilih rentang). */
+  onSelectMany: (clientIds: readonly string[], selected: boolean) => void;
   /** Mengubah kolom baris (mengosongkan hasil/pesan penyimpanan sebelumnya). */
   onEdit: (clientId: string, patch: Partial<StagingRow>) => void;
   /** Serial baru (bentuk ternormalisasi); mengembalikan pesan galat bila ditolak (mis. ganda di tabel). */
@@ -171,14 +175,15 @@ export function RowBadges({ row }: { row: StagingRow }) {
       {existing ? (
         <span
           className="rounded-full border border-primary/50 bg-primary/10 px-1.5 py-px font-medium text-foreground"
-          title={`Serial sudah tercatat di ${existing.buCode}; entri ini menjadi cek ulang`}
+          title={`Serial sudah tercatat di ${formatBuLabel({ code: existing.buCode, name: existing.buName })}; entri ini menjadi cek ulang`}
         >
           Cek ulang
         </span>
       ) : null}
       {existing && moving ? (
         <span className="rounded-full border px-1.5 py-px text-foreground">
-          Pindah BU: {existing.buCode} → {row.buLabel}
+          Pindah BU: {formatBuLabel({ code: existing.buCode, name: existing.buName })} →{' '}
+          {row.buLabel}
         </span>
       ) : null}
       {row.sample ? (
@@ -199,8 +204,16 @@ export function RowBadges({ row }: { row: StagingRow }) {
 interface RowViewProps
   extends Omit<
     StagingTableProps,
-    'rows' | 'onSelectAll' | 'disabled' | 'actorName' | 'uploadEntries'
+    'rows' | 'onSelectAll' | 'onSelectMany' | 'disabled' | 'actorName' | 'uploadEntries'
   > {
+  checkboxProps: (id: string) => {
+    onClick: (event: MouseEvent<HTMLElement>) => void;
+    onMouseDown: (event: MouseEvent<HTMLElement>) => void;
+    onKeyDown: (event: KeyboardEvent<HTMLElement>) => void;
+    onKeyUp: (event: KeyboardEvent<HTMLElement>) => void;
+    onPointerDown: () => void;
+    onBlur: () => void;
+  };
   actorName: string;
   disabled: boolean;
   row: StagingRow;
@@ -213,6 +226,7 @@ const RowView = memo(function RowView({
   row,
   index,
   onSelect,
+  checkboxProps,
   onEdit,
   onCommitSerial,
   onOpenDetail,
@@ -226,6 +240,11 @@ const RowView = memo(function RowView({
 }: RowViewProps) {
   const status = rowStatus(row);
   const clientId = row.clientId;
+  const rangeProps = checkboxProps(clientId);
+  const selectedRef = useRef(row.selected);
+  selectedRef.current = row.selected;
+  // Klik yang sudah ditangani rentang: `onChange` untuk klik yang sama diabaikan.
+  const rangeHandledRef = useRef(false);
   const rowUploads = useMemo<ProofFieldUploads>(
     () => ({
       entries: uploads,
@@ -269,7 +288,37 @@ const RowView = memo(function RowView({
           aria-label={`Pilih baris ${row.serial}`}
           checked={row.selected}
           disabled={disabled}
-          onChange={(event) => onSelect(row.clientId, event.target.checked)}
+          onChange={(event) => {
+            if (rangeHandledRef.current) {
+              rangeHandledRef.current = false;
+              return;
+            }
+            onSelect(row.clientId, event.target.checked);
+          }}
+          onMouseDown={(event) => {
+            rangeHandledRef.current = false;
+            rangeProps.onMouseDown(event);
+          }}
+          onPointerDown={rangeProps.onPointerDown}
+          onBlur={rangeProps.onBlur}
+          onKeyDown={(event) => {
+            rangeHandledRef.current = false;
+            rangeProps.onKeyDown(event);
+          }}
+          onKeyUp={rangeProps.onKeyUp}
+          onClick={(event) => {
+            rangeHandledRef.current = false;
+            rangeProps.onClick(event);
+            if (!event.defaultPrevented) return;
+            rangeHandledRef.current = true;
+            // `preventDefault` pada kotak centang asli membuat peramban mengembalikan nilai
+            // DOM setelah render; samakan lagi dengan keadaan baris terbaru.
+            const node = event.currentTarget;
+            setTimeout(() => {
+              rangeHandledRef.current = false;
+              node.checked = selectedRef.current;
+            }, 0);
+          }}
         />
       </td>
       <td className="px-2 py-1.5 text-xs text-muted-foreground tabular-nums">{index + 1}</td>
@@ -347,6 +396,7 @@ export function StagingTable({
   rows,
   onSelect,
   onSelectAll,
+  onSelectMany,
   onEdit,
   onCommitSerial,
   onOpenDetail,
@@ -359,6 +409,19 @@ export function StagingTable({
   onCancelUpload,
 }: StagingTableProps) {
   const allSelected = rows.length > 0 && rows.every((row) => row.selected);
+  const ids = useMemo(() => rows.map((row) => row.clientId), [rows]);
+  const selectedIds = useMemo(
+    () => new Set(rows.filter((row) => row.selected).map((row) => row.clientId)),
+    [rows],
+  );
+  const { checkboxProps } = useRangeSelect({
+    ids,
+    isSelected: (id) => selectedIds.has(id),
+    apply: (ids, on) => {
+      onSelectMany(ids, on);
+      return undefined;
+    },
+  });
   const uploadsByRow = useMemo(() => {
     const grouped = new Map<string, UploadEntry[]>();
     for (const entry of uploadEntries) {
@@ -414,6 +477,7 @@ export function StagingTable({
               row={row}
               index={index}
               onSelect={onSelect}
+              checkboxProps={checkboxProps}
               onEdit={onEdit}
               onCommitSerial={onCommitSerial}
               onOpenDetail={onOpenDetail}

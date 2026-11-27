@@ -267,3 +267,21 @@ test('badge Terbaru berwarna primary (kartu kejadian)', () => {
   render(<Timeline events={[event(1), event(2)]} markLatest foldPrevious={false} />);
   expect(screen.getByText('Terbaru')).toHaveAttribute('data-color', 'primary');
 });
+
+test('kejadian recorded dari Keluar Gudang berjudul Dicatat Gudang · SO <no>', () => {
+  renderWithClient(
+    <Timeline
+      events={[event(1, { type: 'recorded', data: { source: 'warehouse', orderNumber: 'SO-9' } })]}
+    />,
+  );
+  expect(screen.getByText('Dicatat Gudang · SO SO-9')).toBeInTheDocument();
+});
+
+test('kejadian recorded dari Keluar Gudang mode ready berjudul Dicatat Gudang · Ready', () => {
+  renderWithClient(
+    <Timeline
+      events={[event(1, { type: 'recorded', data: { source: 'warehouse', mode: 'ready' } })]}
+    />,
+  );
+  expect(screen.getByText('Dicatat Gudang · Ready')).toBeInTheDocument();
+});

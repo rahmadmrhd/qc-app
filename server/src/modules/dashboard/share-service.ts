@@ -17,6 +17,7 @@ import type {
   DashboardShareDto,
   ShareScope,
   ShareWidgetScope,
+  UpdateShareInput,
 } from '@shared/dashboard-share';
 import { SHARE_LIMITS, shareExpiry, shareStatus } from '@shared/dashboard-share';
 import { dashboardScopeOf, mayManageRow } from './access';
@@ -31,6 +32,8 @@ import {
   parseScope,
   revokeShareStmt,
   type ShareRow,
+  updateGuardStmt,
+  updateShareStmt,
 } from './share-repo';
 import { assertShareInput } from './share-validate';
 
@@ -253,6 +256,98 @@ export async function listDashboardShares(
     dashboardScopeOf(user) === 'all' ? undefined : user.email,
   );
   return Promise.all(rows.map((row) => toShareDto(env, row, now, mayCopyUrl(user, row))));
+}
+
+/** Pesan generik bila pengubah (pemegang `manage`, bukan pembagi) memilih bagian cakupan di luar haknya sendiri. */
+const SHARE_OUTSIDE_RIGHTS_MESSAGE =
+  'Ada bagian cakupan di luar hak akses Anda; pilih hanya yang menjadi hak Anda atau minta pembagi aslinya mengubahnya';
+
+function auditView(title: string, expiresAt: string, scope: ShareScope | null) {
+  return {
+    title,
+    expiresAt,
+    range: scope?.range ?? null,
+    widgets: scope?.widgets.map((widget) => widget.id) ?? [],
+    buCount: scope?.buIds.length ?? 0,
+    locationFiltered: scope?.locationFiltered ?? false,
+  };
+}
+
+/**
+ * Mengubah tautan buatan manual di tempat (keputusan pemilik 2026-11-25; mengubah aturan "cakupan beku" di spek):
+ * judul, rentang, widget, filter, dan masa berlaku diganti penuh, cakupan dibekukan ULANG dengan hak PENGUBAH.
+ * Pengubah yang bukan pembagi dan bukan super admin (pemegang `manage`) tidak boleh memilih bagian di luar haknya
+ * (`rejectOutsideRights`), jadi tak ada pemotongan diam-diam. Tautan yang dicabut atau terbitan laporan = `CONFLICT`.
+ * Token memuat tanggal kedaluwarsanya: memperpanjang masa berlaku melewati tanggal token lama menghasilkan URL BARU
+ * (URL lama tetap hanya berlaku sampai tanggalnya semula); memperpendek tidak mengubah URL yang beredar.
+ */
+export async function updateShare(
+  env: Env,
+  user: UserContext,
+  input: UpdateShareInput,
+): Promise<DashboardShareDto> {
+  const row = await loadReadableShare(env, user, input.id);
+  if (row.report_id !== '') {
+    throw appError('CONFLICT', 'Tautan ini diterbitkan laporan terjadwal; ubah lewat laporannya');
+  }
+  if (row.revoked_at !== '') {
+    throw appError('CONFLICT', 'Tautan sudah dicabut dan tidak dapat diubah');
+  }
+  assertShareInput(input.keepExpiry === true ? { ...input, expiresInDays: 1 } : input);
+  const nowMs = nowOf(env);
+  const foreign = row.created_by !== user.email && !user.isSuperAdmin;
+  const scope: ShareScope = {
+    ...freezeContent(
+      user,
+      input,
+      nowMs,
+      foreign ? { rejectOutsideRights: SHARE_OUTSIDE_RIGHTS_MESSAGE } : {},
+    ),
+    range: input.range,
+  };
+  let expiresAt = row.expires_at;
+  if (input.keepExpiry !== true) {
+    const expiry = shareExpiry(input, nowMs);
+    if (!expiry.ok) {
+      throw appError('VALIDATION', 'Input tidak valid', { [expiry.field]: expiry.message });
+    }
+    expiresAt = new Date(expiry.ms).toISOString();
+  }
+  if (env.SESSION_SECRET === '') throw appError('UNAVAILABLE', 'Rahasia sesi belum dikonfigurasi');
+  shareUrl(env, 'x'); // gagal lebih awal bila APP_ORIGIN kosong
+  const now = nowIso(env);
+  const title = input.title.trim();
+  const next: ShareRow = {
+    ...row,
+    title,
+    scope: JSON.stringify(scope),
+    expires_at: expiresAt,
+  };
+  try {
+    await env.DB.batch([
+      updateShareStmt(env.DB, row.id, {
+        title,
+        scope: next.scope,
+        expires_at: next.expires_at,
+      }),
+      updateGuardStmt(env.DB),
+      writeAudit(env.DB, {
+        ts: now,
+        actor: user.email,
+        action: 'dashboard.share_update',
+        target: `dashboard_share:${row.id}`,
+        targetId: row.id,
+        before: auditView(row.title, row.expires_at, parseScope(row.scope)),
+        after: auditView(title, next.expires_at, scope),
+      }),
+    ]);
+  } catch (error) {
+    if (isGuardFailure(error)) {
+      throw appError('CONFLICT', 'Tautan sudah dicabut atau berubah; muat ulang lalu coba lagi');
+    }
+    throw error;
+  }
+  return toShareDto(env, next, now, true);
 }
 
 /** Mencabut tautan (idempoten); milik sendiri, atau milik siapa pun bagi `manage`/super admin. Selain itu `NOT_FOUND`. */

@@ -1,3 +1,4 @@
+import { formatBuLabel } from '@shared/business-units';
 import type { ItemDto, SerialItemOptionDto } from '@shared/contract';
 import { normalizeKey } from '@shared/items';
 import { proofMinimumOf } from '@shared/serials';
@@ -8,6 +9,7 @@ import { businessUnitLinkAccess, itemLinkAccess, serialItemCreateAccess } from '
 import { meQueryOptions } from '@/modules/auth/queries';
 import { useItemCreate } from '@/modules/item/components/item-create-host';
 import { serialBuOptionsQueryOptions, serialItemOptionsQueryOptions } from '../queries';
+import type { BuChoice } from './recheck-bu-field';
 
 /** Item dan BU yang dipilih pada rombongan, baris, atau ubah massal. */
 export interface ItemBuValue {
@@ -49,10 +51,10 @@ export interface ItemBuFieldProps {
  * tanpa BU yang dikenal tidak menyentuh pilihan BU sekarang. Murni, agar dapat diuji sendiri.
  */
 export function defaultBuForItem(
-  itemBus: readonly { id: string; code: string }[],
+  itemBus: readonly BuChoice[],
   allowed: readonly { id: string }[] | null,
-  current: { id: string; code: string },
-): { id: string; code: string } {
+  current: BuChoice,
+): BuChoice {
   const known =
     allowed === null ? itemBus : itemBus.filter((bu) => allowed.some((a) => a.id === bu.id));
   if (known.length === 0) return current;
@@ -105,14 +107,14 @@ export function ItemBuField({
   }
 
   // Daftar BU tulis belum ada (memuat atau gagal): pilihan sementara = BU item terpilih, supaya field tetap dapat dipakai.
-  const allBus: { id: string; code: string }[] | null = buData
-    ? buData.businessUnits.map((bu) => ({ id: bu.id, code: bu.code }))
+  const allBus: BuChoice[] | null = buData
+    ? buData.businessUnits.map((bu) => ({ id: bu.id, code: bu.code, name: bu.name }))
     : null;
   const itemBus = value.itemId === '' ? [] : (known.get(value.itemId)?.buOptions ?? []);
   const buChoices = allBus ?? itemBus;
   const buKey = normalizeKey(buTerm);
   const buLinkOptions: LinkOption[] = buChoices
-    .map((bu) => ({ id: bu.id, label: bu.code }))
+    .map((bu) => ({ id: bu.id, label: formatBuLabel(bu) }))
     .filter((option) => buKey === '' || normalizeKey(option.label).includes(buKey));
 
   function pickCreated(created: ItemDto) {
@@ -123,7 +125,7 @@ export function ItemBuField({
       buIds: created.businessUnits.filter((bu) => allowed.includes(bu.id)).map((bu) => bu.id),
       buOptions: created.businessUnits
         .filter((bu) => allowed.includes(bu.id))
-        .map((bu) => ({ id: bu.id, code: bu.code })),
+        .map((bu) => ({ id: bu.id, code: bu.code, name: bu.name })),
       proofRequired: created.proofRequired,
       proofMin: created.proofMin,
     };
@@ -150,7 +152,7 @@ export function ItemBuField({
       itemId: item.id,
       itemLabel: item.label,
       buId: bu.id,
-      buLabel: bu.code,
+      buLabel: formatBuLabel(bu),
       proofMin: proofMinimumOf(item),
     });
   }
@@ -193,7 +195,9 @@ export function ItemBuField({
           placeholder="Pilih Business Unit…"
           value={value.buId === '' ? null : value.buId}
           labelOf={(id) =>
-            id === value.buId ? value.buLabel : (buChoices.find((bu) => bu.id === id)?.code ?? id)
+            id === value.buId
+              ? value.buLabel
+              : formatBuLabel(buChoices.find((bu) => bu.id === id) ?? {}) || id
           }
           options={buLinkOptions}
           loading={allBus === null && buPending}
@@ -201,7 +205,7 @@ export function ItemBuField({
           searchDebounceMs={0}
           onChange={(id) => {
             const bu = buChoices.find((option) => option.id === id);
-            onChange({ ...value, buId: bu?.id ?? '', buLabel: bu?.code ?? '' });
+            onChange({ ...value, buId: bu?.id ?? '', buLabel: bu ? formatBuLabel(bu) : '' });
           }}
           openHref={openBuHref}
           error={buError}

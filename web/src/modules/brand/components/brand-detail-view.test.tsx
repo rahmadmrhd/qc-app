@@ -47,7 +47,7 @@ test('menampilkan nama, status, BU bawaan tautan, jumlah item tautan, dan Diubah
   await renderView();
   expect(screen.getByRole('heading', { level: 1, name: 'Ubiquiti' })).toBeInTheDocument();
   expect(screen.getByText('Nonaktif')).toBeInTheDocument();
-  expect(screen.getByRole('link', { name: 'RTL' })).toHaveAttribute(
+  expect(screen.getByRole('link', { name: 'RTL - Retail' })).toHaveAttribute(
     'href',
     '/access/business-units/bu-a',
   );
@@ -60,8 +60,8 @@ test('menampilkan nama, status, BU bawaan tautan, jumlah item tautan, dan Diubah
 
 test('BU bawaan tanpa hak buka tampil sebagai lencana', async () => {
   await renderView({ canOpenBusinessUnit: false });
-  expect(screen.queryByRole('link', { name: 'RTL' })).toBeNull();
-  expect(screen.getByText('RTL')).toHaveAttribute('title', 'Retail');
+  expect(screen.queryByRole('link', { name: 'RTL - Retail' })).toBeNull();
+  expect(screen.getByText('RTL - Retail')).toHaveAttribute('title', 'Retail');
 });
 
 test('aksi: Ubah, Aktifkan, dan Hapus (merk Nonaktif); mengikuti izin', async () => {

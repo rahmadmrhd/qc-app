@@ -17,6 +17,7 @@ const SERIAL_EDIT: GuidePermission = { module: 'serial', level: 'edit' };
  */
 const SERIAL_LIST_EXCEPT = [
   '/serial/$serialId',
+  '/serial/gudang',
   '/serial/new',
   '/serial/report',
   '/serial/reports',
@@ -43,7 +44,7 @@ export const SERIAL_DAFTAR: GuideEntry = {
     },
     {
       target: 'serial-filters',
-      text: 'Ketik satu serial untuk mencocokkan awalannya, atau tempel beberapa (satu per baris) untuk mencocokkan persis; tombol kamera membaca barcode. Filter lain: BU, item, lokasi, status, posisi, dan "Dicatat oleh saya".',
+      text: 'Ketik satu serial untuk mencocokkan awalannya, atau tempel beberapa (satu per baris) untuk mencocokkan persis; tombol kamera membaca barcode. Filter lain: BU, item, lokasi, status, posisi, tanggal uji, dan pencatat (bisa pilih beberapa orang; "Saya" selalu ada di daftar).',
       advance: 'next',
     },
     {
@@ -200,7 +201,7 @@ export const SERIAL_LAPORAN_DAFTAR: GuideEntry = {
     },
     {
       target: 'case-filters',
-      text: 'Cari dengan awalan nomor LP atau serial. Bawaannya hanya laporan aktif; ganti ke "Laporan selesai" atau "Semua laporan", dan batasi per BU bila perlu.',
+      text: 'Cari dengan awalan nomor LP atau serial. Bawaannya semua laporan, laporan aktif di atas lalu yang selesai, masing-masing diurutkan menurut pembaruan terakhir; ganti ke "Laporan aktif" atau "Laporan selesai", dan batasi per BU bila perlu.',
       advance: 'next',
     },
     {

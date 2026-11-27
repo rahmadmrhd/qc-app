@@ -19,4 +19,11 @@ describe('colorVariantClasses', () => {
   it('ghost primary tidak berlatar primary', () => {
     expect(colorVariantClasses('ghost', 'primary')).not.toContain('bg-primary')
   })
+  it('tiap warna punya kelas nonaktif sendiri', () => {
+    for (const color of ['primary', 'secondary', 'success', 'warning', 'info', 'destructive'] as const) {
+      expect(colorVariantClasses('solid', color)).toContain(`disabled:bg-${color}-disabled`)
+      expect(colorVariantClasses('outline', color)).toContain(`disabled:text-${color}-disabled-foreground`)
+      expect(colorVariantClasses('ghost', color)).toContain(`disabled:text-${color}-disabled-foreground`)
+    }
+  })
 })

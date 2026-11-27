@@ -10,26 +10,13 @@ import { useQuery } from '@tanstack/react-query';
 import { FilterBar, FilterChip, multiFilterDisplay } from '@/components/page/filter-bar';
 import { MultiSelect } from '@/components/select';
 import { FILTER_LIST_MAX } from '@/lib/filter-limits';
-import { useTrackNearViewport } from '@/lib/near-viewport';
+import { useMe } from '@/modules/auth/use-me';
+import { cellClass, ROW_CLASS, rowsOf } from '../lib/layout';
+import { widgetLinks } from '../lib/links';
 import { type DashboardSearch, groupFilterParam, toQueryInput } from '../lib/search';
 import { dashboardQueryOptions } from '../queries';
 import { RelationPicker, useRelationLabels } from './relation-field';
 import { WidgetCard, type WidgetFilterState } from './widgets/widget-card';
-
-/** Lebar kartu di kisi 12 kolom (>= 768 px): angka kecil berderet, grafik 6 kolom, tren dan daftar 12 kolom; ponsel kisi 2 kolom (angka 1 kolom, lainnya selebar 2). */
-export function spanClass(meta: WidgetMeta): string {
-  switch (meta.visual) {
-    case 'number':
-      return 'md:col-span-4 xl:col-span-3';
-    case 'donut':
-    case 'pie':
-    case 'bar':
-    case 'barH':
-      return 'col-span-2 md:col-span-6';
-    default:
-      return 'col-span-2 md:col-span-12';
-  }
-}
 
 function GroupFilterChip({
   group,
@@ -106,8 +93,9 @@ function RelationChip({
 }
 
 /**
- * Satu grup widget: judul, chip filter grup, dan kisi kartu. Tiap grup punya query sendiri (kunci berisi input grup
- * itu saja), jadi mengubah filter satu grup tidak memuat ulang grup lain. Satu widget gagal tidak menyembunyikan yang
+ * Isi satu tab grup: chip filter grup, lalu baris-baris kartu (`rowsOf`: number card paling atas, lalu grafik, lalu
+ * daftar; jenis berbeda tak dicampur satu baris). Tiap grup punya query sendiri (kunci berisi input grup itu saja) dan
+ * hanya tab yang aktif yang terpasang, jadi hanya grup itu yang diminta. Satu widget gagal tidak menyembunyikan yang
  * lain; "Coba lagi" memuat ulang permintaan grup.
  */
 export function GroupSection({
@@ -125,14 +113,13 @@ export function GroupSection({
   filterState: WidgetFilterState;
   onChange: (patch: Partial<DashboardSearch>) => void;
 }) {
+  const me = useMe();
   const input = toQueryInput(
     search,
     today,
     widgets.map((meta) => meta.id),
   );
-  // Hanya grup yang berada di dekat viewport yang diminta dan disegarkan; yang di luar layar menunggu (data lama tetap).
-  const [sectionRef, near] = useTrackNearViewport();
-  const query = useQuery({ ...dashboardQueryOptions(input), enabled: near });
+  const query = useQuery(dashboardQueryOptions(input));
   const fields = GROUP_FILTERS[group];
   const results = new Map(query.data?.widgets.map((result) => [result.id, result]));
   const resultOf = (meta: WidgetMeta): WidgetResult | undefined => {
@@ -145,38 +132,36 @@ export function GroupSection({
     );
   };
   return (
-    <section ref={sectionRef} aria-labelledby={`dashboard-group-${group}`} className="space-y-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 id={`dashboard-group-${group}`} className="text-lg font-semibold">
-          {GROUP_LABELS[group]}
-        </h2>
-        {fields.length > 0 ? (
-          <FilterBar>
-            {fields.map((field) => (
-              <GroupFilterChip
-                key={field.key}
-                group={group}
-                field={field}
-                search={search}
-                onChange={onChange}
-              />
-            ))}
-          </FilterBar>
-        ) : null}
-      </div>
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-12">
-        {widgets.map((meta) => (
-          <div key={meta.id} className={`min-w-0 ${spanClass(meta)}`}>
-            <WidgetCard
-              meta={meta}
-              result={resultOf(meta)}
-              loading={query.isPending}
-              filterState={filterState}
-              onRetry={() => void query.refetch()}
+    <section aria-label={GROUP_LABELS[group]} className="space-y-3">
+      {fields.length > 0 ? (
+        <FilterBar>
+          {fields.map((field) => (
+            <GroupFilterChip
+              key={field.key}
+              group={group}
+              field={field}
+              search={search}
+              onChange={onChange}
             />
-          </div>
-        ))}
-      </div>
+          ))}
+        </FilterBar>
+      ) : null}
+      {rowsOf(widgets).map((row) => (
+        <div key={row[0]?.id} data-row={row[0]?.row} className={ROW_CLASS}>
+          {row.map((meta) => (
+            <div key={meta.id} className={`min-w-0 ${cellClass(meta)}`}>
+              <WidgetCard
+                meta={meta}
+                result={resultOf(meta)}
+                loading={query.isPending}
+                filterState={filterState}
+                links={widgetLinks(me, meta.id)}
+                onRetry={() => void query.refetch()}
+              />
+            </div>
+          ))}
+        </div>
+      ))}
     </section>
   );
 }

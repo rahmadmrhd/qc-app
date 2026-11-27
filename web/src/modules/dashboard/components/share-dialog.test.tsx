@@ -34,6 +34,7 @@ const NONE_LEVELS = {
   stickerstock: 'none',
   serial: 'none',
   serialservice: 'none',
+  serialwh: 'none',
   countrylock: 'none',
   dashboard: 'none',
 } as MeDto['permissions'];
@@ -64,7 +65,7 @@ function makeUser(options: { manage?: boolean; edit?: boolean; serial?: boolean 
             code: 'B1',
             name: 'BU Satu',
             status: 'active',
-            permissions: { item: 'none', serial: 'view', serialservice: 'none' },
+            permissions: { item: 'none', serial: 'view', serialservice: 'none', serialwh: 'none' },
           },
         ]
       : [],
@@ -133,9 +134,9 @@ test('tanpa izin dashboard (edit), tombol Bagikan tidak tampil', async () => {
   await renderInRouter(
     <DashboardPage search={parseDashboardSearch({})} onSearchChange={() => undefined} />,
   );
-  await screen.findByRole('heading', { name: 'Serah Terima' });
+  await screen.findByRole('tab', { name: 'Serah Terima' });
   expect(screen.queryByRole('button', { name: 'Bagikan' })).toBeNull();
-  expect(screen.queryByRole('button', { name: 'Tautan dibagikan' })).toBeNull();
+  expect(screen.queryByRole('link', { name: 'Tautan dibagikan' })).toBeNull();
 });
 
 test('pemegang dashboard: edit melihat tombol Bagikan dan Tautan dibagikan (mengelola miliknya sendiri)', async () => {
@@ -143,9 +144,9 @@ test('pemegang dashboard: edit melihat tombol Bagikan dan Tautan dibagikan (meng
   await renderInRouter(
     <DashboardPage search={parseDashboardSearch({})} onSearchChange={() => undefined} />,
   );
-  await screen.findByRole('heading', { name: 'Serah Terima' });
+  await screen.findByRole('tab', { name: 'Serah Terima' });
   expect(screen.getByRole('button', { name: 'Bagikan' })).toBeTruthy();
-  expect(screen.getByRole('button', { name: 'Tautan dibagikan' })).toBeTruthy();
+  expect(screen.getByRole('link', { name: 'Tautan dibagikan' })).toBeTruthy();
 });
 
 test('pemegang dashboard: manage melihat tombol Bagikan dan Tautan dibagikan', async () => {
@@ -153,9 +154,9 @@ test('pemegang dashboard: manage melihat tombol Bagikan dan Tautan dibagikan', a
   await renderInRouter(
     <DashboardPage search={parseDashboardSearch({})} onSearchChange={() => undefined} />,
   );
-  await screen.findByRole('heading', { name: 'Serah Terima' });
+  await screen.findByRole('tab', { name: 'Serah Terima' });
   expect(screen.getByRole('button', { name: 'Bagikan' })).toBeTruthy();
-  expect(screen.getByRole('button', { name: 'Tautan dibagikan' })).toBeTruthy();
+  expect(screen.getByRole('link', { name: 'Tautan dibagikan' })).toBeTruthy();
 });
 
 test('menekan Bagikan membuka dialog', async () => {
@@ -181,7 +182,7 @@ test('hanya widget yang boleh dilihat pengguna yang ditawarkan', async () => {
   await renderInRouter(<DialogHarness />);
   await screen.findByRole('alertdialog', { name: 'Bagikan dashboard' });
   expect(widgetBox('hs.created')).toBeTruthy();
-  expect(document.getElementById('share-widget-sn.recorded')).toBeNull();
+  expect(document.getElementById('share-widget-sn.status')).toBeNull();
   expect(document.getElementById('share-group-serial')).toBeNull();
 });
 

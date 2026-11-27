@@ -20,6 +20,7 @@ import {
   StickersPage,
 } from '@/modules/sticker/components/stickers-page';
 import { nextStickerStatus } from '@/modules/sticker/lib/status';
+import { useCompanionSave } from '@/modules/sticker/lib/use-companion-save';
 import { useStickerSave } from '@/modules/sticker/lib/use-sticker-save';
 import { useStockWrites } from '@/modules/sticker/lib/use-stock-writes';
 import {
@@ -94,6 +95,11 @@ function StickersRoute() {
   const businessUnits = useQuery({ ...businessUnitOptionsQueryOptions(), enabled: canCatalog });
   const stock = useQuery({ ...stickerStockQuery(readableIds), enabled: canStock });
   const handleSave = useStickerSave();
+  // Postel/Manual Book dapat dibuat langsung dari form stiker: Postel butuh `sticker: edit` (sudah syarat form), Manual
+  // Book butuh `qrcode: edit`.
+  const companion = useCompanionSave((designId) =>
+    stack.push({ to: '/qrcode/$designId', params: { designId } }),
+  );
   const saveType = useSaveStickerType();
   const saveBusinessUnit = useSaveBusinessUnit();
   const setStatus = useSetStickerStatus();
@@ -184,6 +190,8 @@ function StickersRoute() {
       onFilterChange={changeFilter}
       pendingStatusId={setStatus.isPending ? (setStatus.variables?.id ?? null) : null}
       onSave={handleSave}
+      onSavePostel={companion.postel}
+      onSaveManualBook={can(me, 'qrcode', 'edit') ? companion.manualBook : undefined}
       onCreateType={
         typeLinks.canCreateStickerType ? (input) => saveType.mutateAsync(input) : undefined
       }
@@ -192,6 +200,11 @@ function StickersRoute() {
       }
       openBusinessUnitHref={buLinks.openBusinessUnitHref}
       openStickerTypeHref={typeLinks.openStickerTypeHref}
+      stockLocations={locationsWith(me, 'stickerstock', 'edit').map((location) => ({
+        id: location.id,
+        name: location.name,
+        code: location.code,
+      }))}
       onToggleStatus={(sticker) => {
         const next = nextStickerStatus(sticker.status);
         setStatus.mutate(

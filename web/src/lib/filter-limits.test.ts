@@ -37,7 +37,7 @@ test('setiap field pilihan jamak pada filter daftar membatasi pilihan di UI (max
     ['modules/handover/components/handover-board-page.tsx', 1],
     ['modules/item/components/item-filters.tsx', 2],
     ['modules/serial/components/case-list-page.tsx', 1],
-    ['modules/serial/components/serial-filters.tsx', 5],
+    ['modules/serial/components/serial-filters.tsx', 6],
     ['routes/_app/access/audit.tsx', 1],
     ['modules/sticker/components/stickers-page.tsx', 1],
   ];

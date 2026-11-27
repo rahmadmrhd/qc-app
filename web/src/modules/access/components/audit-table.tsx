@@ -53,7 +53,7 @@ export function AuditTable({
       mobile: 'badge',
       cell: (entry) => (
         <Badge variant="outline" color="primary">
-          {auditActionLabel(entry.action)}
+          {auditActionLabel(entry.action, { target: entry.target })}
         </Badge>
       ),
     },
@@ -78,7 +78,7 @@ export function AuditTable({
     {
       id: 'view',
       action: 'view',
-      label: `Lihat detail ${auditActionLabel(entry.action)} ${entry.target}`,
+      label: `Lihat detail ${auditActionLabel(entry.action, { target: entry.target })} ${entry.target}`,
       shortLabel: 'Lihat',
       onSelect: () => onSelect(entry),
     },
@@ -90,7 +90,9 @@ export function AuditTable({
       rowKey={(entry) => String(entry.id)}
       columns={columns}
       label="Log audit"
-      selectLabel={(entry) => `${auditActionLabel(entry.action)} ${entry.target}`}
+      selectLabel={(entry) =>
+        `${auditActionLabel(entry.action, { target: entry.target })} ${entry.target}`
+      }
       actions={actions}
       empty="Belum ada catatan audit."
       filtered={filtered}

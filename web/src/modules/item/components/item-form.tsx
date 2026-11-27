@@ -1,3 +1,4 @@
+import { formatBuLabel } from '@shared/business-units';
 import type {
   BrandDto,
   BusinessUnitDto,
@@ -31,16 +32,12 @@ import {
 import { WysiwygEditor } from '@/modules/markdown/wysiwyg-editor';
 import {
   StickerFormDialog,
+  type StickerFormDialogProps,
   type StickerSaveInput,
   type StickerSaveResult,
   stickerSaveFailure,
 } from '@/modules/sticker/components/sticker-form-dialog';
-import {
-  StickerTypeFormDialog,
-  type StickerTypeSaveInput,
-  type StickerTypeSaveResult,
-  stickerTypeSaveFailure,
-} from '@/modules/sticker/components/sticker-type-form-dialog';
+import type { StickerTypeSaveInput } from '@/modules/sticker/components/sticker-type-form-dialog';
 import { defaultBusinessUnitIds } from '../lib/default-business-units';
 import { errorText, errorTexts } from '../lib/row-error';
 import type { ItemFieldErrors, ItemFormInput, ItemFormOutput } from '../schemas';
@@ -111,8 +108,16 @@ export interface ItemFormProps {
    * Stiker baru langsung terpilih pada penanda itu. Melempar galat bila gagal (tampil di dialog).
    */
   onCreateSticker?: (input: StickerSaveInput) => Promise<StickerDto>;
-  /** Idem untuk jenis stiker baru. */
+  /**
+   * Membuat jenis stiker baru dari baris "Tambah Jenis" DI DALAM dialog tambah stiker (satu-satunya jalur; penanda tak
+   * punya pintu pembuatan jenis sendiri). Jenis baru langsung dikenal daftar form.
+   */
   onCreateStickerType?: (input: StickerTypeSaveInput) => Promise<StickerTypeDto>;
+  /** Minimum stok bawaan di dialog Tambah Jenis hanya dapat diisi pemegang `sticker: manage`. */
+  canSetStickerTypeDefaultMin?: boolean;
+  openStickerTypeHref?: StickerFormDialogProps['openStickerTypeHref'];
+  /** Lokasi tempat user boleh mencatat stok masuk (bagian "Stok awal" stiker baru). */
+  stockLocations?: StickerFormDialogProps['stockLocations'];
   defaultValues: ItemFormInput;
   submitError?: string | null;
   /** Galat per field dari server (mis. merk+tipe sudah dipakai). */
@@ -123,7 +128,7 @@ export interface ItemFormProps {
 const BRAND_OPTION_LIMIT = 30;
 
 function buLabel(bu: BusinessUnitOptionDto): string {
-  return `${bu.name} (${bu.code})${bu.status === 'inactive' ? ' — nonaktif' : ''}`;
+  return `${formatBuLabel(bu)}${bu.status === 'inactive' ? ' — nonaktif' : ''}`;
 }
 
 export function ItemForm({
@@ -144,6 +149,9 @@ export function ItemForm({
   itemId,
   onCreateSticker,
   onCreateStickerType,
+  canSetStickerTypeDefaultMin,
+  openStickerTypeHref,
+  stockLocations,
   defaultValues,
   submitError,
   fieldErrors,
@@ -227,10 +235,8 @@ export function ItemForm({
   const [createdStickers, setCreatedStickers] = useState<readonly StickerDto[]>([]);
   const [createdTypes, setCreatedTypes] = useState<readonly StickerTypeDto[]>([]);
   const [stickerDialogOpen, setStickerDialogOpen] = useState(false);
-  const [typeDialogOpen, setTypeDialogOpen] = useState(false);
-  // Penanda yang meminta stiker/jenis baru: dipanggil dengan hasilnya agar langsung terpilih di penanda itu.
+  // Penanda yang meminta stiker baru: dipanggil dengan hasilnya agar langsung terpilih di penanda itu.
   const stickerCreated = useRef<((sticker: StickerDto) => void) | null>(null);
-  const typeCreated = useRef<((type: StickerTypeDto) => void) | null>(null);
   const allStickers = [
     ...stickers,
     ...createdStickers.filter((c) => !stickers.some((sticker) => sticker.id === c.id)),
@@ -252,18 +258,13 @@ export function ItemForm({
     }
   }
 
-  async function handleCreateStickerType(
-    input: StickerTypeSaveInput,
-  ): Promise<StickerTypeSaveResult> {
-    if (!onCreateStickerType) return 'Anda tidak berhak membuat jenis stiker';
-    try {
-      const type = await onCreateStickerType(input);
-      setCreatedTypes((previous) => [...previous, type]);
-      typeCreated.current?.(type);
-      return null;
-    } catch (error) {
-      return stickerTypeSaveFailure(error);
-    }
+  // Jenis dibuat dari dalam dialog stiker (baris "Tambah Jenis" di field Jenis): dialog menampilkan galatnya sendiri,
+  // jadi cukup meneruskan hasilnya dan menaruhnya di daftar agar langsung dikenal.
+  async function handleCreateStickerType(input: StickerTypeSaveInput): Promise<StickerTypeDto> {
+    if (!onCreateStickerType) throw new Error('Anda tidak berhak membuat jenis stiker');
+    const type = await onCreateStickerType(input);
+    setCreatedTypes((previous) => [...previous, type]);
+    return type;
   }
 
   async function handleCreateBrand(input: BrandSaveInput): Promise<BrandSaveResult> {
@@ -653,14 +654,6 @@ export function ItemForm({
                         },
                       }
                     : {})}
-                  {...(onCreateStickerType
-                    ? {
-                        onCreateType: (created: (type: StickerTypeDto) => void) => {
-                          typeCreated.current = created;
-                          setTypeDialogOpen(true);
-                        },
-                      }
-                    : {})}
                 />
               )}
             </form.Subscribe>
@@ -751,13 +744,12 @@ export function ItemForm({
           types={allTypes}
           businessUnits={businessUnits}
           onSave={handleCreateSticker}
-        />
-      ) : null}
-      {onCreateStickerType ? (
-        <StickerTypeFormDialog
-          open={typeDialogOpen}
-          onOpenChange={setTypeDialogOpen}
-          onSave={handleCreateStickerType}
+          onCreateType={onCreateStickerType ? handleCreateStickerType : undefined}
+          onCreateBusinessUnit={onCreateBusinessUnit}
+          openBusinessUnitHref={openBusinessUnitHref}
+          openStickerTypeHref={openStickerTypeHref}
+          stockLocations={stockLocations}
+          canSetTypeDefaultMin={canSetStickerTypeDefaultMin}
         />
       ) : null}
       {onCreateBrand ? (

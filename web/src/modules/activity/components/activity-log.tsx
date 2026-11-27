@@ -22,11 +22,11 @@ export function showsIncompleteNote(createdAt: string | null | undefined): boole
   return created.getTime() < new Date(`${ACTIVITY_TRACKED_SINCE}T00:00:00+07:00`).getTime();
 }
 
-function ActivityItem({ entry }: { entry: ActivityEntryDto }) {
+function ActivityItem({ entry, kind }: { entry: ActivityEntryDto; kind: string }) {
   const fields = entry.changedFields ?? [];
   return (
     <li className="space-y-0.5">
-      <p className="font-medium break-words">{auditActionLabel(entry.action)}</p>
+      <p className="font-medium break-words">{auditActionLabel(entry.action, { kind })}</p>
       <p className="text-xs break-words text-muted-foreground">
         {entry.actor ? `${entry.actor} · ` : ''}
         {formatStamp(entry.ts)}
@@ -80,7 +80,7 @@ export function ActivityLog({ kind, id, createdAt }: ActivityLogProps) {
           ) : (
             <ol className="space-y-3">
               {entries.map((entry) => (
-                <ActivityItem key={entry.id} entry={entry} />
+                <ActivityItem key={entry.id} entry={entry} kind={kind} />
               ))}
             </ol>
           )}

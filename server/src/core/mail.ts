@@ -15,6 +15,8 @@ export interface SmtpSettings {
 
 export interface MailMessage {
   to: string[];
+  /** Tembusan (terlihat penerima lain). Bila `to` kosong, `to` diisi alamat pengirim. */
+  cc?: string[];
   /** Penerima tersembunyi (tidak saling terlihat). Bila `to` kosong, `to` diisi alamat pengirim. */
   bcc?: string[];
   subject: string;
@@ -32,6 +34,7 @@ export interface MailTransport {
   sendMail(message: {
     from: string;
     to: string;
+    cc?: string;
     bcc?: string;
     subject: string;
     text: string;
@@ -41,7 +44,7 @@ export interface MailTransport {
 
 /**
  * Alamat polos dari pengaturan `from`: bentuk `Nama <alamat>` menjadi `alamat`, tanpa tanda kurung dipakai apa adanya.
- * Dipakai mengisi `to` bila pesan hanya punya penerima `bcc`.
+ * Dipakai mengisi `to` bila pesan hanya punya penerima `cc` atau `bcc`.
  */
 export function senderAddress(from: string): string {
   const match = /<([^<>]+)>\s*$/.exec(from);
@@ -87,13 +90,15 @@ export function createSmtpMailer(settings: SmtpSettings, deps: MailDeps = {}): M
     async send(message) {
       try {
         transport ??= (deps.createTransport ?? createTransport)(options) as MailTransport;
+        const cc = message.cc ?? [];
         const bcc = message.bcc ?? [];
         await transport.sendMail({
           from: settings.from,
           to:
-            message.to.length === 0 && bcc.length > 0
+            message.to.length === 0 && cc.length + bcc.length > 0
               ? senderAddress(settings.from)
               : message.to.join(', '),
+          ...(cc.length > 0 ? { cc: cc.join(', ') } : {}),
           ...(bcc.length > 0 ? { bcc: bcc.join(', ') } : {}),
           subject: message.subject,
           text: message.text,

@@ -42,6 +42,8 @@ interface DataCardsProps<T> {
   isLoading?: boolean | undefined;
   /** Klik badan kartu membuka detail (B9); `undefined` untuk baris itu = kartu tak dapat diklik. Nonaktif saat mode pilih. */
   openOf?: ((row: T) => (() => void) | undefined) | undefined;
+  /** Kartu yang disorot sebentar (hasil scan terakhir). */
+  isHighlighted?: ((row: T) => boolean) | undefined;
 }
 
 /**
@@ -61,10 +63,11 @@ export function DataCards<T>({
   actions,
   isLoading,
   openOf,
+  isHighlighted,
 }: DataCardsProps<T>) {
   const roles = resolveMobileRoles(columns);
-  const { selecting, bind, exit } = useLongPressSelect(selection, true);
   const ids = rows.filter((row) => isSelectable?.(row) ?? true).map(rowKey);
+  const { selecting, bind, exit } = useLongPressSelect(selection, true, { ids });
   const allSelected = ids.length > 0 && ids.every((id) => selection?.selected.has(id));
   // Mode pilih = SATU bar bawah (`BulkBar`) bila halaman menampungnya; header pilihan di atas hanya cadangan.
   const hosted = useRegisterSelectMode(selecting, {
@@ -134,18 +137,29 @@ export function DataCards<T>({
               {...(!selecting && openOf?.(row) ? { onOpen: openOf(row) } : {})}
               rootProps={{
                 className:
-                  selection && selectable
-                    ? `${selecting ? 'select-none ' : ''}[-webkit-touch-callout:none] data-[pressing]:select-none`
-                    : undefined,
+                  [
+                    selection && selectable
+                      ? `${selecting ? 'select-none ' : ''}[-webkit-touch-callout:none] data-[pressing]:select-none`
+                      : '',
+                    isHighlighted?.(row) ? 'bg-success-text/15 transition-colors' : '',
+                  ]
+                    .filter(Boolean)
+                    .join(' ')
+                    .trim() || undefined,
                 ...(selectable ? bind(id) : {}),
               }}
               leading={
                 selection && selecting && selectable ? (
-                  <Checkbox
-                    aria-label={`Pilih ${nameOf(row)}`}
-                    checked={isSelected}
-                    onCheckedChange={() => selection.toggle(id)}
-                  />
+                  <span
+                    data-select-lane
+                    className="flex size-11 touch-none items-center justify-center"
+                  >
+                    <Checkbox
+                      aria-label={`Pilih ${nameOf(row)}`}
+                      checked={isSelected}
+                      onCheckedChange={() => selection.toggle(id)}
+                    />
+                  </span>
                 ) : undefined
               }
               title={titles.map(({ column }) => <div key={column.id}>{column.cell(row)}</div>)}

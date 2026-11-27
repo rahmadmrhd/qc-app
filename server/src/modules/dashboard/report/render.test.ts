@@ -161,7 +161,7 @@ describe('struktur HTML', () => {
 
   test('tanpa script, img, link, iframe, dan javascript:', () => {
     const lower = rendered.html.toLowerCase();
-    for (const forbidden of ['<script', '<img', '<link', '<iframe', 'javascript:', '<style']) {
+    for (const forbidden of ['<script', '<img', '<link', '<iframe', 'javascript:']) {
       expect(lower).not.toContain(forbidden);
     }
   });
@@ -219,18 +219,18 @@ describe('Review Focus 5: ukuran surel', () => {
       item('rp.trend', series(30, 2)),
       item('st.movement', series(30, 2)),
       item('hs.oldest', list(5, 99, 200)),
-      item('sn.transit', {
+      item('sn.latest', {
         kind: 'list',
-        columns: widgetMeta('sn.transit').listColumns?.map((c) => ({ ...c })) ?? [],
+        columns: widgetMeta('sn.latest').listColumns?.map((c) => ({ ...c })) ?? [],
         rows: Array.from({ length: 5 }, () =>
           Object.fromEntries(
-            (widgetMeta('sn.transit').listColumns ?? []).map((c) => [c.key, 'y'.repeat(200)]),
+            (widgetMeta('sn.latest').listColumns ?? []).map((c) => [c.key, 'y'.repeat(200)]),
           ),
         ),
         total: 50,
       }),
       item('hs.created', { kind: 'number', value: 1234, previous: 1000 }),
-      item('sn.recorded', { kind: 'number', value: 55, previous: 60 }),
+      item('sn.status', { kind: 'number', value: 55, previous: 60 }),
       item('rp.opened', { kind: 'number', value: 4, previous: 2 }),
       item('hs.status', {
         kind: 'parts',
@@ -285,16 +285,16 @@ describe('visual per jenis widget', () => {
 
   test('number: naik, turun, tetap, dan previous 0', () => {
     expect(html(item('hs.created', { kind: 'number', value: 3, previous: 2 }))).toContain(
-      '▲ Naik 50% dari periode lalu',
+      '▲ Naik 50% (+1) dari periode lalu (2)',
     );
     expect(html(item('hs.created', { kind: 'number', value: 1, previous: 2 }))).toContain(
-      '▼ Turun 50% dari periode lalu',
+      '▼ Turun 50% (-1) dari periode lalu (2)',
     );
     expect(html(item('hs.created', { kind: 'number', value: 2, previous: 2 }))).toContain(
       'Tetap dibanding periode lalu',
     );
     const zero = html(item('hs.created', { kind: 'number', value: 5, previous: 0 }));
-    expect(zero).toContain('Naik dari periode lalu (0)');
+    expect(zero).toContain('Naik +5 dari periode lalu (0)');
     expect(zero).not.toMatch(/Naik \d+%/);
     expect(html(item('hs.created', { kind: 'number', value: 5 }))).not.toContain('periode lalu');
   });
@@ -381,9 +381,17 @@ describe('visual per jenis widget', () => {
     expect(out).not.toContain('number-5');
   });
 
-  test('kartu angka berurutan dibagi tiga per baris', () => {
+  test('kartu angka berurutan dibagi dua per baris dan bertumpuk di ponsel', () => {
     const out = html(item('hs.active', { kind: 'number', value: 1 }));
-    expect(out.match(/width="33%"/g)).toHaveLength(3); // satu kartu + dua sel pengisi
+    expect(out.match(/class="ncell" width="50%"/g)).toHaveLength(2); // satu kartu + satu sel pengisi
+    expect(out).toContain('@media only screen and (max-width:480px)');
+    expect(out).toContain('.ncell{display:block');
+  });
+
+  test('daftar lebih dari dua kolom dirender sebagai blok per baris (bukan tabel sempit)', () => {
+    const out = html(item('hs.oldest', list(1, 1)));
+    expect(out).toContain('font-weight:bold');
+    expect(out).not.toMatch(/<td[^>]*>\s*Lokasi<\/td>/);
   });
 });
 
@@ -402,7 +410,9 @@ describe('teks polos', () => {
     );
     const lines = rendered.text.split('\n');
     expect(lines).toContain(CTA);
-    expect(rendered.text).toContain('Task dibuat: 1.234 (Naik 23% dari periode lalu)');
+    expect(rendered.text).toContain(
+      'Task dibuat: 1.234 (Naik 23% (+234) dari periode lalu (1.000))',
+    );
     expect(rendered.text).toContain('Baru: 4 (100%)');
     expect(rendered.text).toContain('Menampilkan 5 dari 12');
     expect(rendered.text).toContain('Dibuat (total');

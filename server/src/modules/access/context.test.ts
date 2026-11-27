@@ -143,8 +143,8 @@ describe('penugasan BU', () => {
     });
     const ctx = await loadUserContext(env, 'semua@gmail.com');
     expect(ctx?.businessUnits).toEqual({
-      'bu-a': { item: 'edit', serial: 'none', serialservice: 'none' },
-      'bu-b': { item: 'edit', serial: 'none', serialservice: 'none' },
+      'bu-a': { item: 'edit', serial: 'none', serialservice: 'none', serialwh: 'none' },
+      'bu-b': { item: 'edit', serial: 'none', serialservice: 'none', serialwh: 'none' },
     });
     expect(ctx?.permissions.item).toBe('edit');
   });
@@ -156,7 +156,7 @@ describe('penugasan BU', () => {
       buAssignments: [{ buId: 'bu-a', roleIds: ['r-item-edit'] }],
     });
     expect((await loadUserContext(env, 'a@gmail.com'))?.businessUnits).toEqual({
-      'bu-a': { item: 'edit', serial: 'none', serialservice: 'none' },
+      'bu-a': { item: 'edit', serial: 'none', serialservice: 'none', serialwh: 'none' },
     });
     await seedUser(env, {
       id: 'u2',
@@ -167,8 +167,8 @@ describe('penugasan BU', () => {
       ],
     });
     expect((await loadUserContext(env, 'gabung@gmail.com'))?.businessUnits).toEqual({
-      'bu-a': { item: 'edit', serial: 'none', serialservice: 'none' },
-      'bu-b': { item: 'view', serial: 'none', serialservice: 'none' },
+      'bu-a': { item: 'edit', serial: 'none', serialservice: 'none', serialwh: 'none' },
+      'bu-b': { item: 'view', serial: 'none', serialservice: 'none', serialwh: 'none' },
     });
   });
 
@@ -219,8 +219,8 @@ describe('penugasan BU', () => {
   test('super admin: semua BU manage; tanpa BU sama sekali = {} dan item manage', async () => {
     const ctx = await loadUserContext(env, 'admin@gmail.com');
     expect(ctx?.businessUnits).toEqual({
-      'bu-a': { item: 'manage', serial: 'manage', serialservice: 'edit' },
-      'bu-b': { item: 'manage', serial: 'manage', serialservice: 'edit' },
+      'bu-a': { item: 'manage', serial: 'manage', serialservice: 'edit', serialwh: 'edit' },
+      'bu-b': { item: 'manage', serial: 'manage', serialservice: 'edit', serialwh: 'edit' },
     });
     await env.DB.prepare('DELETE FROM business_units').run();
     const empty = await loadUserContext(env, 'admin@gmail.com');

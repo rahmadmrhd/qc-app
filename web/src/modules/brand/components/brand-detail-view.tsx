@@ -1,3 +1,4 @@
+import { formatBuLabel } from '@shared/business-units';
 import type { BrandDto, BusinessUnitOptionDto } from '@shared/contract';
 import { Link } from '@tanstack/react-router';
 import { PageContent } from '@/components/page/page-container';
@@ -136,11 +137,11 @@ export function BrandDetailView({
                           title={bu.name}
                           className={textLink}
                         >
-                          {bu.code}
+                          {formatBuLabel(bu)}
                         </Link>
                       ) : (
                         <Badge key={bu.id} variant="outline" color="primary" title={bu.name}>
-                          {bu.code}
+                          {formatBuLabel(bu)}
                         </Badge>
                       ),
                     )}

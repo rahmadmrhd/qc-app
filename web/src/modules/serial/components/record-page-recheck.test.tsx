@@ -31,6 +31,7 @@ function existing(over: Partial<SerialExistingDto> = {}): SerialExistingDto {
     itemLabel: 'Item Catatan',
     buId: 'b2',
     buCode: 'BU2',
+    buName: 'Business Unit 2',
     status: 'good',
     hasOpenCase: false,
     proofRequired: false,
@@ -81,7 +82,12 @@ beforeEach(() => {
     }
     if (id === 'serials.itemOptions') {
       const items = [
-        { id: 'i1', label: 'Cisco C9200', buIds: ['b1'], buOptions: [{ id: 'b1', code: 'BU1' }] },
+        {
+          id: 'i1',
+          label: 'Cisco C9200',
+          buIds: ['b1'],
+          buOptions: [{ id: 'b1', code: 'BU1', name: 'Business Unit 1' }],
+        },
       ];
       const ids = input.itemIds as string[] | undefined;
       return Promise.resolve({
@@ -150,7 +156,7 @@ function renderPage(props: { onAllSaved?: (created: number) => void } = {}) {
 async function pickDefaults() {
   await pickLink(screen, 'Item', 'Cisco C9200');
   await expectLinkValue(screen, 'Lokasi', 'Jakarta (JKT)');
-  await expectLinkValue(screen, 'Business Unit', 'BU1');
+  await expectLinkValue(screen, 'Business Unit', 'BU1 - Business Unit 1');
 }
 
 async function paste(text: string) {
@@ -173,7 +179,7 @@ test('serial yang sudah ada menjadi baris Cek ulang: satu permintaan untuk semua
   // Dikumpulkan per kelompok: SATU permintaan memuat kedua serial.
   expect(lookupCalls).toEqual([['OLD001', 'NEW002']]);
   expect(within(old).getByText('Item Catatan')).toBeInTheDocument();
-  expect(within(old).getByText('BU2')).toBeInTheDocument();
+  expect(within(old).getByText('BU2 - Business Unit 2')).toBeInTheDocument();
   expect(within(old).getByText('Tanpa stiker')).toBeInTheDocument();
   // Baris baru tidak berubah.
   const fresh = await rowOf('NEW002');
@@ -257,13 +263,18 @@ test('Ubah baris Cek ulang: item terkunci, BU hanya recheckBuIds, Sample tidak a
   expect(within(dialog).queryByRole('combobox', { name: 'Item baris' })).toBeNull();
   expect(within(dialog).queryByRole('checkbox', { name: 'Sample' })).toBeNull();
   // Hanya BU yang lolos aturan (BU1 ada di BU tulis tetapi tidak di recheckBuIds).
-  expect(await linkOptionNames(within(dialog), 'Business Unit baris')).toEqual(['BU2', 'BU3']);
-  await userEvent.click(await screen.findByRole('option', { name: 'BU3' }));
-  await expectLinkValue(within(dialog), 'Business Unit baris', 'BU3');
+  expect(await linkOptionNames(within(dialog), 'Business Unit baris')).toEqual([
+    'BU2 - Business Unit 2',
+    'BU3 - Business Unit 3',
+  ]);
+  await userEvent.click(await screen.findByRole('option', { name: 'BU3 - Business Unit 3' }));
+  await expectLinkValue(within(dialog), 'Business Unit baris', 'BU3 - Business Unit 3');
   await userEvent.click(within(dialog).getByRole('button', { name: 'Terapkan' }));
 
   const old = await rowOf('OLD001');
-  expect(within(old).getByText('Pindah BU: BU2 → BU3')).toBeInTheDocument();
+  expect(
+    within(old).getByText('Pindah BU: BU2 - Business Unit 2 → BU3 - Business Unit 3'),
+  ).toBeInTheDocument();
   await userEvent.click(screen.getByRole('button', { name: /^Simpan/ }));
   await waitFor(() => expect(saved[0]).toMatchObject({ buId: 'b3', stickers: [] }));
 });

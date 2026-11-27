@@ -1,6 +1,5 @@
 import type { WidgetImpl } from '../registry';
 import { HANDOVER_WIDGETS } from './handover';
-import { POSTEL_WIDGETS } from './postel';
 import { REPORT_WIDGETS } from './report';
 import { SERIAL_WIDGETS } from './serial';
 import { STICKER_WIDGETS } from './sticker';
@@ -11,5 +10,4 @@ export const ALL_WIDGETS: readonly WidgetImpl[] = [
   ...SERIAL_WIDGETS,
   ...REPORT_WIDGETS,
   ...STICKER_WIDGETS,
-  ...POSTEL_WIDGETS,
 ];

@@ -1,11 +1,12 @@
-import { normalizeEmail } from '@server/core/email';
 import { appError } from '@server/core/errors';
+import { readMailLists } from '@server/core/mail-lists';
 import { readFilterList, readObject } from '@server/core/validate';
 import { BATCH_MAX } from '@shared/batch';
 import type {
   ApplyStickersBatchInput,
   GetSerialCaseInput,
   GetSerialInput,
+  ListSerialCreatorOptionsInput,
   ListSerialItemOptionsInput,
   SaveSerialBatchInput,
   SaveSerialServiceSettingsInput,
@@ -25,6 +26,7 @@ import type {
   UpdateSerialInput,
 } from '@shared/contract';
 import { extractFileRefs } from '@shared/items';
+import type { MailLists } from '@shared/mail-lists';
 import { hasBidiControls, hasControlChars, isPostelRecipient } from '@shared/postel';
 import {
   isApplyStickersClientId,
@@ -90,6 +92,40 @@ export function validateListSerialItemOptions(raw: unknown): ListSerialItemOptio
     ...(typeof limit === 'number' ? { limit } : {}),
     ...(typeof cursor === 'string' ? { cursor } : {}),
     ...(query !== '' ? { query } : {}),
+  };
+}
+
+export const SERIAL_CREATOR_DEFAULT_LIMIT = 50;
+export const SERIAL_CREATOR_MAX_LIMIT = 100;
+/** Pencarian pencatat dimulai dari sekian karakter (menjaga kueri tak memindai tabel besar). */
+export const SERIAL_CREATOR_QUERY_MIN = 2;
+
+/** Pilihan pencatat: `query` (min. 2 karakter bila diisi), `ids` (maks. 20 email), `cursor` (email), `limit` 1-100. */
+export function validateListSerialCreatorOptions(raw: unknown): ListSerialCreatorOptionsInput {
+  const reader = readObject(raw ?? {});
+  const query = reader.str('query', { max: 100 }).trim();
+  if (query !== '' && query.length < SERIAL_CREATOR_QUERY_MIN) {
+    reader.fail('query', `Pencarian minimal ${SERIAL_CREATOR_QUERY_MIN} karakter`);
+  }
+  const ids = readFilterList(reader, 'ids', { maxLength: 255 });
+  const cursor = reader.str('cursor', { max: 255 });
+  const limit = reader.raw('limit');
+  if (
+    limit !== undefined &&
+    limit !== null &&
+    (typeof limit !== 'number' ||
+      !Number.isInteger(limit) ||
+      limit < 1 ||
+      limit > SERIAL_CREATOR_MAX_LIMIT)
+  ) {
+    reader.fail('limit', `Batas halaman harus 1-${SERIAL_CREATOR_MAX_LIMIT}`);
+  }
+  reader.done();
+  return {
+    ...(query !== '' ? { query } : {}),
+    ...(ids ? { ids: [...new Set(ids)] } : {}),
+    ...(cursor !== '' ? { cursor } : {}),
+    ...(typeof limit === 'number' ? { limit } : {}),
   };
 }
 
@@ -300,6 +336,7 @@ export function validateSerialList(raw: unknown): SerialListInput {
   const locationIds = readFilterList(reader, 'locationIds');
   const statuses = readFilterList(reader, 'statuses', { allowed: LIST_STATUS });
   const custodies = readFilterList(reader, 'custodies', { allowed: LIST_CUSTODY });
+  const createdBys = readFilterList(reader, 'createdBys', { maxLength: 255 });
   const from = reader.str('from', { max: 10 });
   if (from !== '' && !isIsoDate(from)) reader.fail('from', 'Tanggal tidak valid');
   const to = reader.str('to', { max: 10 });
@@ -308,6 +345,14 @@ export function validateSerialList(raw: unknown): SerialListInput {
   const deleted = reader.raw('deleted');
   if (deleted !== undefined && deleted !== null && typeof deleted !== 'boolean') {
     reader.fail('deleted', 'Harus berupa true atau false');
+  }
+  const whRecorded = reader.str('whRecorded', { max: 3 });
+  if (whRecorded !== '' && whRecorded !== 'yes' && whRecorded !== 'no') {
+    reader.fail('whRecorded', 'Nilai tidak valid');
+  }
+  const needsProof = reader.raw('needsProof');
+  if (needsProof !== undefined && needsProof !== null && typeof needsProof !== 'boolean') {
+    reader.fail('needsProof', 'Harus berupa true atau false');
   }
   const serialsRaw = reader.raw('serials');
   let serials = '';
@@ -353,7 +398,10 @@ export function validateSerialList(raw: unknown): SerialListInput {
     ...(from !== '' ? { from } : {}),
     ...(to !== '' ? { to } : {}),
     ...(createdBy !== '' ? { createdBy } : {}),
+    ...(createdBys ? { createdBys } : {}),
     ...(deleted === true ? { deleted: true } : {}),
+    ...(whRecorded === 'yes' || whRecorded === 'no' ? { whRecorded } : {}),
+    ...(needsProof === true ? { needsProof: true } : {}),
     ...(cursor !== '' ? { cursor } : {}),
     ...(typeof limit === 'number' ? { limit } : {}),
   };
@@ -687,7 +735,7 @@ export function validateSaveSerialSettings(raw: unknown): SaveSerialSettingsInpu
   const reader = readObject(raw);
   const expectedUpdatedAt = reader.optionalId('expectedUpdatedAt') ?? '';
   const value = reader.raw('alert');
-  const recipients: string[] = [];
+  let lists: MailLists = { recipients: [], cc: [], bcc: [] };
   let enabled = false;
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
     reader.fail('alert', 'Pengaturan peringatan harus berupa objek');
@@ -696,29 +744,14 @@ export function validateSaveSerialSettings(raw: unknown): SaveSerialSettingsInpu
     if (typeof source.enabled !== 'boolean')
       reader.fail('enabled', 'Sakelar harus true atau false');
     enabled = source.enabled === true;
-    if (!Array.isArray(source.recipients)) {
-      reader.fail('recipients', 'Penerima harus berupa daftar email');
-    } else if (source.recipients.length > SERIAL_LIMITS.alertRecipientsMax) {
-      reader.fail('recipients', `Maksimal ${SERIAL_LIMITS.alertRecipientsMax} penerima`);
-    } else {
-      const seen = new Set<string>();
-      for (const item of source.recipients) {
-        const email = typeof item === 'string' ? normalizeEmail(item) : '';
-        if (!isPostelRecipient(email)) {
-          reader.fail('recipients', 'Ada alamat email yang tidak valid');
-          break;
-        }
-        if (seen.has(email)) {
-          reader.fail('recipients', `Email ganda: ${email}`);
-          break;
-        }
-        seen.add(email);
-        recipients.push(email);
-      }
-    }
+    lists = readMailLists(source, {
+      max: SERIAL_LIMITS.alertRecipientsMax,
+      isValid: isPostelRecipient,
+      fail: (field, message) => reader.fail(field, message),
+    });
   }
   reader.done();
-  return { expectedUpdatedAt, alert: { enabled, recipients } };
+  return { expectedUpdatedAt, alert: { enabled, ...lists } };
 }
 
 /** Maks. lokasi pada konfigurasi lokasi tim servis (jauh di atas jumlah lokasi nyata). */
@@ -815,8 +848,10 @@ export function validateSerialCaseList(raw: unknown): SerialCaseListInput {
   const buId = reader.str('buId', { max: 100 });
   const buIds = readFilterList(reader, 'buIds');
   const query = reader.str('query', { max: 100 });
-  const cursor = reader.str('cursor', { max: 100 });
-  if (cursor !== '' && !/^[^|]+\|[^|]+$/.test(cursor)) reader.fail('cursor', 'Kursor tidak valid');
+  // `<0|1>|<aktivitas terakhir>|<nomor>` (nomor maks. 64 karakter + waktu ISO 24 karakter).
+  const cursor = reader.str('cursor', { max: 120 });
+  if (cursor !== '' && !/^[01]\|[^|]+\|[^|]+$/.test(cursor))
+    reader.fail('cursor', 'Kursor tidak valid');
   const limit = reader.raw('limit');
   if (
     limit !== undefined &&

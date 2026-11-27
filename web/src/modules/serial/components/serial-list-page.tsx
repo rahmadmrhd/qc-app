@@ -1,3 +1,4 @@
+import { formatBuLabel } from '@shared/business-units';
 import type { SerialDto, SerialSummaryDto } from '@shared/contract';
 import { resolveAction } from '@shared/serial-flow';
 import { useInfiniteQuery } from '@tanstack/react-query';
@@ -18,6 +19,7 @@ import { ListPage } from '@/components/page/list-page';
 import { ConfirmDeleteDialog } from '@/components/soft-delete/confirm-delete-dialog';
 import { DeletedBadge } from '@/components/soft-delete/deleted-badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { describeError } from '@/lib/api/describe-error';
 import { formatStamp } from '@/lib/format-stamp';
@@ -219,8 +221,21 @@ export function SerialListPage({ search, onSearchChange, onNew }: SerialListPage
             </span>
             {serial.deleted ? <DeletedBadge /> : null}
           </span>
-          {serial.hasProofPhotos || serial.proofProblemCount > 0 ? (
+          {serial.hasProofPhotos ||
+          serial.proofProblemCount > 0 ||
+          serial.whRecorded ||
+          serial.needsProof ? (
             <div className="mt-1 flex flex-wrap gap-1">
+              {serial.whRecorded ? (
+                <Badge color="info" variant="soft">
+                  Tercatat WH
+                </Badge>
+              ) : null}
+              {serial.needsProof ? (
+                <Badge color="warning" variant="soft">
+                  Butuh foto
+                </Badge>
+              ) : null}
               {serial.hasProofPhotos ? <ProofBadge /> : null}
               <ProofProblemBadge count={serial.proofProblemCount} />
             </div>
@@ -249,10 +264,10 @@ export function SerialListPage({ search, onSearchChange, onNew }: SerialListPage
             to="/access/business-units/$businessUnitId"
             params={{ businessUnitId: serial.buId }}
           >
-            {serial.buCode}
+            {formatBuLabel({ code: serial.buCode, name: serial.buName })}
           </LinkCell>
         ) : (
-          serial.buCode
+          formatBuLabel({ code: serial.buCode, name: serial.buName })
         ),
     },
     {
@@ -358,10 +373,12 @@ export function SerialListPage({ search, onSearchChange, onNew }: SerialListPage
     filter.locationIds !== undefined ||
     filter.buIds !== undefined ||
     filter.custodies !== undefined ||
-    filter.createdBy !== undefined ||
+    filter.createdBys !== undefined ||
     filter.statuses !== undefined ||
     filter.from !== undefined ||
     filter.to !== undefined ||
+    filter.whRecorded !== undefined ||
+    filter.needsProof !== undefined ||
     deletedView;
   const countLabel =
     list.isSuccess && (items.length > 0 || filtered)
@@ -492,6 +509,7 @@ const CLEAR_FILTERS: Partial<SerialSearch> = {
   buIds: undefined,
   custodies: undefined,
   statuses: undefined,
+  createdBys: undefined,
   // Param tunggal lama (tautan) ikut dibuang.
   item: undefined,
   itemLabel: undefined,
@@ -501,6 +519,8 @@ const CLEAR_FILTERS: Partial<SerialSearch> = {
   status: undefined,
   mine: undefined,
   deleted: undefined,
+  whRecorded: undefined,
+  needsProof: undefined,
   from: undefined,
   to: undefined,
 };

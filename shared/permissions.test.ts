@@ -37,6 +37,7 @@ describe('mergePermissions', () => {
       stickerstock: 'none',
       serial: 'none',
       serialservice: 'none',
+      serialwh: 'none',
       countrylock: 'none',
       dashboard: 'none',
     });
@@ -65,6 +66,7 @@ describe('mergePermissions', () => {
       stickerstock: 'none',
       serial: 'none',
       serialservice: 'none',
+      serialwh: 'none',
       countrylock: 'none',
       dashboard: 'none',
     });
@@ -84,6 +86,7 @@ describe('fullPermissions', () => {
       stickerstock: 'manage',
       serial: 'manage',
       serialservice: 'manage',
+      serialwh: 'manage',
       countrylock: 'manage',
       dashboard: 'manage',
     });
@@ -175,10 +178,11 @@ test('sanitizePermissions mempertahankan sticker dan stickerstock', () => {
   });
 });
 
-test('modul dashboard: label, level none/edit/manage, dan petunjuk khusus', () => {
+test('modul dashboard: label, level none/view/edit/manage, dan petunjuk khusus', () => {
   expect(MODULES).toContain('dashboard');
   expect(MODULE_LABELS.dashboard).toBe('Dashboard');
-  expect(levelsFor('dashboard')).toEqual(['none', 'edit', 'manage']);
+  expect(levelsFor('dashboard')).toEqual(['none', 'view', 'edit', 'manage']);
+  expect(levelHint('dashboard', 'view')).toContain('TIDAK dapat membagikan');
   expect(levelHint('dashboard', 'edit')).toContain('MILIK SENDIRI');
   expect(levelHint('dashboard', 'manage')).toContain('milik SEMUA pengguna');
   expect(levelHint('dashboard', 'manage')).toContain('penerima');

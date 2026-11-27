@@ -106,21 +106,21 @@ async function mount(
           code: 'RTL',
           name: 'Retail',
           status: 'active',
-          permissions: { item: 'edit', serial: 'none', serialservice: 'none' },
+          permissions: { item: 'edit', serial: 'none', serialservice: 'none', serialwh: 'none' },
         },
         {
           id: 'bu-b',
           code: 'WHL',
           name: 'Wholesale',
           status: 'active',
-          permissions: { item: 'edit', serial: 'none', serialservice: 'none' },
+          permissions: { item: 'edit', serial: 'none', serialservice: 'none', serialwh: 'none' },
         },
         {
           id: 'bu-x',
           code: 'XTR',
           name: 'Xtra',
           status: 'active',
-          permissions: { item: 'view', serial: 'none', serialservice: 'none' },
+          permissions: { item: 'view', serial: 'none', serialservice: 'none', serialwh: 'none' },
         },
       ],
     }),
@@ -148,14 +148,14 @@ test('field BU hanya menawarkan BU yang boleh diedit pengguna', async () => {
   await mount();
   await userEvent.click(screen.getByRole('combobox', { name: 'BU' }));
   const names = (await screen.findAllByRole('option')).map((option) => option.textContent);
-  expect(names).toEqual(['Retail (RTL)', 'Wholesale (WHL)']);
+  expect(names).toEqual(['RTL - Retail', 'WHL - Wholesale']);
 });
 
 test('allowedBuIds membatasi pilihan BU ke irisan dengan BU yang boleh diedit', async () => {
   await mount(vi.fn(), vi.fn(), ['bu-b', 'bu-x']);
   await userEvent.click(screen.getByRole('combobox', { name: 'BU' }));
   const names = (await screen.findAllByRole('option')).map((option) => option.textContent);
-  expect(names).toEqual(['Wholesale (WHL)']);
+  expect(names).toEqual(['WHL - Wholesale']);
 });
 
 test('menyimpan memanggil items.save, lalu onCreated dengan item tersimpan dan dialog menutup', async () => {
@@ -163,7 +163,7 @@ test('menyimpan memanggil items.save, lalu onCreated dengan item tersimpan dan d
   await userEvent.click(screen.getByRole('combobox', { name: 'Merk' }));
   await userEvent.click(await screen.findByRole('option', { name: 'Ubiquiti' }));
   await userEvent.click(screen.getByRole('combobox', { name: 'BU' }));
-  await userEvent.click(await screen.findByRole('option', { name: 'Retail (RTL)' }));
+  await userEvent.click(await screen.findByRole('option', { name: 'RTL - Retail' }));
   await userEvent.keyboard('{Escape}');
   await userEvent.type(screen.getByLabelText('Tipe'), 'AF 5XHD');
   await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));

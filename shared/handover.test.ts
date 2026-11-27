@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test';
 import {
   customerKey,
+  customerNameProblem,
   dateKeyOf,
   deriveHandoverStatus,
   HANDOVER_LIMITS,
@@ -52,4 +53,14 @@ test('customerKey: tanda baca DIBUANG (bukan jadi spasi), spasi dirapikan, huruf
 
 test('customerKey mempertahankan huruf non-Latin', () => {
   expect(customerKey('PT. 小米 Indonesia')).toBe('pt 小米 indonesia');
+});
+
+test('customerNameProblem menghitung panjang UTF-16 (sama dengan jalur Serah Terima/Customer)', () => {
+  expect(customerNameProblem('a'.repeat(HANDOVER_LIMITS.customerName))).toBeNull();
+  expect(customerNameProblem('a'.repeat(HANDOVER_LIMITS.customerName + 1))).toContain('maksimal');
+  // 60 emoji = 60 code point tetapi 120 unit UTF-16: ditolak seperti jalur lain.
+  expect(customerNameProblem('😀'.repeat(60))).toContain('maksimal');
+  expect(customerNameProblem('!!!')).toContain('huruf atau angka');
+  expect(customerNameProblem('PT\u0001X')).toContain('karakter kontrol');
+  expect(customerNameProblem('')).toBeNull();
 });

@@ -63,6 +63,7 @@ export const API_GROUP_VERSIONS: Record<string, GroupVersions> = {
   serialProofs: { latest: 1, deprecated: [] },
   serialServiceSettings: { latest: 1, deprecated: [] },
   serialSettings: { latest: 1, deprecated: [] },
+  serialWarehouse: { latest: 1, deprecated: [] },
   serials: { latest: 1, deprecated: [] },
   stickerGuides: { latest: 1, deprecated: [] },
   stickerSettings: { latest: 1, deprecated: [] },

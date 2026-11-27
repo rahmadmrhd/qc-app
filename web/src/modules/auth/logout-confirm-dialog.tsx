@@ -10,6 +10,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { useAllOutboxCount } from '@/modules/handover/lib/use-outbox-summary';
+import { useWarehouseSubmitting } from '@/modules/serialwh/lib/active-submission';
 
 /**
  * Peringatan sebelum keluar bila masih ada perubahan (centang) yang belum terkirim: keluar membuang antrean di
@@ -25,6 +26,7 @@ export function LogoutConfirmDialog({
   onCancel: () => void;
 }) {
   const count = useAllOutboxCount();
+  const submitting = useWarehouseSubmitting();
   // Aksi Radix menutup dialog lewat `onOpenChange(false)` juga: tanpa penanda ini konfirmasi ikut dihitung batal.
   const confirmed = useRef(false);
   return (
@@ -38,9 +40,11 @@ export function LogoutConfirmDialog({
         <AlertDialogHeader>
           <AlertDialogTitle>Keluar sekarang?</AlertDialogTitle>
           <AlertDialogDescription>
-            {count > 0
-              ? `${count} perubahan belum terkirim akan hilang kalau Anda keluar. Tunggu sampai terkirim dulu, atau tetap keluar.`
-              : 'Semua perubahan sudah terkirim. Aman untuk keluar.'}
+            {submitting
+              ? 'Pengeluaran Keluar Gudang masih dikirim. Kalau Anda keluar sekarang, pengiriman berhenti dan draf pilihan serial dibuang; bagian yang sudah terkirim baru dibatalkan otomatis setelah 7 hari. Tunggu sampai selesai dulu, atau tetap keluar.'
+              : count > 0
+                ? `${count} perubahan belum terkirim akan hilang kalau Anda keluar. Tunggu sampai terkirim dulu, atau tetap keluar.`
+                : 'Semua perubahan sudah terkirim. Aman untuk keluar.'}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>

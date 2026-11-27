@@ -154,7 +154,7 @@ test('itemLinkAccess.canCreate: item edit pada BU aktif; view saja, BU nonaktif,
             code: 'OLD',
             name: 'Lama',
             status: 'inactive',
-            permissions: { item: 'edit', serial: 'none', serialservice: 'none' },
+            permissions: { item: 'edit', serial: 'none', serialservice: 'none', serialwh: 'none' },
           },
         ],
       }),
@@ -176,7 +176,7 @@ function bu(
     name: id,
     status: extra.status ?? 'active',
     ...(extra.deleted ? { deleted: true } : {}),
-    permissions: { item, serial, serialservice: 'none' },
+    permissions: { item, serial, serialservice: 'none', serialwh: 'none' },
   } as MeDto['businessUnits'][number];
 }
 

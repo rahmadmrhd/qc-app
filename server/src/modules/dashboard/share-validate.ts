@@ -5,7 +5,12 @@ import {
   validateDashboardRange,
   widgetMeta,
 } from '@shared/dashboard';
-import type { CreateShareInput, ShareRange, ShareWidgetScope } from '@shared/dashboard-share';
+import type {
+  CreateShareInput,
+  ShareRange,
+  ShareWidgetScope,
+  UpdateShareInput,
+} from '@shared/dashboard-share';
 import { SHARE_LIMITS, SHARE_OFFER_KEYS } from '@shared/dashboard-share';
 import { isIsoDate } from '@shared/serials';
 import { type Fields, readGlobalFilter, readWidget } from './validate';
@@ -173,6 +178,18 @@ export function validateCreateShare(raw: unknown): CreateShareInput {
   const problems = checkShareInput(input);
   if (Object.keys(problems).length > 0) throw appError('VALIDATION', 'Input tidak valid', problems);
   return input;
+}
+
+/** Validasi `dashboardShares.update`: isi sama dengan pembuatan, ditambah `id` tautan. */
+export function validateUpdateShare(raw: unknown): UpdateShareInput {
+  const { id } = validateShareId(raw);
+  // Tanpa isian masa berlaku sama sekali = pertahankan masa berlaku lama; validasi isi memakai nilai pengganti sah.
+  const keepExpiry =
+    isRecord(raw) && raw.expiresInDays === undefined && raw.expiresOn === undefined;
+  const base = validateCreateShare(keepExpiry ? { ...raw, expiresInDays: 1 } : raw);
+  if (!keepExpiry) return { ...base, id };
+  const { expiresInDays: _placeholder, ...rest } = base;
+  return { ...rest, id, keepExpiry: true };
 }
 
 /** Validasi masukan berparameter `id` (cabut tautan). */

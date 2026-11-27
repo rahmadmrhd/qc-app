@@ -19,6 +19,8 @@ const call = async (email: string, id: string, input: unknown) =>
 const alert = (over: Record<string, unknown> = {}) => ({
   enabled: true,
   recipients: ['a@contoh.com', 'b@contoh.com'],
+  cc: [] as string[],
+  bcc: [] as string[],
   digestHour: 9,
   intervalDays: 1,
   ...over,
@@ -47,6 +49,8 @@ describe('stickerSettings.get', () => {
     expect(out.data.alert).toEqual({
       enabled: false,
       recipients: [],
+      cc: [],
+      bcc: [],
       digestHour: 8,
       intervalDays: 1,
     });
@@ -181,6 +185,13 @@ describe('stickerSettings.save', () => {
     expect(out.ok).toBe(true);
     expect(out.data.types.find((t: { id: string }) => t.id === 't-mb').defaultMinQty).toBe(7);
     expect(out.data.types.find((t: { id: string }) => t.id === 't1').defaultMinQty).toBe(3);
+  });
+
+  test('defaults tak dikirim = tak ada minimum bawaan yang berubah (klien baru)', async () => {
+    const before = await call('sm@gmail.com', 'stickerSettings.get', null);
+    const out = await save({ defaults: undefined });
+    expect(out.ok).toBe(true);
+    expect(out.data.types).toEqual(before.data.types);
   });
 
   test('izin: sticker edit 403', async () => {

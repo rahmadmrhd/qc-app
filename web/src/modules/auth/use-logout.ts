@@ -10,6 +10,7 @@ import { clearAllOutboxesWithin, suspendOutboxWrites } from '@/modules/handover/
 import { clearSending } from '@/modules/handover/lib/outbox-status';
 import { clearLastActive } from '@/modules/location/last-active';
 import { clearAllDrafts } from '@/modules/serial/lib/draft-store';
+import { clearAllWarehouseDrafts } from '@/modules/serialwh/lib/draft-store';
 import { clearSession, getSession } from './session';
 
 /** Menghapus cookie sesi di server (gagal jaringan diabaikan: sesi lokal tetap dibuang). */
@@ -54,6 +55,7 @@ export function useLogout(): () => void {
       clearLastActive(owner);
       // Draf tabel sementara Serial Number (localStorage) dibuang saat keluar; sesi yang kedaluwarsa tidak membuangnya.
       clearAllDrafts();
+      clearAllWarehouseDrafts();
       // Antrean tulis di perangkat (IndexedDB + kunci lama) dan papan/detail task (Fase 3 Tahap B) dibuang saat keluar
       // eksplisit; sesi kedaluwarsa tidak membuangnya. Keduanya berjalan PARALEL, masing-masing dibatasi waktunya
       // (IndexedDB macet = maksimal satu anggaran 1,5 dtk, bukan dua berurutan). Penulisan antrean sudah ditahan di

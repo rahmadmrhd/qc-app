@@ -106,10 +106,9 @@ const types: StickerTypeDto[] = [
   },
 ];
 const STICKER_PLAIN = stickers[0] as StickerDto;
-const TYPE_PLAIN = types[0] as StickerTypeDto;
 const businessUnits = [
-  { id: 'bu-a', label: 'Retail (RTL)' },
-  { id: 'bu-b', label: 'Wholesale (WHL)' },
+  { id: 'bu-a', label: 'RTL - Retail' },
+  { id: 'bu-b', label: 'WHL - Wholesale' },
 ];
 
 const mark = (patch: Record<string, unknown> = {}) => ({
@@ -298,7 +297,9 @@ test('Tambah penanda menambah penanda di tengah (500,500) dan memfokuskan barisn
     { x: 500, y: 500, target: { kind: 'sticker', stickerId: '' }, note: '' },
   ]);
   const row = screen.getByRole('group', { name: 'Baris penanda 1' });
-  await waitFor(() => expect(within(row).getByRole('combobox', { name: 'Stiker' })).toHaveFocus());
+  await waitFor(() =>
+    expect(within(row).getByRole('combobox', { name: 'Jenis atau stiker' })).toHaveFocus(),
+  );
   expect(screen.getByRole('button', { name: 'Penanda 1' })).toBeInTheDocument();
 });
 
@@ -381,22 +382,22 @@ test('label BU foto: pilihan = BU item; mengosongkan; BU yang dilepas dari item 
   );
   const { rerender } = render(view());
   const combo = screen.getByRole('combobox', { name: 'Label BU foto 1' });
-  expect(combo).toHaveValue('Wholesale (WHL)');
+  expect(combo).toHaveValue('WHL - Wholesale');
   await userEvent.click(combo);
   expect((await screen.findAllByRole('option')).map((o) => o.textContent)).toEqual([
-    'Retail (RTL)',
-    'Wholesale (WHL)',
+    'RTL - Retail',
+    'WHL - Wholesale',
   ]);
-  await userEvent.click(screen.getByRole('option', { name: 'Retail (RTL)' }));
+  await userEvent.click(screen.getByRole('option', { name: 'RTL - Retail' }));
   expect(latest[0]?.buId).toBe('bu-a');
   await userEvent.click(screen.getByRole('button', { name: 'Kosongkan Label BU foto 1' }));
   expect(latest[0]?.buId).toBeNull();
 
   // BU dilepas dari item: label foto yang memakainya otomatis dikosongkan
   await userEvent.click(screen.getByRole('combobox', { name: 'Label BU foto 1' }));
-  await userEvent.click(await screen.findByRole('option', { name: 'Wholesale (WHL)' }));
+  await userEvent.click(await screen.findByRole('option', { name: 'WHL - Wholesale' }));
   expect(latest[0]?.buId).toBe('bu-b');
-  rerender(view({ businessUnits: [{ id: 'bu-a', label: 'Retail (RTL)' }] }));
+  rerender(view({ businessUnits: [{ id: 'bu-a', label: 'RTL - Retail' }] }));
   await waitFor(() => expect(latest[0]?.buId).toBeNull());
 });
 
@@ -426,10 +427,11 @@ test('pilihan stiker memakai katalog: stiker nonaktif tersimpan berlabel dan tak
     initial: [photo('g1', { marks: [mark({ target: { kind: 'sticker', stickerId: 's2' } })] })],
     onCreateSticker,
   });
-  const combo = screen.getByRole('combobox', { name: 'Stiker' });
+  const combo = screen.getByRole('combobox', { name: 'Jenis atau stiker' });
   expect(combo).toHaveValue('Postel Lama — nonaktif');
   await userEvent.click(combo);
   expect(screen.getAllByRole('option').map((o) => o.textContent)).toEqual([
+    'Postel (Berdasarkan BU)',
     'Stiker PostelPostel',
     'Tambah Stiker',
   ]);
@@ -449,7 +451,7 @@ test('Tambah stiker dibungkus per penanda: stiker baru langsung terpilih pada pe
     onCreateSticker,
   });
   const row = screen.getByRole('group', { name: 'Baris penanda 2' });
-  await userEvent.click(within(row).getByRole('combobox', { name: 'Stiker' }));
+  await userEvent.click(within(row).getByRole('combobox', { name: 'Jenis atau stiker' }));
   await userEvent.click(screen.getByRole('option', { name: 'Tambah Stiker' }));
   expect(onCreateSticker).toHaveBeenCalledTimes(1);
   created?.({ ...STICKER_PLAIN, id: 's9', name: 'Baru' });
@@ -457,21 +459,6 @@ test('Tambah stiker dibungkus per penanda: stiker baru langsung terpilih pada pe
     expect(latest[0]?.marks[1]?.target).toEqual({ kind: 'sticker', stickerId: 's9' }),
   );
   expect(latest[0]?.marks[0]?.target).toEqual({ kind: 'sticker', stickerId: 's1' });
-});
-
-test('Tambah jenis dibungkus per penanda dan hanya ada bila disediakan', async () => {
-  let created: ((type: StickerTypeDto) => void) | undefined;
-  const onCreateType = vi.fn((done: (type: StickerTypeDto) => void) => {
-    created = done;
-  });
-  renderField({
-    initial: [photo('g1', { marks: [mark({ target: { kind: 'type', typeId: '' } })] })],
-    onCreateType,
-  });
-  await userEvent.click(screen.getByRole('combobox', { name: 'Jenis' }));
-  await userEvent.click(screen.getByRole('option', { name: 'Tambah Jenis' }));
-  created?.({ ...TYPE_PLAIN, id: 't9', name: 'Baru' });
-  await waitFor(() => expect(latest[0]?.marks[0]?.target).toEqual({ kind: 'type', typeId: 't9' }));
 });
 
 test('Tambah stiker: menghapus penanda sebelumnya selagi dialog terbuka tetap memasang stiker baru ke penanda yang sama', async () => {
@@ -491,7 +478,7 @@ test('Tambah stiker: menghapus penanda sebelumnya selagi dialog terbuka tetap me
     onCreateSticker,
   });
   const row = screen.getByRole('group', { name: 'Baris penanda 2' });
-  await userEvent.click(within(row).getByRole('combobox', { name: 'Stiker' }));
+  await userEvent.click(within(row).getByRole('combobox', { name: 'Jenis atau stiker' }));
   await userEvent.click(screen.getByRole('option', { name: 'Tambah Stiker' }));
   // penanda 1 dihapus sebelum stiker baru selesai dibuat: "b" kini penanda 1
   await userEvent.click(screen.getByRole('button', { name: 'Hapus penanda 1' }));
@@ -522,32 +509,13 @@ test('Tambah stiker: bila penanda pemintanya dihapus, stiker baru tidak dipasang
     onCreateSticker,
   });
   const row = screen.getByRole('group', { name: 'Baris penanda 2' });
-  await userEvent.click(within(row).getByRole('combobox', { name: 'Stiker' }));
+  await userEvent.click(within(row).getByRole('combobox', { name: 'Jenis atau stiker' }));
   await userEvent.click(screen.getByRole('option', { name: 'Tambah Stiker' }));
   await userEvent.click(screen.getByRole('button', { name: 'Hapus penanda 2' }));
   const before = JSON.stringify(latest);
   created?.({ ...STICKER_PLAIN, id: 's9', name: 'Baru' });
   await new Promise((resolve) => setTimeout(resolve, 20));
   expect(JSON.stringify(latest)).toBe(before);
-  expect(latest[0]?.marks[0]?.target).toEqual({ kind: 'sticker', stickerId: '' });
-});
-
-test('Tambah jenis: bila penanda pemintanya sudah tidak ada (dihapus lalu ada penanda baru), jenis baru tidak dipasang', async () => {
-  let created: ((type: StickerTypeDto) => void) | undefined;
-  const onCreateType = vi.fn((done: (type: StickerTypeDto) => void) => {
-    created = done;
-  });
-  renderField({
-    initial: [photo('g1', { marks: [mark({ target: { kind: 'type', typeId: '' } })] })],
-    onCreateType,
-  });
-  await userEvent.click(screen.getByRole('combobox', { name: 'Jenis' }));
-  await userEvent.click(screen.getByRole('option', { name: 'Tambah Jenis' }));
-  // penanda diganti dengan objek baru oleh sumber lain (salin penanda)
-  await userEvent.click(screen.getByRole('button', { name: 'Hapus penanda 1' }));
-  await userEvent.click(screen.getByRole('button', { name: 'Tambah penanda pada foto 1' }));
-  created?.({ ...TYPE_PLAIN, id: 't9', name: 'Baru' });
-  await new Promise((resolve) => setTimeout(resolve, 20));
   expect(latest[0]?.marks[0]?.target).toEqual({ kind: 'sticker', stickerId: '' });
 });
 
@@ -628,13 +596,12 @@ test('pemilih stiker menyembunyikan stiker jenis sistem (dikelola aplikasi); jen
     stickers: [...stickers, mbSticker('mb2', 'PBE M5-400 v2', 'active')],
     types: [...types, mbType],
   });
-  await userEvent.click(screen.getByRole('combobox', { name: 'Stiker' }));
+  await userEvent.click(screen.getByRole('combobox', { name: 'Jenis atau stiker' }));
   const names = screen.getAllByRole('option').map((option) => option.textContent);
   expect(names.some((name) => name?.includes('PBE M5-400'))).toBe(false);
   expect(names.some((name) => name?.includes('Stiker Postel'))).toBe(true);
   await userEvent.keyboard('{Escape}');
-  await userEvent.click(screen.getByRole('radio', { name: 'Jenis' }));
-  await userEvent.click(screen.getByRole('combobox', { name: 'Jenis' }));
+  await userEvent.click(screen.getByRole('combobox', { name: 'Jenis atau stiker' }));
   expect(
     screen.getAllByRole('option').some((option) => option.textContent?.includes('Manual Book')),
   ).toBe(true);
@@ -646,7 +613,9 @@ test('penanda tersimpan ke stiker Usang diberi tanda nonaktif', () => {
     stickers: [...stickers, mbSticker('mb1', 'PBE M5-400 v1', 'deprecated')],
     types: [...types, mbType],
   });
-  expect(screen.getByRole('combobox', { name: 'Stiker' })).toHaveValue('PBE M5-400 v1 — nonaktif');
+  expect(screen.getByRole('combobox', { name: 'Jenis atau stiker' })).toHaveValue(
+    'PBE M5-400 v1 — nonaktif',
+  );
   expect(screen.getByRole('status')).toHaveTextContent('Stiker nonaktif');
 });
 

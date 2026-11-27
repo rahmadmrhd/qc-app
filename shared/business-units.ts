@@ -3,11 +3,25 @@ import { levelRank, mergePermissions } from './permissions';
 
 /**
  * Modul ber-BU: izinnya dihitung per Business Unit dari penugasan BU user (`users.bu_assignments`), bukan dari
- * penugasan lokasi. `item` (tahap 1), `serial` dan `serialservice` (Serial Number); modul berikutnya cukup ditambahkan di sini.
+ * penugasan lokasi. `item` (tahap 1), `serial`, `serialservice` dan `serialwh` (Serial Number); modul berikutnya cukup ditambahkan di sini.
  */
-export const BU_MODULES = ['item', 'serial', 'serialservice'] as const;
+export const BU_MODULES = ['item', 'serial', 'serialservice', 'serialwh'] as const;
 export type BuModule = (typeof BU_MODULES)[number];
 export type BuPermissionMap = Record<BuModule, Level>;
+
+/**
+ * Label tampilan BU, SATU-SATUNYA pembentuknya (keputusan pemilik 2026-11-25): `<kode> - <nama>`. Bila salah satu
+ * kosong, yang ada saja ditampilkan (data lama atau DTO tanpa nama tak menghasilkan " - " menggantung).
+ */
+export function formatBuLabel(bu: {
+  code?: string | null | undefined;
+  name?: string | null | undefined;
+}): string {
+  const code = (bu.code ?? '').trim();
+  const name = (bu.name ?? '').trim();
+  if (code !== '' && name !== '') return `${code} - ${name}`;
+  return code !== '' ? code : name;
+}
 
 /** Kunci peta/snapshot untuk penugasan "Semua BU". */
 export const ALL_BU_KEY = '*';
@@ -20,7 +34,7 @@ export interface BuAssignment {
 
 /** Izin penuh per BU (super admin): level tertinggi yang ada di tiap modul (`serialservice` hanya sampai `edit`). */
 export function fullBuPermissions(): BuPermissionMap {
-  return { item: 'manage', serial: 'manage', serialservice: 'edit' };
+  return { item: 'manage', serial: 'manage', serialservice: 'edit', serialwh: 'edit' };
 }
 
 function cleanIds(value: unknown): string[] {

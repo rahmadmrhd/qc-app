@@ -1,6 +1,6 @@
 import type { MeDto } from '@shared/contract';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { longPress } from '@/test/long-press';
@@ -361,4 +361,28 @@ test('tanpa frame (dialog Country Lock): bar Simpan sticky di alur isi, bukan fi
   // di bawah bar tempat baris draft terlihat menggulir.
   expect(bar.className).toContain('-bottom-4');
   expect(bar.className.split(' ')).not.toContain('bottom-0');
+});
+
+test('shift-klik memilih rentang baris draf; baris di luar rentang tak berubah', async () => {
+  media = mockMatchMedia(true);
+  seedDraft([
+    { serial: 'AAA111' },
+    { serial: 'BBB222' },
+    { serial: 'CCC333' },
+    { serial: 'DDD444' },
+    { serial: 'EEE555' },
+  ]);
+  renderPage();
+  await userEvent.click(await screen.findByRole('checkbox', { name: 'Pilih baris BBB222' }));
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Pilih baris DDD444' }), {
+    shiftKey: true,
+  });
+  for (const serial of ['BBB222', 'CCC333', 'DDD444']) {
+    await waitFor(() =>
+      expect(screen.getByRole('checkbox', { name: `Pilih baris ${serial}` })).toBeChecked(),
+    );
+  }
+  for (const serial of ['AAA111', 'EEE555']) {
+    expect(screen.getByRole('checkbox', { name: `Pilih baris ${serial}` })).not.toBeChecked();
+  }
 });

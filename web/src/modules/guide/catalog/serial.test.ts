@@ -29,7 +29,7 @@ function me(permissions: Record<string, string>): MeDto {
 
 const reader = me({ serial: 'view' });
 const writer = me({ serial: 'edit' });
-const serviceOnly = me({ serialservice: 'view' });
+const serviceOnly = me({ serialservice: 'view', serialwh: 'none' });
 
 function offers(user: MeDto) {
   return offeredGuides({

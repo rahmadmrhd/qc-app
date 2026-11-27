@@ -81,17 +81,24 @@ test('Item, BU, dan Lokasi memakai LinkField; tidak ada elemen select bawaan', a
 test('BU selalu tampil sebelum item dipilih dan menawarkan semua BU tulis', async () => {
   renderPage();
   expect(await screen.findByRole('combobox', { name: 'Business Unit' })).toBeEnabled();
-  expect(await linkOptionNames(screen, 'Business Unit')).toEqual(['BU1', 'BU2']);
+  expect(await linkOptionNames(screen, 'Business Unit')).toEqual([
+    'BU1 - Business Unit 1',
+    'BU2 - Business Unit 2',
+  ]);
 });
 
 test('item satu BU mengisi BU otomatis; BU boleh diganti ke BU lain dan gerbang tetap terpenuhi', async () => {
   renderPage();
   await pickLink(screen, 'Item', 'Cisco C9200');
   await waitFor(() =>
-    expect(screen.getByRole('combobox', { name: 'Business Unit' })).toHaveValue('BU1'),
+    expect(screen.getByRole('combobox', { name: 'Business Unit' })).toHaveValue(
+      'BU1 - Business Unit 1',
+    ),
   );
-  await pickLink(screen, 'Business Unit', 'BU2');
-  expect(screen.getByRole('combobox', { name: 'Business Unit' })).toHaveValue('BU2');
+  await pickLink(screen, 'Business Unit', 'BU2 - Business Unit 2');
+  expect(screen.getByRole('combobox', { name: 'Business Unit' })).toHaveValue(
+    'BU2 - Business Unit 2',
+  );
   await pickLink(screen, 'Lokasi', 'Jakarta (JKT)');
   await waitFor(() =>
     expect(screen.getByLabelText('Scan atau tempel serial (satu per baris)')).toBeEnabled(),

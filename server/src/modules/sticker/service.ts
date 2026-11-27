@@ -32,6 +32,7 @@ import type {
   GetStickerTypeInput,
   ListStickersInput,
   ListStickerTypesInput,
+  OpeningStockInput,
   SaveStickerInput,
   SaveStickerTypeInput,
   SetStickerStatusInput,
@@ -41,6 +42,16 @@ import type {
 } from '@shared/contract';
 import { hasLevel } from '@shared/permissions';
 import { isLowStock } from '@shared/stickers';
+import {
+  assertOpeningStockAccess,
+  findOpeningStockReplay,
+  mayBeOpeningStockRace,
+  OPENING_STOCK_REASON,
+  OPENING_STOCK_TAKEN_MESSAGE,
+  openingBreakdown,
+  openingStockStmts,
+  openingTotal,
+} from './opening-stock';
 import type { StickerRecord, StickerTypeRecord } from './repo';
 import {
   insertStickerStmt,
@@ -70,6 +81,12 @@ import {
   updateStickerStmt,
   updateStickerTypeStmt,
 } from './repo';
+import {
+  type StickerSourceLinks,
+  stickerSourceLinksFromResult,
+  stickerSourceLinksOfStatement,
+  stickerSourceLinksStatement,
+} from './source-links';
 
 const NAME_TAKEN_MESSAGE = 'Nama jenis sudah dipakai';
 const TYPE_STALE_MESSAGE =
@@ -111,7 +128,12 @@ function toStickerTypeDto(type: StickerTypeRecord): StickerTypeDto {
 }
 
 export function stickerTypeSnapshot(type: StickerTypeRecord): Record<string, unknown> {
-  return { name: type.name, rule: type.rule, status: type.status };
+  return {
+    name: type.name,
+    rule: type.rule,
+    status: type.status,
+    defaultMinQty: type.defaultMinQty,
+  };
 }
 
 /** Hanya `sticker: manage` yang melihat record terhapus (daftar `status=deleted` dan detailnya). */
@@ -178,11 +200,34 @@ async function loadStickerTypeAny(env: Env, id: string): Promise<StickerTypeReco
   return stickerTypesFromResult(result[0] ?? { results: [] })[0];
 }
 
+const DEFAULT_MIN_FORBIDDEN_MESSAGE =
+  'Minimum stok bawaan hanya dapat diubah oleh pengguna dengan izin Kelola pada Stiker';
+
+/** Mengubah minimum stok bawaan jenis butuh `sticker: manage` (sama dengan Konfigurasi Stiker; satu kolom data). */
+function assertMayChangeDefaultMin(user: UserContext): void {
+  if (!hasLevel(user.permissions.sticker, 'manage')) {
+    throw appError('FORBIDDEN', DEFAULT_MIN_FORBIDDEN_MESSAGE, {
+      defaultMinQty: DEFAULT_MIN_FORBIDDEN_MESSAGE,
+    });
+  }
+}
+
+/** Aturan `group` hanya milik jenis sistem; jenis buatan pengguna memilih `bu` atau `none`. */
+function assertUserRule(rule: SaveStickerTypeInput['rule']): void {
+  if (rule === 'group') {
+    const message = 'Aturan tidak dikenal';
+    throw appError('VALIDATION', message, { rule: message });
+  }
+}
+
 async function createStickerType(
   env: Env,
   input: SaveStickerTypeInput,
-  actor: ActorRef,
+  actor: UserContext,
 ): Promise<StickerTypeDto> {
+  assertUserRule(input.rule);
+  const defaultMinQty = input.defaultMinQty ?? 0;
+  if (defaultMinQty !== 0) assertMayChangeDefaultMin(actor);
   const now = nowIso(env);
   const created: StickerTypeRecord = {
     id: newId(),
@@ -190,7 +235,7 @@ async function createStickerType(
     rule: input.rule,
     status: 'active',
     systemKind: '',
-    defaultMinQty: 0,
+    defaultMinQty,
     stickerCount: 0,
     liveStickerCount: 0,
     createdAt: now,
@@ -226,7 +271,7 @@ async function updateStickerType(
   env: Env,
   id: string,
   input: SaveStickerTypeInput,
-  actor: ActorRef,
+  actor: UserContext,
 ): Promise<StickerTypeDto> {
   return env.DB.transaction(async (tx) => {
     const existing = await lockStickerType(tx, id);
@@ -234,11 +279,22 @@ async function updateStickerType(
     if (existing.deletedAt !== '') throw appError('CONFLICT', TYPE_DELETED_MESSAGE);
     // Versi yang dilihat penyimpan harus masih terkini; baris terkunci (`FOR UPDATE`) sehingga pembacaan ini pasti.
     if (input.expectedUpdatedAt !== existing.updatedAt) throw staleError(TYPE_STALE_MESSAGE);
-    // Jenis sistem (Manual Book, Postel) dikelola aplikasi: tak dapat diganti nama atau aturannya lewat form.
-    if (existing.systemKind !== '') {
+    // Jenis sistem (Manual Book, Postel) dikelola aplikasi: nama dan aturannya terkunci; hanya minimum bawaan yang boleh
+    // diubah (keputusan pemilik 2026-11-25; tetap butuh `sticker: manage`).
+    if (
+      existing.systemKind !== '' &&
+      (input.name !== existing.name || input.rule !== existing.rule)
+    ) {
       throw appError('VALIDATION', SYSTEM_TYPE_MESSAGE, { name: SYSTEM_TYPE_MESSAGE });
     }
-    if (existing.name === input.name && existing.rule === input.rule) {
+    if (existing.systemKind === '') assertUserRule(input.rule);
+    const defaultMinQty = input.defaultMinQty ?? existing.defaultMinQty;
+    if (defaultMinQty !== existing.defaultMinQty) assertMayChangeDefaultMin(actor);
+    if (
+      existing.name === input.name &&
+      existing.rule === input.rule &&
+      defaultMinQty === existing.defaultMinQty
+    ) {
       return toStickerTypeDto(existing);
     }
     // Hanya stiker HIDUP yang mengunci aturan (keputusan pemilik 2026-11-21; soft delete §9): stiker terhapus tak menahan.
@@ -250,6 +306,7 @@ async function updateStickerType(
       ...existing,
       name: input.name,
       rule: input.rule,
+      defaultMinQty,
       updatedAt: now,
       updatedBy: actor.email,
     };
@@ -270,7 +327,7 @@ async function updateStickerType(
 export async function saveStickerType(
   env: Env,
   input: SaveStickerTypeInput,
-  actor: ActorRef,
+  actor: UserContext,
 ): Promise<StickerTypeDto> {
   try {
     return input.id
@@ -293,7 +350,10 @@ const INACTIVE_BU_MESSAGE = 'BU tidak dikenal atau tidak aktif';
 
 const STICKER_CONFLICTS = {
   stickers_type_name_unique: { field: 'name', message: STICKER_NAME_TAKEN_MESSAGE },
+  sticker_stock_entries_client_id: { field: 'openingStock', message: OPENING_STOCK_TAKEN_MESSAGE },
 };
+
+export { OPENING_STOCK_REASON };
 
 function toStickerDto(
   sticker: StickerRecord,
@@ -302,6 +362,7 @@ function toStickerDto(
   total: number,
   latestManualBookVersion: boolean,
   typeDeleted = false,
+  sources: StickerSourceLinks = {},
 ): StickerDto {
   return {
     id: sticker.id,
@@ -320,6 +381,8 @@ function toStickerDto(
       ? {}
       : { deleted: { deletedAt: sticker.deletedAt, deletedBy: sticker.deletedBy } }),
     ...(typeDeleted ? { typeDeleted: true } : {}),
+    ...(sources.postelId ? { postelId: sources.postelId } : {}),
+    ...(sources.manualBookDesignId ? { manualBookDesignId: sources.manualBookDesignId } : {}),
   };
 }
 
@@ -373,19 +436,22 @@ export async function listStickers(
   if (filter === 'deleted' && !canSeeDeleted(user)) {
     throw appError('FORBIDDEN', 'Anda tidak berhak melihat stiker terhapus');
   }
-  const [stickerResult, typeResult, buResult, totalResult, latestResult] = await env.DB.batch([
-    stickersStatement(env.DB, filter === 'deleted' ? 'deleted' : 'live'),
-    stickerTypesStatement(env.DB),
-    stickerBusinessUnitsStatement(env.DB),
-    stockTotalsStatement(env.DB),
-    latestManualBookStickerIdsStatement(env.DB),
-  ]);
+  const [stickerResult, typeResult, buResult, totalResult, latestResult, sourceResult] =
+    await env.DB.batch([
+      stickersStatement(env.DB, filter === 'deleted' ? 'deleted' : 'live'),
+      stickerTypesStatement(env.DB),
+      stickerBusinessUnitsStatement(env.DB),
+      stockTotalsStatement(env.DB),
+      latestManualBookStickerIdsStatement(env.DB),
+      stickerSourceLinksStatement(env.DB),
+    ]);
   const types = new Map(
     stickerTypesFromResult(typeResult ?? { results: [] }).map((type) => [type.id, type]),
   );
   const bus = stickerBusinessUnitsFromResult(buResult ?? { results: [] });
   const totals = stockTotalsFromResult(totalResult ?? { results: [] });
   const latest = latestManualBookStickerIdsFromResult(latestResult ?? { results: [] });
+  const sources = stickerSourceLinksFromResult(sourceResult ?? { results: [] });
   return stickersFromResult(stickerResult ?? { results: [] })
     .filter((sticker) => filter !== 'active' || sticker.status === 'active')
     .filter((sticker) => filter !== 'inactive' || sticker.status !== 'active')
@@ -398,13 +464,14 @@ export async function listStickers(
         totals.get(sticker.id) ?? 0,
         latest.has(sticker.id),
         type !== undefined && type.deletedAt !== '',
+        sources.get(sticker.id),
       );
     })
     .sort((a, b) => a.typeName.localeCompare(b.typeName) || a.name.localeCompare(b.name));
 }
 
 /** Rujukan berkas tak sah dilaporkan di field `fileId` (pesan dari `planAttachFiles`). */
-async function planStickerFile(
+export async function planStickerFile(
   env: Env,
   fileId: string,
   stickerId: string,
@@ -435,8 +502,15 @@ const sameSet = (a: readonly string[], b: readonly string[]): boolean =>
 async function saveStickerOnce(
   env: Env,
   input: SaveStickerInput,
-  actor: ActorRef,
+  actor: UserContext,
 ): Promise<StickerDto> {
+  const opening = input.id ? undefined : input.openingStocks;
+  if (opening) {
+    assertOpeningStockAccess(actor, opening);
+    // Kiriman ulang (idempoten): entri stok awal milik pelaku yang sama = kembalikan stiker yang sudah dibuat.
+    const replayed = await replayOpeningSticker(env, actor, opening);
+    if (replayed) return replayed;
+  }
   const reads: DbStatement[] = [stickerTypeByIdStatement(env.DB, input.typeId)];
   if (input.id) {
     reads.push(
@@ -519,7 +593,7 @@ async function saveStickerOnce(
     existing.name === input.name &&
     existing.alias === input.alias &&
     existing.fileId === fileId &&
-    existing.minQty === input.minQty &&
+    existing.minQty === (input.minQty ?? existing.minQty) &&
     sameSet(currentBuIds, requested)
   ) {
     return toStickerDto(existing, type.name, currentBuIds, total, latest, type.deletedAt !== '');
@@ -540,7 +614,7 @@ async function saveStickerOnce(
       name: input.name,
       alias: input.alias,
       fileId,
-      minQty: input.minQty,
+      minQty: input.minQty ?? existing.minQty,
       updatedAt: now,
       updatedBy: actor.email,
     };
@@ -572,7 +646,8 @@ async function saveStickerOnce(
     name: input.name,
     alias: input.alias,
     fileId,
-    minQty: input.minQty,
+    // Tak dikirim = minimum bawaan jenisnya (keputusan pemilik 2026-11-25).
+    minQty: input.minQty ?? type.defaultMinQty,
     status: 'active',
     createdAt: now,
     updatedAt: now,
@@ -580,32 +655,75 @@ async function saveStickerOnce(
     deletedAt: '',
     deletedBy: '',
   };
-  await batchWrite(
-    env.DB,
-    [
-      ...guards,
-      ...attach,
-      insertStickerStmt(env.DB, created),
-      ...syncStickerBusinessUnitsStmts(env.DB, id, requested, true),
-      writeAudit(env.DB, {
-        ts: now,
-        actor: actor.email,
-        action: 'sticker.create',
-        target: created.name,
-        targetId: created.id,
-        before: null,
-        after: stickerSnapshot(created, type.name, nextBuCodes),
-      }),
-    ],
-    STICKER_CONFLICTS,
-  );
-  return toStickerDto(created, type.name, sortedBuIds, 0, false);
+  const openingDetail = opening ? await openingBreakdown(env, opening) : '';
+  try {
+    await batchWrite(
+      env.DB,
+      [
+        ...guards,
+        ...attach,
+        insertStickerStmt(env.DB, created),
+        ...syncStickerBusinessUnitsStmts(env.DB, id, requested, true),
+        // Stok awal: entri masuk "Stok awal" di batch yang sama (atomik dengan pembuatan stiker).
+        ...(opening ? openingStockStmts(env.DB, id, opening, actor.email, now) : []),
+        writeAudit(env.DB, {
+          ts: now,
+          actor: actor.email,
+          action: 'sticker.create',
+          target: created.name,
+          targetId: created.id,
+          before: null,
+          after: {
+            ...stickerSnapshot(created, type.name, nextBuCodes),
+            ...(opening
+              ? {
+                  openingStock: openingTotal(opening),
+                  openingStocks: openingDetail,
+                }
+              : {}),
+          },
+        }),
+      ],
+      STICKER_CONFLICTS,
+    );
+  } catch (error) {
+    // Dua kiriman serentak ber-`clientId` sama: yang kalah mengulang pencarian replay (pelaku sama = hasil yang sama).
+    if (opening && mayBeOpeningStockRace(error, opening)) {
+      const replayed = await replayOpeningSticker(env, actor, opening);
+      if (replayed) return replayed;
+    }
+    throw error;
+  }
+  return toStickerDto(created, type.name, sortedBuIds, opening ? openingTotal(opening) : 0, false);
+}
+
+/**
+ * Replay stok awal untuk `stickers.save`: stiker yang dibuat kiriman pertama. Stiker terhapus atau berjenis sistem
+ * (mis. stiker Postel yang lahir dari `postels.save`) dijawab `CONFLICT` generik, bukan DTO-nya.
+ */
+async function replayOpeningSticker(
+  env: Env,
+  actor: UserContext,
+  opening: readonly OpeningStockInput[],
+): Promise<StickerDto | null> {
+  const replayId = await findOpeningStockReplay(env, actor, opening);
+  if (replayId === null) return null;
+  const loaded = await loadStickerAny(env, replayId);
+  if (
+    !loaded ||
+    loaded.sticker.deletedAt !== '' ||
+    loaded.type === undefined ||
+    loaded.type.systemKind !== ''
+  ) {
+    throw appError('CONFLICT', OPENING_STOCK_TAKEN_MESSAGE);
+  }
+  return dtoOfLoaded(loaded);
 }
 
 export async function saveSticker(
   env: Env,
   input: SaveStickerInput,
-  actor: ActorRef,
+  actor: UserContext,
 ): Promise<StickerDto> {
   return runCas(() => saveStickerOnce(env, input, actor), STICKER_STALE_MESSAGE);
 }
@@ -637,6 +755,7 @@ export interface LoadedSticker {
   buIds: string[];
   total: number;
   latest: boolean;
+  sources: StickerSourceLinks;
 }
 
 /** Stiker menurut id beserta jenis, BU, total stok, dan penanda versi terbaru; `null` bila id tak dikenal. */
@@ -648,6 +767,7 @@ async function loadStickerAny(env: Env, id: string): Promise<LoadedSticker | nul
     stickerTypeByIdStatement(env.DB, sticker.typeId),
     stickerBusinessUnitsOfStatement(env.DB, sticker.id),
     stockTotalOfStatement(env.DB, sticker.id),
+    stickerSourceLinksOfStatement(env.DB, sticker.id),
   ]);
   const type = stickerTypesFromResult(related[0] ?? { results: [] })[0];
   return {
@@ -656,6 +776,7 @@ async function loadStickerAny(env: Env, id: string): Promise<LoadedSticker | nul
     buIds: stickerBusinessUnitsFromResult(related[1] ?? { results: [] }).get(sticker.id) ?? [],
     total: stockTotalsFromResult(related[2] ?? { results: [] }).get(sticker.id) ?? 0,
     latest: await latestFlagOf(env, sticker.id, type),
+    sources: stickerSourceLinksFromResult(related[3] ?? { results: [] }).get(sticker.id) ?? {},
   };
 }
 
@@ -680,6 +801,7 @@ function dtoOfLoaded(loaded: LoadedSticker, record: StickerRecord = loaded.stick
     loaded.total,
     loaded.latest,
     loaded.type !== undefined && loaded.type.deletedAt !== '',
+    loaded.sources,
   );
 }
 

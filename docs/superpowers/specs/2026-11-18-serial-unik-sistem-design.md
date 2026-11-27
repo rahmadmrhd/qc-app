@@ -118,3 +118,12 @@ Tiap baris (satu per serial ternormalisasi): server mencari serial **secara glob
 7. **Serial sama di BU dan lokasi yang sama juga menjadi cek ulang** (tidak ada `duplicate` lagi untuk serial yang sudah ada). Alasan: seragam dengan "catat ulang"; pengaman kirim ganda ada pada pengenal kejadian; pencatat dapat tidak mencentang stiker bila tidak ingin memotong stok.
 8. **Pemakaian field baris pada cek ulang** (§5.1): `testDate` hanya menjadi tanggal kejadian; lokasi unit ikut pindah ke lokasi baris; `note` menjadi pesan kejadian; `sample` diabaikan.
 9. **Jalur cek ulang tidak menerapkan syarat item aktif/terlihat** (item catatan adalah acuan).
+
+10. **Nama BU pada `serials.lookupMany`** (keputusan pemilik 2026-11-25, menjawab temuan review atas label BU `<kode> - <nama>`): `buCode` selalu dikirim, tetapi `buName` hanya bila BU saat ini serial itu terbaca pengguna (`readableBuIds`); untuk BU yang tak terbaca cukup kodenya, dan web menampilkan kode saja lewat `formatBuLabel`. Alasan: pengungkapan lintas BU tetap minimal (butir kebocoran disengaja di atas tidak diperluas). Menggantikan perilaku sementara yang selalu mengirim nama. Disetujui pemilik produk.
+
+## Catatan keputusan 2026-11-26 (Keluar Gudang)
+
+- Serial baru juga dapat lahir dari pengeluaran Gudang (`serialwh`): status `good`, posisi QC, dan kejadian `recorded` dengan `data.source = 'warehouse'`. Indeks `serials_serial_live` tetap satu-satunya penjaga keunikan lintas BU.
+- Serial yang sudah dikeluarkan di satu BU boleh dikeluarkan lagi untuk SO di BU lain (transaksi internal). Ini dicatat sebagai info, bukan pemindahan BU; pengeluaran tidak mengubah BU serial.
+- Keputusan pemilik produk tanggal 2026-11-26, disetujui pemilik produk. Alasan: barang yang dipesan customer di BU B sering ada di gudang BU A.
+- Pertanyaan terbuka: tidak ada.

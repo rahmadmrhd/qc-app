@@ -150,8 +150,8 @@ test('menampilkan jenis, BU sebagai chip, batas minimum, dan status', async () =
   await renderPage();
   const first = screen.getByRole('row', { name: /Hijau-B/ });
   expect(within(first).getByText('QC Hijau')).toBeInTheDocument();
-  expect(within(first).getByText('RTL')).toBeInTheDocument();
-  expect(within(first).getByText('WHL')).toBeInTheDocument();
+  expect(within(first).getByText('RTL - Retail')).toBeInTheDocument();
+  expect(within(first).getByText('WHL - Wholesale')).toBeInTheDocument();
   expect(within(first).getByText('100')).toBeInTheDocument();
   expect(within(first).getByText('Aktif')).toBeInTheDocument();
   expect(
@@ -253,7 +253,7 @@ test('tambah stiker jenis bu: menautkan dua BU dan mengirimnya', async () => {
   const dialog = await screen.findByRole('alertdialog');
   await pickLink(within(dialog), 'Jenis', 'QC Hijau');
   await userEvent.type(within(dialog).getByLabelText('Nama stiker'), 'Hijau Kecil');
-  for (const name of ['Retail (RTL)', 'Wholesale (WHL)']) {
+  for (const name of ['RTL - Retail', 'WHL - Wholesale']) {
     await userEvent.click(within(dialog).getByRole('combobox', { name: 'BU' }));
     await userEvent.click(await screen.findByRole('option', { name }));
     await userEvent.keyboard('{Escape}');
@@ -274,12 +274,12 @@ test('mengganti jenis dari bu ke non-bu mengosongkan BU yang sudah dipilih (payl
   await userEvent.click(screen.getByRole('button', { name: 'Tambah stiker' }));
   const dialog = await screen.findByRole('alertdialog');
   await pickLink(within(dialog), 'Jenis', 'QC Hijau');
-  await pickLink(within(dialog), 'BU', 'Retail (RTL)');
+  await pickLink(within(dialog), 'BU', 'RTL - Retail');
   await pickLink(within(dialog), 'Jenis', 'Segel');
   expect(within(dialog).queryByRole('combobox', { name: 'BU' })).toBeNull();
   // Kembali ke jenis bu: pilihan BU lama tidak boleh muncul lagi.
   await pickLink(within(dialog), 'Jenis', 'QC Hijau');
-  expect(within(dialog).queryByText('Retail (RTL)')).toBeNull();
+  expect(within(dialog).queryByText('RTL - Retail')).toBeNull();
   await pickLink(within(dialog), 'Jenis', 'Segel');
   await userEvent.type(within(dialog).getByLabelText('Nama stiker'), 'Segel Baru');
   await userEvent.click(within(dialog).getByRole('button', { name: 'Simpan' }));
@@ -432,7 +432,7 @@ test('Tambah Jenis membuat jenis lewat dialog turunan dan langsung memilihnya (a
   // Aturan jenis baru (bu) langsung terbaca tanpa menunggu muat ulang daftar jenis.
   expect(within(form).getByRole('combobox', { name: 'BU' })).toBeInTheDocument();
   await userEvent.type(within(form).getByLabelText('Nama stiker'), 'Stiker Baru');
-  await pickLink(within(form), 'BU', 'Retail (RTL)');
+  await pickLink(within(form), 'BU', 'RTL - Retail');
   await userEvent.click(within(form).getByRole('button', { name: 'Simpan' }));
   await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
   expect(onSave.mock.calls[0]?.[0]).toMatchObject({
@@ -446,7 +446,7 @@ test('field BU di form stiker: Buka dan Tambah BU hanya muncul bila disediakan',
   await userEvent.click(screen.getByRole('button', { name: 'Tambah stiker' }));
   let dialog = await screen.findByRole('alertdialog');
   await pickLink(within(dialog), 'Jenis', 'QC Hijau');
-  await pickLink(within(dialog), 'BU', 'Retail (RTL)');
+  await pickLink(within(dialog), 'BU', 'RTL - Retail');
   expect(within(dialog).queryByRole('link', { name: /Buka/ })).toBeNull();
   await userEvent.click(within(dialog).getByRole('combobox', { name: 'BU' }));
   expect(screen.queryByRole('option', { name: 'Tambah BU' })).toBeNull();
@@ -459,8 +459,8 @@ test('field BU di form stiker: Buka dan Tambah BU hanya muncul bila disediakan',
   await userEvent.click(screen.getByRole('button', { name: 'Tambah stiker' }));
   dialog = await screen.findByRole('alertdialog');
   await pickLink(within(dialog), 'Jenis', 'QC Hijau');
-  await pickLink(within(dialog), 'BU', 'Retail (RTL)');
-  expect(within(dialog).getByRole('link', { name: 'Buka Retail (RTL)' })).toHaveAttribute(
+  await pickLink(within(dialog), 'BU', 'RTL - Retail');
+  expect(within(dialog).getByRole('link', { name: 'Buka RTL - Retail' })).toHaveAttribute(
     'href',
     '/access/business-units/bu-a',
   );
@@ -667,7 +667,7 @@ test('nama stiker dan jenis menaut ke View; tidak ada tombol "Lihat"', async () 
     'href',
     '/sticker/types/tp-bu',
   );
-  expect(screen.getByRole('link', { name: 'RTL' })).toHaveAttribute(
+  expect(screen.getByRole('link', { name: 'RTL - Retail' })).toHaveAttribute(
     'href',
     '/access/business-units/bu-a',
   );

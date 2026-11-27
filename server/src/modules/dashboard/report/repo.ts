@@ -5,6 +5,7 @@
 import { createHash } from 'node:crypto';
 import { CAS_FAIL_SQL } from '@server/core/cas';
 import type { DbStatement, Preparer } from '@server/core/db';
+import { sendableMailLists } from '@server/core/mail-lists';
 import { WIDGET_IDS, type WidgetId } from '@shared/dashboard';
 import {
   REPORT_FREQUENCIES,
@@ -16,6 +17,7 @@ import {
   validateSchedule,
 } from '@shared/dashboard-report';
 import { SHARE_OFFER_KEYS, type ShareWidgetScope } from '@shared/dashboard-share';
+import type { MailLists } from '@shared/mail-lists';
 import { isPostelRecipient } from '@shared/postel';
 
 export interface ReportRow {
@@ -29,8 +31,11 @@ export interface ReportRow {
   period: string;
   /** JSON `ReportScope`. */
   scope: string;
-  /** JSON larik surel. */
+  /** JSON larik surel (Kepada/To). */
   recipients: string;
+  /** JSON larik surel Tembusan (CC) dan Tembusan tersembunyi (BCC). */
+  cc: string;
+  bcc: string;
   link_days: number;
   last_run_key: string;
   last_run_at: string;
@@ -42,12 +47,12 @@ export interface ReportRow {
 }
 
 const COLUMNS =
-  'id, name, owner, enabled, schedule, period, scope, recipients, link_days, last_run_key, last_run_at, last_status, last_note, created_at, updated_at, version';
+  'id, name, owner, enabled, schedule, period, scope, recipients, cc, bcc, link_days, last_run_key, last_run_at, last_status, last_note, created_at, updated_at, version';
 
 export function insertReportStmt(db: Preparer, row: ReportRow): DbStatement {
   return db
     .prepare(
-      `INSERT INTO dashboard_reports (${COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO dashboard_reports (${COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .bind(
       row.id,
@@ -58,6 +63,8 @@ export function insertReportStmt(db: Preparer, row: ReportRow): DbStatement {
       row.period,
       row.scope,
       row.recipients,
+      row.cc,
+      row.bcc,
       row.link_days,
       row.last_run_key,
       row.last_run_at,
@@ -277,13 +284,16 @@ function parseWidgets(value: unknown): ShareWidgetScope[] | null {
   for (const item of value) {
     if (!isRecord(item)) return null;
     const { id, filters } = item;
-    if (typeof id !== 'string' || !WIDGET_ID_SET.has(id)) return null;
+    if (typeof id !== 'string') return null;
     if (!isRecord(filters)) return null;
     const parsed: Record<string, string[]> = {};
     for (const [key, list] of Object.entries(filters)) {
       if (!isStringArray(list)) return null;
       parsed[key] = list;
     }
+    // Widget yang sudah dihapus dari dashboard (mis. Postel, keputusan pemilik 2026-11-25) dibuang diam-diam: tautan
+    // dan laporan lama tetap hidup dengan widget yang tersisa, bukan 404 atau dilewati seluruhnya.
+    if (!WIDGET_ID_SET.has(id)) continue;
     widgets.push({ id: id as WidgetId, filters: parsed });
   }
   return widgets;
@@ -317,4 +327,19 @@ export function parseRecipients(raw: string): string[] {
   const value = parseJson(raw);
   if (!isStringArray(value)) return [];
   return value.filter(isPostelRecipient);
+}
+
+/**
+ * Ketiga daftar penerima tersimpan, hanya yang sah dan tak ganda lintas daftar (data lama/rusak tak boleh sampai ke
+ * header surel). Kolom `cc`/`bcc` kosong atau rusak = daftar kosong.
+ */
+export function parseMailLists(row: Pick<ReportRow, 'recipients' | 'cc' | 'bcc'>): MailLists {
+  return sendableMailLists(
+    {
+      recipients: parseRecipients(row.recipients),
+      cc: parseRecipients(row.cc),
+      bcc: parseRecipients(row.bcc),
+    },
+    isPostelRecipient,
+  );
 }

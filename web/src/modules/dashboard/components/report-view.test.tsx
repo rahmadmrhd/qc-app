@@ -33,12 +33,14 @@ function report(overrides: Partial<DashboardReportDto> = {}): DashboardReportDto
       locationIds: [],
       locationFiltered: false,
       widgets: [
-        { id: 'sn.recorded', filters: {} },
+        { id: 'sn.status', filters: {} },
         { id: 'hs.created', filters: { status: ['done'] } },
       ],
       offers: [],
     },
     recipients: ['rahasia@contoh.id'],
+    cc: [],
+    bcc: [],
     recipientCount: 1,
     linkDays: 14,
     lastStatus: 'ok',
@@ -85,7 +87,7 @@ beforeEach(() => {
         code: 'B1',
         name: 'BU Satu',
         status: 'active',
-        permissions: { item: 'none', serial: 'view', serialservice: 'none' },
+        permissions: { item: 'none', serial: 'view', serialservice: 'none', serialwh: 'none' },
       },
     ],
   });
@@ -143,7 +145,7 @@ describe('ReportView: pemilik', () => {
     await view();
     expect(await screen.findByRole('heading', { name: 'Ringkasan mingguan' })).toBeTruthy();
     expect(screen.getByText('Senin 08.00 WIB')).toBeTruthy();
-    expect(screen.getByText('B1 · BU Satu')).toBeTruthy();
+    expect(screen.getByText('B1 - BU Satu')).toBeTruthy();
     const handover = screen.getByRole('region', { name: 'Serah Terima' });
     expect(within(handover).getByText(/Status papan: Selesai/)).toBeTruthy();
     expect(screen.getByRole('region', { name: 'Serial Number' })).toBeTruthy();

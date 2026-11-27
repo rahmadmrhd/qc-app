@@ -3,7 +3,6 @@ import { DbError, type DbStatement } from '@server/core/db';
 import type { Env } from '@server/core/env';
 import { nowIso, nowOf } from '@server/core/env';
 import { appError, isAppError, staleError } from '@server/core/errors';
-import { statementsFor } from '@server/core/events';
 import { deletedWhere, liveWhere } from '@server/core/soft-delete';
 import type { UserContext } from '@server/modules/access/context';
 import { mapDuplicateError } from '@server/modules/access/repo';
@@ -67,6 +66,7 @@ import {
 import { applicableStickersOf } from './applicable';
 import { involvedBuIdsMany } from './bu-history';
 import { loadCases, type SerialCaseRow } from './case-repo';
+import { newSerialStatements } from './new-serial';
 import { canManageProof } from './proof/access';
 import { loadStampItemInfo, planProofAttach } from './proof/attach';
 import { listFailedProofsBySerial, listProofsByEvents } from './proof/repo';
@@ -76,10 +76,7 @@ import {
   activeItemWritableForBu,
   activeLocationName,
   findSerialByClientId,
-  insertEventStmt,
   insertNextEventStmt,
-  insertSerialStickerStmt,
-  insertSerialStmt,
   isReplayOfRow,
   itemLabelOf,
   listSerialRows,
@@ -161,16 +158,16 @@ export async function queryItemOptions(
     .all<OptionRow>();
   const page = rows.results.slice(0, effectiveLimit);
   const last = page[page.length - 1];
-  const links = new Map<string, { id: string; code: string }[]>();
+  const links = new Map<string, { id: string; code: string; name: string }[]>();
   if (page.length > 0) {
     const linkRows = await env.DB.prepare(
-      `SELECT l.item_id, l.bu_id, bu.code FROM item_business_units l JOIN business_units bu ON bu.id = l.bu_id WHERE l.item_id IN (${placeholders(page.length)}) AND l.bu_id IN (${placeholders(scope.length)}) ORDER BY bu.code, l.bu_id`,
+      `SELECT l.item_id, l.bu_id, bu.code, bu.name FROM item_business_units l JOIN business_units bu ON bu.id = l.bu_id WHERE l.item_id IN (${placeholders(page.length)}) AND l.bu_id IN (${placeholders(scope.length)}) ORDER BY bu.code, l.bu_id`,
     )
       .bind(...page.map((row) => row.id), ...scope)
-      .all<{ item_id: string; bu_id: string; code: string }>();
+      .all<{ item_id: string; bu_id: string; code: string; name: string }>();
     for (const row of linkRows.results) {
       const list = links.get(row.item_id.trim()) ?? [];
-      list.push({ id: row.bu_id.trim(), code: row.code.trim() });
+      list.push({ id: row.bu_id.trim(), code: row.code.trim(), name: row.name.trim() });
       links.set(row.item_id.trim(), list);
     }
   }
@@ -468,7 +465,6 @@ export async function createSerialOnce(
   const now = nowIso(env);
   const serialId = newId();
   const eventId = newId();
-  const picks = stickerPicks.map((pick) => ({ stickerId: pick.stickerId, qty: pick.qty }));
   const actorEmail = user.email;
   // Foto bukti QC (opsional): divalidasi SEBELUM menulis apa pun; foto bermasalah = baris `invalid` tanpa entri tersimpan.
   // Klaim dan job cap ikut batch yang sama dengan kejadian, jadi tak ada celah komit tanpa job.
@@ -496,64 +492,30 @@ export async function createSerialOnce(
     throw error;
   }
   // Menyusun SELURUH batch satu baris (baris `saveBatch` selalu `good`; yang bermasalah lewat Lapor Rusak).
-  const buildStatements = async (): Promise<DbStatement[]> => {
-    const actor = {
-      actorId: user.userId ?? '',
-      actorName: user.name,
-      actorTeam: 'qc' as const,
-    };
-    return [
-      insertSerialStmt(env.DB, {
-        id: serialId,
-        clientId: row.clientId,
-        buId: row.buId,
-        serial: row.serial,
-        itemId: row.itemId,
-        testDate: row.testDate,
-        sample: row.sample,
-        note: row.note,
-        locationId: row.locationId,
-        status: 'good',
-        openCaseId: '',
-        now,
-        actorEmail,
-      }),
-      ...stickerPicks.map((pick) =>
-        insertSerialStickerStmt(env.DB, serialId, pick.stickerId, pick.qty),
+  const buildStatements = async (): Promise<DbStatement[]> => [
+    ...(await newSerialStatements(env, {
+      serialId,
+      eventId,
+      clientId: row.clientId,
+      buId: row.buId,
+      serial: row.serial,
+      itemId: row.itemId,
+      testDate: row.testDate,
+      locationId: row.locationId,
+      locationName,
+      note: row.note,
+      sample: row.sample,
+      actor: { id: user.userId ?? '', name: user.name, email: actorEmail },
+      stickerPicks,
+      stickerNames: new Map(
+        picked.map(({ pick, sticker }) => [pick.stickerId, sticker?.name ?? '']),
       ),
-      insertEventStmt(env.DB, {
-        id: eventId,
-        serialId,
-        caseId: '',
-        seq: 1,
-        type: 'recorded',
-        occurredOn: today,
-        now,
-        ...actor,
-        message: '',
-        changes: [],
-        data: {
-          stickers: picked.map(({ pick, sticker }) => ({
-            stickerId: pick.stickerId,
-            name: sticker?.name ?? '',
-            qty: pick.qty,
-          })),
-          locationId: row.locationId,
-          locationName,
-          ...(row.source === undefined ? {} : { source: row.source }),
-        },
-      }),
-      ...(await statementsFor(env, 'serial.recorded', {
-        serialId,
-        eventId,
-        locationId: row.locationId,
-        picks,
-        actor: actorEmail,
-        now,
-      })),
-      ...proofStatements,
-    ];
-  };
+      eventData: row.source === undefined ? {} : { source: row.source },
+      occurredOn: today,
+      now,
+    })),
+    ...proofStatements,
+  ];
   try {
     await env.DB.batch(await buildStatements());
     return {
@@ -656,6 +618,7 @@ export function toSummary(row: SerialRow): SerialSummaryDto {
     id: row.id.trim(),
     buId: row.bu_id.trim(),
     buCode: row.bu_code.trim(),
+    buName: row.bu_name.trim(),
     serial: row.serial,
     itemId: row.item_id.trim(),
     itemLabel: `${row.brand_name ?? ''} ${(row.model ?? '').trim()}`.trim(),
@@ -691,12 +654,19 @@ function toBuHistory(row: SerialRow, history: SerialBuHistoryRow[]): SerialBuHis
   const entries = history.map((entry) => ({
     buId: entry.bu_id.trim(),
     buCode: entry.bu_code,
+    buName: entry.bu_name,
     firstAt: entry.first_at,
     leftAt: entry.left_at.trim(),
   }));
   const current = row.bu_id.trim();
   if (!entries.some((entry) => entry.buId === current)) {
-    entries.push({ buId: current, buCode: row.bu_code, firstAt: row.created_at, leftAt: '' });
+    entries.push({
+      buId: current,
+      buCode: row.bu_code,
+      buName: row.bu_name,
+      firstAt: row.created_at,
+      leftAt: '',
+    });
   }
   return entries;
 }
@@ -860,6 +830,8 @@ export async function listSerials(
   if (readsAllBus(user, buIds)) filter.allBus = true;
   else if (buIds.length <= SERIAL_PER_BU_ARMS_MAX) filter.perBuArms = true;
   if (restorable !== null) filter.deleted = restorable;
+  if (input.whRecorded !== undefined) filter.whRecorded = input.whRecorded;
+  if (input.needsProof === true) filter.needsProof = true;
   const query = normalizeSerial(input.query ?? '');
   if (query !== '') {
     const stripped = query.replace(/[:.-]/g, '');
@@ -886,7 +858,8 @@ export async function listSerials(
   if (custodies) filter.custodies = custodies;
   if (input.from !== undefined) filter.from = input.from;
   if (input.to !== undefined) filter.to = input.to;
-  if (input.createdBy !== undefined) filter.createdBy = input.createdBy;
+  if (input.createdBys !== undefined) filter.createdBys = input.createdBys;
+  else if (input.createdBy !== undefined) filter.createdBy = input.createdBy;
   if (input.cursor !== undefined) {
     const match = /^(.+)~(.+)$/.exec(input.cursor);
     if (match?.[1] && match[2]) filter.cursor = { createdAt: match[1], id: match[2] };
@@ -906,6 +879,10 @@ export async function listSerials(
   return {
     items: page.map((row) => ({
       ...toSummary(row),
+      // Penanda Keluar Gudang hanya pada daftar (kontrak `SerialSummaryDto`).
+      whCreated: Number(row.wh_created) === 1,
+      whRecorded: Number(row.wh_recorded) === 1,
+      needsProof: Number(row.needs_proof) === 1,
       canManage:
         mayManage && canManageSerial(user, involved.get(row.id.trim()) ?? [row.bu_id.trim()]),
     })),

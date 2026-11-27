@@ -175,6 +175,27 @@ export function activeLimitGuardStmts(
   ];
 }
 
+/**
+ * Mengganti judul, cakupan beku, dan masa berlaku tautan manual yang BELUM dicabut. Baris yang tak berubah (dicabut
+ * serentak, atau baris hilang) membuat `ROW_COUNT()` 0, dibaca penjaga di batch yang sama (`updateGuardStmt`).
+ */
+export function updateShareStmt(
+  db: Preparer,
+  id: string,
+  fields: { title: string; scope: string; expires_at: string },
+): DbStatement {
+  return db
+    .prepare(
+      "UPDATE dashboard_shares SET title = ?, scope = ?, expires_at = ? WHERE id = ? AND revoked_at = '' AND report_id = ''",
+    )
+    .bind(fields.title, fields.scope, fields.expires_at, id);
+}
+
+/** Penjaga langsung setelah `updateShareStmt`: tak ada baris berubah = `CAS_FAIL_SQL` (batch dibatalkan). */
+export function updateGuardStmt(db: Preparer): DbStatement {
+  return db.prepare(`SELECT CASE WHEN ROW_COUNT() > 0 THEN 1 ELSE ${CAS_FAIL_SQL} END AS guard_ok`);
+}
+
 /** Mencabut tautan. Idempoten: tautan yang sudah dicabut tak berubah (`revoked_at` pertama dipertahankan). */
 export function revokeShareStmt(db: Preparer, id: string, by: string, nowIso: string): DbStatement {
   return db
@@ -215,13 +236,16 @@ function parseWidgets(value: unknown): ShareWidgetScope[] | null {
   for (const item of value) {
     if (typeof item !== 'object' || item === null) return null;
     const { id, filters } = item as Record<string, unknown>;
-    if (typeof id !== 'string' || !WIDGET_ID_SET.has(id)) return null;
+    if (typeof id !== 'string') return null;
     if (typeof filters !== 'object' || filters === null || Array.isArray(filters)) return null;
     const parsed: Record<string, string[]> = {};
     for (const [key, list] of Object.entries(filters)) {
       if (!isStringArray(list)) return null;
       parsed[key] = list;
     }
+    // Widget yang sudah dihapus dari dashboard (mis. Postel, keputusan pemilik 2026-11-25) dibuang diam-diam: tautan
+    // dan laporan lama tetap hidup dengan widget yang tersisa, bukan 404 atau dilewati seluruhnya.
+    if (!WIDGET_ID_SET.has(id)) continue;
     widgets.push({ id: id as WidgetId, filters: parsed });
   }
   return widgets;

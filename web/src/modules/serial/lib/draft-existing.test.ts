@@ -4,6 +4,7 @@ import {
   addSerials,
   applyBulk,
   applyLookup,
+  applyLookupCounted,
   type Defaults,
   existingBuProblem,
   existingProblem,
@@ -195,4 +196,32 @@ test('rowsToLookup: baris baru atau serial yang diganti ditanyakan; pasangan yan
   expect(rowsToLookup(rows, done).map((row) => row.serial)).toEqual(['BBB222']);
   const edited = [{ ...(rows[0] as StagingRow), serial: 'CCC333' }, rows[1] as StagingRow];
   expect(rowsToLookup(edited, done).map((row) => row.serial)).toEqual(['CCC333', 'BBB222']);
+});
+
+test('applyLookupCounted: hanya metadata peringatan berubah = disegarkan tanpa dihitung berubah', () => {
+  const [row] = seed(['AAA111']);
+  const meta = {
+    unitLocationId: 'l1',
+    lastEventAt: '2026-11-25T03:00:00.000Z',
+    lastActorName: 'Budi',
+  };
+  const first = applyLookupCounted([row as StagingRow], new Set(['AAA111']), [dto(meta)]);
+  expect(first.changed).toBe(1);
+  const fresh = {
+    unitLocationId: 'l2',
+    lastEventAt: '2026-11-26T03:00:00.000Z',
+    lastActorName: 'Sari',
+  };
+  const second = applyLookupCounted(first.rows, new Set(['AAA111']), [dto(fresh)]);
+  expect(second.changed).toBe(0);
+  expect(second.rows).not.toBe(first.rows);
+  expect(second.rows[0]?.existing).toMatchObject(fresh);
+  expect(second.rows[0]).toMatchObject({ itemId: 'i9', buId: 'b2', stickers: [] });
+  // Metadata sama persis = larik yang sama.
+  expect(applyLookupCounted(second.rows, new Set(['AAA111']), [dto(fresh)]).rows).toBe(second.rows);
+  // Perubahan struktural tetap dihitung.
+  const third = applyLookupCounted(second.rows, new Set(['AAA111']), [
+    dto({ ...fresh, status: 'broken' }),
+  ]);
+  expect(third.changed).toBe(1);
 });

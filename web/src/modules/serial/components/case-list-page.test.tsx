@@ -107,6 +107,7 @@ beforeEach(() => {
       stickerstock: 'none',
       serial: 'none',
       serialservice: 'view',
+      serialwh: 'none',
       countrylock: 'none',
       dashboard: 'none',
     },
@@ -116,14 +117,14 @@ beforeEach(() => {
         code: 'BU1',
         name: 'Satu',
         status: 'active',
-        permissions: { item: 'none', serial: 'none', serialservice: 'view' },
+        permissions: { item: 'none', serial: 'none', serialservice: 'view', serialwh: 'none' },
       },
       {
         id: 'b2',
         code: 'BU2',
         name: 'Dua',
         status: 'active',
-        permissions: { item: 'none', serial: 'none', serialservice: 'view' },
+        permissions: { item: 'none', serial: 'none', serialservice: 'view', serialwh: 'none' },
       },
     ],
     locations: [],
@@ -143,10 +144,10 @@ beforeEach(() => {
   });
 });
 
-test('merender kolom laporan; filter bawaan = aktif (juga bagi tim servis murni)', async () => {
+test('merender kolom laporan; filter bawaan = semua laporan (juga bagi tim servis murni)', async () => {
   await renderPage();
   expect(await screen.findByText('LP/SBY/2611-0001')).toBeInTheDocument();
-  expect(lastInput()).toEqual({ status: 'active' });
+  expect(lastInput()).toEqual({});
   const rows = screen.getAllByRole('row');
   const first = rows[1] as HTMLElement;
   expect(within(first).getByText('ABC123')).toBeInTheDocument();
@@ -214,9 +215,9 @@ test('filter status dan BU menjadi parameter; Semua laporan tanpa status', async
   await pickSelect(screen, 'Filter status laporan', 'Semua laporan');
   await waitFor(() => expect(lastInput()).toEqual({}));
   await openChip('BU');
-  await pickLink(screen, 'Filter BU', 'BU2 · Dua');
+  await pickLink(screen, 'Filter BU', 'BU2 - Dua');
   // Mode banyak pilihan: pilihan kedua menambah draf; daftar baru diminta SEKALI saat chip menutup.
-  await pickLink(screen, 'Filter BU', 'BU1 · Satu');
+  await pickLink(screen, 'Filter BU', 'BU1 - Satu');
   expect(lastInput()).toEqual({});
   await closeFilterChip();
   await waitFor(() => expect(lastInput()).toEqual({ buIds: ['b2', 'b1'] }));
@@ -231,9 +232,7 @@ test('pencarian mengirim query awalan nomor LP atau serial setelah jeda', async 
   fireEvent.change(screen.getByLabelText('Cari nomor LP atau Serial Number'), {
     target: { value: 'LP/SBY/2611' },
   });
-  await waitFor(() =>
-    expect(lastInput()).toMatchObject({ status: 'active', query: 'LP/SBY/2611' }),
-  );
+  await waitFor(() => expect(lastInput()).toEqual({ query: 'LP/SBY/2611' }));
 });
 
 test('muat berikutnya memakai kursor server', async () => {
@@ -307,11 +306,13 @@ test('daftar kosong menampilkan teks santai; galat memuat tampil sebagai pesan',
 
 test('search params tak sah dibuang; URL status=all dibaca; bu tunggal lama dibaca sebagai buIds', () => {
   expect(caseSearchSchema.parse({ status: 'zzz', bu: 5, buIds: 'x' })).toEqual({});
-  expect(caseFilterOfSearch({ bu: 'b1' })).toEqual({ status: 'active', buIds: ['b1'] });
+  // Bawaan = semua laporan (tanpa status); aktif/selesai hanya bila dipilih.
+  expect(caseFilterOfSearch({ bu: 'b1' })).toEqual({ buIds: ['b1'] });
   expect(caseFilterOfSearch({ bu: 'b1', buIds: ['b2', 'b3'] })).toEqual({
-    status: 'active',
     buIds: ['b2', 'b3'],
   });
+  expect(caseFilterOfSearch({ status: 'active' })).toEqual({ status: 'active' });
+  expect(caseFilterOfSearch({ status: 'closed' })).toEqual({ status: 'closed' });
   expect(caseSearchSchema.parse({ status: 'all' })).toEqual({ status: 'all' });
 });
 

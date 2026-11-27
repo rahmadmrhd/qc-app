@@ -244,6 +244,7 @@ describe('canActOnAllBus dengan BU terhapus', () => {
     item: 'none',
     serial: 'none',
     serialservice: 'none',
+    serialwh: 'none',
     countrylock: 'none',
   } as const;
   const edit = { ...none, item: 'edit' } as const;

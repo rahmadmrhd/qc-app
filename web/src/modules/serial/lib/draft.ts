@@ -1,3 +1,4 @@
+import { formatBuLabel } from '@shared/business-units';
 import type { SerialExistingDto, SerialRowInput, SerialRowResult } from '@shared/contract';
 import type { QcsnRow } from '@shared/serial-file';
 import {
@@ -35,12 +36,18 @@ export interface StagingExisting {
   /** BU saat ini serial itu. */
   buId: string;
   buCode: string;
+  /** Nama BU (opsional: draf lama tidak memilikinya); bersama `buCode` membentuk label `<kode> - <nama>`. */
+  buName?: string | undefined;
   status: SerialStatus;
   hasOpenCase: boolean;
   /** BU yang boleh dipilih pengguna sebagai BU target cek ulang. */
   recheckBuIds: string[];
   /** Minimum foto bukti item (0 = tidak wajib foto). */
   proofMin: number;
+  /** Lokasi unit saat ini, kejadian terbaru, dan pelakunya (hanya bila server mengungkapkannya; peringatan scan ulang). */
+  unitLocationId?: string | undefined;
+  lastEventAt?: string | undefined;
+  lastActorName?: string | undefined;
 }
 
 export interface StagingRow {
@@ -247,10 +254,14 @@ export function toExisting(dto: SerialExistingDto): StagingExisting {
     itemLabel: dto.itemLabel,
     buId: dto.buId,
     buCode: dto.buCode,
+    ...(dto.buName === undefined ? {} : { buName: dto.buName }),
     status: dto.status,
     hasOpenCase: dto.hasOpenCase,
     recheckBuIds: [...dto.recheckBuIds],
     proofMin: dto.proofRequired ? dto.proofMin : 0,
+    ...(dto.unitLocationId === undefined ? {} : { unitLocationId: dto.unitLocationId }),
+    ...(dto.lastEventAt === undefined ? {} : { lastEventAt: dto.lastEventAt }),
+    ...(dto.lastActorName === undefined ? {} : { lastActorName: dto.lastActorName }),
   };
 }
 
@@ -281,6 +292,11 @@ export function isExistingBlocked(row: StagingRow): boolean {
   return existingProblem(row) !== null || existingBuProblem(row) !== null;
 }
 
+/**
+ * Perbandingan STRUKTURAL (memblokir: item, BU, status, laporan, foto, pilihan BU). Metadata peringatan scan ulang
+ * (`unitLocationId`, `lastEventAt`, `lastActorName`) sengaja tidak dibandingkan: kejadian apa pun pada serial tidak
+ * boleh membuat Simpan dibatalkan; metadata itu hanya disegarkan.
+ */
 function sameExisting(a: StagingExisting, b: StagingExisting): boolean {
   return (
     a.id === b.id &&
@@ -288,6 +304,7 @@ function sameExisting(a: StagingExisting, b: StagingExisting): boolean {
     a.itemLabel === b.itemLabel &&
     a.buId === b.buId &&
     a.buCode === b.buCode &&
+    a.buName === b.buName &&
     a.status === b.status &&
     a.hasOpenCase === b.hasOpenCase &&
     a.proofMin === b.proofMin &&
@@ -316,7 +333,11 @@ function becomeRecheck(row: StagingRow, existing: StagingExisting): StagingRow {
     itemId: existing.itemId,
     itemLabel: existing.itemLabel,
     buId: keepsBu ? row.buId : defaultBu ? existing.buId : '',
-    buLabel: keepsBu ? row.buLabel : defaultBu ? existing.buCode : '',
+    buLabel: keepsBu
+      ? row.buLabel
+      : defaultBu
+        ? formatBuLabel({ code: existing.buCode, name: existing.buName })
+        : '',
     ...(existing.proofMin > 0 ? { proofMin: existing.proofMin } : {}),
     ...(refresh ? {} : { sample: false, stickers: [] }),
     ...(kept && kept.length > 0 ? { unresolved: kept } : {}),
@@ -326,31 +347,55 @@ function becomeRecheck(row: StagingRow, existing: StagingExisting): StagingRow {
 /**
  * Menerapkan hasil `serials.lookupMany` atas serial yang ditanyakan (`queried`, bentuk ternormalisasi): serial yang
  * sudah ada menjadikan barisnya Cek ulang atau menyegarkan datanya; serial yang tak ada lagi membuang penanda
- * `existing`. Mengembalikan larik yang SAMA bila tak ada yang berubah.
+ * `existing`. `changed` = banyak baris yang berubah SECARA STRUKTURAL; baris yang hanya metadata peringatannya berubah
+ * disegarkan tanpa dihitung. Mengembalikan larik yang SAMA bila tak ada yang berubah sama sekali.
  */
-export function applyLookup(
+export function applyLookupCounted(
   rows: readonly StagingRow[],
   queried: ReadonlySet<string>,
   found: readonly SerialExistingDto[],
-): StagingRow[] {
+): { rows: StagingRow[]; changed: number } {
   const byKey = new Map(found.map((dto) => [normalizeSerial(dto.serial), toExisting(dto)]));
-  let changed = false;
+  let changed = 0;
+  let touched = false;
   const next = rows.map((row) => {
     const key = normalizeSerial(row.serial);
     if (!queried.has(key)) return row;
     const existing = byKey.get(key);
     if (!existing) {
       if (!row.existing) return row;
-      changed = true;
+      changed++;
+      touched = true;
       const { existing: _gone, ...rest } = row;
       // Bukan lagi Cek ulang: stiker kembali ke bawaan (semua yang berlaku), seperti baris biasa.
       return { ...rest, stickers: null };
     }
-    if (row.existing && sameExisting(row.existing, existing)) return row;
-    changed = true;
+    if (row.existing && sameExisting(row.existing, existing)) {
+      // Struktur sama: segarkan metadata peringatan saja (tanpa menghitung sebagai perubahan).
+      if (
+        row.existing.unitLocationId === existing.unitLocationId &&
+        row.existing.lastEventAt === existing.lastEventAt &&
+        row.existing.lastActorName === existing.lastActorName
+      ) {
+        return row;
+      }
+      touched = true;
+      return { ...row, existing };
+    }
+    changed++;
+    touched = true;
     return becomeRecheck(row, existing);
   });
-  return changed ? next : (rows as StagingRow[]);
+  return { rows: touched ? next : (rows as StagingRow[]), changed };
+}
+
+/** Seperti `applyLookupCounted`, hanya mengembalikan barisnya. */
+export function applyLookup(
+  rows: readonly StagingRow[],
+  queried: ReadonlySet<string>,
+  found: readonly SerialExistingDto[],
+): StagingRow[] {
+  return applyLookupCounted(rows, queried, found).rows;
 }
 
 /** Kunci "baris + serialnya": baris baru (id baru) atau serial yang diganti = pasangan baru yang perlu ditanyakan. */

@@ -22,7 +22,16 @@ setDefaultTimeout(60_000);
 let env: TestEnv;
 
 const RANGE: DashboardRange = { from: '2026-11-10', to: '2026-11-16' };
-const IDS: WidgetId[] = ['st.out', 'st.low', 'st.attention', 'st.movement', 'st.byType'];
+const IDS: WidgetId[] = [
+  'st.out',
+  'st.low',
+  'st.manualBook',
+  'st.postel',
+  'st.attention',
+  'st.movement',
+  'st.stickersByType',
+  'st.stockBySticker',
+];
 
 function scopeOf(overrides: Partial<ResolvedScope> = {}, range: DashboardRange = RANGE) {
   return testScope(range, { stockLocationIds: ['loc-a', 'loc-b'], ...overrides });
@@ -55,7 +64,7 @@ beforeEach(async () => {
   await seedStickerType(env, { id: 't2', name: 'Jenis 2', rule: 'none' });
 });
 
-test('STICKER_WIDGETS mencakup tepat lima widget grup Stok Stiker', () => {
+test('STICKER_WIDGETS mencakup tepat delapan widget grup Stok Stiker', () => {
   expect(STICKER_WIDGETS.map((widget) => widget.id).sort()).toEqual([...IDS].sort());
 });
 
@@ -115,7 +124,7 @@ describe('st.out dan st.low', () => {
     expect(await value('st.out', empty)).toBe(0);
     expect(await value('st.low', empty)).toBe(0);
     expect(((await run('st.attention', empty)) as ListData).rows).toEqual([]);
-    expect(((await run('st.byType', empty)) as PartsData).slices).toEqual([]);
+    expect(((await run('st.stockBySticker', empty)) as PartsData).slices).toEqual([]);
   });
 
   test('filter grup sticker dan stickerType', async () => {
@@ -143,9 +152,9 @@ describe('st.attention', () => {
     expect(data.columns).toEqual([...(widgetMeta('st.attention').listColumns ?? [])]);
     expect(data.total).toBe(3);
     expect(data.rows).toEqual([
-      { sticker: 'Stiker C', type: 'Jenis 1', location: 'Lokasi A', stock: -3, min: 0 },
-      { sticker: 'Stiker B', type: 'Jenis 2', location: 'Lokasi A', stock: 0, min: 0 },
-      { sticker: 'Stiker A', type: 'Jenis 1', location: 'Lokasi A', stock: 5, min: 10 },
+      { id: 'sc', sticker: 'Stiker C', type: 'Jenis 1', location: 'Lokasi A', stock: -3, min: 0 },
+      { id: 'sb', sticker: 'Stiker B', type: 'Jenis 2', location: 'Lokasi A', stock: 0, min: 0 },
+      { id: 'sa', sticker: 'Stiker A', type: 'Jenis 1', location: 'Lokasi A', stock: 5, min: 10 },
     ]);
   });
 
@@ -228,23 +237,93 @@ describe('st.movement', () => {
   });
 });
 
-describe('st.byType', () => {
-  test('total qty per jenis pada lokasi cakupan; nonaktif tidak dihitung; urut terbesar dahulu', async () => {
+describe('st.manualBook dan st.postel', () => {
+  beforeEach(async () => {
+    await seedStickerType(env, {
+      id: 'tm',
+      name: 'Manual Book',
+      rule: 'group',
+      systemKind: 'manual_book',
+    });
+    await seedStickerType(env, { id: 'tp', name: 'Postel', rule: 'group', systemKind: 'postel' });
+  });
+
+  test('menghitung stiker AKTIF menurut jenis sistem; nonaktif, usang, terhapus, dan jenis biasa tidak', async () => {
+    await seedSticker(env, { id: 'm1', typeId: 'tm' });
+    await seedSticker(env, { id: 'm2', typeId: 'tm' });
+    await seedSticker(env, { id: 'm3', typeId: 'tm', status: 'inactive' });
+    await seedSticker(env, { id: 'm4', typeId: 'tm', status: 'deprecated' });
+    await seedSticker(env, { id: 'm5', typeId: 'tm' });
+    await softDeleteSticker('m5');
+    await seedSticker(env, { id: 'p1', typeId: 'tp' });
+    await seedSticker(env, { id: 'x1', typeId: 't1' });
+    expect(await value('st.manualBook')).toBe(2);
+    expect(await value('st.postel')).toBe(1);
+  });
+
+  test('tidak mengikuti cakupan lokasi stok', async () => {
+    await seedSticker(env, { id: 'm1', typeId: 'tm' });
+    expect(await value('st.manualBook', scopeOf({ stockLocationIds: [] }))).toBe(1);
+  });
+});
+
+describe('st.stickersByType', () => {
+  test('jumlah stiker aktif per jenis (bukan stok); nonaktif dan terhapus tidak; urut terbanyak dahulu', async () => {
     await seedSticker(env, { id: 's1', typeId: 't1' });
     await seedSticker(env, { id: 's2', typeId: 't1' });
     await seedSticker(env, { id: 's3', typeId: 't2' });
     await seedSticker(env, { id: 's4', typeId: 't2', status: 'inactive' });
-    await seedStock(env, { stickerId: 's1', locationId: 'loc-a', qty: 8 });
-    await seedStock(env, { stickerId: 's2', locationId: 'loc-a', qty: 12 });
-    await seedStock(env, { stickerId: 's3', locationId: 'loc-a', qty: 5 });
-    await seedStock(env, { stickerId: 's3', locationId: 'loc-b', qty: 100 });
-    await seedStock(env, { stickerId: 's4', locationId: 'loc-a', qty: 999 });
-    const data = (await run('st.byType', scopeOf({ stockLocationIds: ['loc-a'] }))) as PartsData;
+    await seedSticker(env, { id: 's5', typeId: 't2' });
+    await softDeleteSticker('s5');
+    const data = (await run('st.stickersByType')) as PartsData;
     expect(data.slices).toEqual([
-      { key: 't1', label: 'Jenis 1', value: 20 },
-      { key: 't2', label: 'Jenis 2', value: 5 },
+      { key: 't1', label: 'Jenis 1', value: 2 },
+      { key: 't2', label: 'Jenis 2', value: 1 },
     ]);
-    const both = (await run('st.byType')) as PartsData;
-    expect(both.slices.map((slice) => slice.value)).toEqual([105, 20]);
+  });
+
+  test('mematuhi filter jenis stiker', async () => {
+    await seedSticker(env, { id: 's1', typeId: 't1' });
+    await seedSticker(env, { id: 's2', typeId: 't2' });
+    const data = (await run('st.stickersByType', scopeOf(), { stickerType: ['t2'] })) as PartsData;
+    expect(data.slices).toEqual([{ key: 't2', label: 'Jenis 2', value: 1 }]);
+  });
+});
+
+describe('st.stockBySticker', () => {
+  test('SEMUA stiker dengan stok di cakupan, urut jenis lalu nama stiker (bukan menurut nilai)', async () => {
+    await seedSticker(env, { id: 's1', typeId: 't2', name: 'Alpha' });
+    await seedSticker(env, { id: 's2', typeId: 't1', name: 'Zulu' });
+    await seedSticker(env, { id: 's3', typeId: 't1', name: 'Bravo' });
+    await seedStock(env, { stickerId: 's1', locationId: 'loc-a', qty: 500 });
+    await seedStock(env, { stickerId: 's2', locationId: 'loc-a', qty: 1 });
+    await seedStock(env, { stickerId: 's3', locationId: 'loc-a', qty: 4 });
+    await seedStock(env, { stickerId: 's3', locationId: 'loc-b', qty: 6 });
+    const data = (await run('st.stockBySticker')) as PartsData;
+    expect(data.slices).toEqual([
+      { key: 's3', label: 'Bravo', value: 10 },
+      { key: 's2', label: 'Zulu', value: 1 },
+      { key: 's1', label: 'Alpha', value: 500 },
+    ]);
+    const onlyA = (await run(
+      'st.stockBySticker',
+      scopeOf({ stockLocationIds: ['loc-a'] }),
+    )) as PartsData;
+    expect(onlyA.slices.find((slice) => slice.key === 's3')?.value).toBe(4);
+  });
+
+  test('tidak dibatasi 10 stiker dan mematuhi filter stiker; terhapus tidak dihitung', async () => {
+    for (let index = 1; index <= 14; index += 1) {
+      await seedSticker(env, {
+        id: `k${index}`,
+        typeId: 't1',
+        name: `K${String(index).padStart(2, '0')}`,
+      });
+      await seedStock(env, { stickerId: `k${index}`, locationId: 'loc-a', qty: index });
+    }
+    await softDeleteSticker('k14');
+    expect(((await run('st.stockBySticker')) as PartsData).slices.length).toBe(13);
+    const one = (await run('st.stockBySticker', scopeOf(), { sticker: ['k2'] })) as PartsData;
+    expect(one.slices.map((slice) => slice.key)).toEqual(['k2']);
   });
 });

@@ -81,6 +81,7 @@ const opened: WidgetImpl = {
   },
 };
 
+/** Laporan DIBUAT per periode (keputusan pemilik 2026-11-25): satu garis; garis "ditutup" dibuang. */
 const trend: WidgetImpl = {
   id: 'rp.trend',
   async run(ctx): Promise<SeriesData> {
@@ -91,10 +92,7 @@ const trend: WidgetImpl = {
         kind: 'series',
         bucket,
         points,
-        series: [
-          { key: 'opened', label: 'Dibuka', values: points.map(() => 0) },
-          { key: 'closed', label: 'Ditutup', values: points.map(() => 0) },
-        ],
+        series: [{ key: 'opened', label: 'Laporan dibuat', values: points.map(() => 0) }],
       };
     }
     const where = conditions(ctx);
@@ -104,19 +102,16 @@ const trend: WidgetImpl = {
       )
       .bind(...where.binds, range.from, range.to)
       .all<{ day: string; n: number | string }>();
-    const closedRows = await ctx.db
-      .prepare(
-        `SELECT c.closed_on AS day, COUNT(*) AS n FROM serial_cases c JOIN serials s ON s.id = c.serial_id WHERE ${liveWhere('s')}${where.sql} AND c.closed_on <> '' AND c.closed_on >= ? AND c.closed_on <= ? GROUP BY c.closed_on`,
-      )
-      .bind(...where.binds, range.from, range.to)
-      .all<{ day: string; n: number | string }>();
     return {
       kind: 'series',
       bucket,
       points,
       series: [
-        { key: 'opened', label: 'Dibuka', values: fillSeries(points, openedRows.results, bucket) },
-        { key: 'closed', label: 'Ditutup', values: fillSeries(points, closedRows.results, bucket) },
+        {
+          key: 'opened',
+          label: 'Laporan dibuat',
+          values: fillSeries(points, openedRows.results, bucket),
+        },
       ],
     };
   },
@@ -153,10 +148,11 @@ const oldest: WidgetImpl = {
     const where = conditions(ctx);
     const rows = await ctx.db
       .prepare(
-        `SELECT c.number AS number, s.status AS status, DATEDIFF(?, c.opened_on) AS days, CASE WHEN l.deleted_at = '' THEN l.name ELSE CONCAT(l.name, ' (terhapus)') END AS location FROM serial_cases c JOIN serials s ON s.id = c.serial_id LEFT JOIN locations l ON l.id = s.location_id WHERE ${liveWhere('s')}${where.sql} AND c.closed_on = '' ORDER BY c.opened_on, c.id LIMIT ${OLDEST_ROWS}`,
+        `SELECT c.id AS id, c.number AS number, s.status AS status, DATEDIFF(?, c.opened_on) AS days, CASE WHEN l.deleted_at = '' THEN l.name ELSE CONCAT(l.name, ' (terhapus)') END AS location FROM serial_cases c JOIN serials s ON s.id = c.serial_id LEFT JOIN locations l ON l.id = s.location_id WHERE ${liveWhere('s')}${where.sql} AND c.closed_on = '' ORDER BY c.opened_on, c.id LIMIT ${OLDEST_ROWS}`,
       )
       .bind(ctx.scope.today, ...where.binds)
       .all<{
+        id: string;
         number: string;
         status: string;
         days: number | string | null;
@@ -172,6 +168,7 @@ const oldest: WidgetImpl = {
       kind: 'list',
       columns,
       rows: rows.results.map((row) => ({
+        id: row.id,
         number: row.number,
         status: SERIAL_STATUS_LABELS[row.status as SerialStatus] ?? row.status,
         location: row.location ?? '',

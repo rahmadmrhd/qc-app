@@ -10,6 +10,7 @@ import {
   History,
   LoaderCircle,
   type LucideIcon,
+  PackageCheck,
   PackageMinus,
   PackagePlus,
   Pause,
@@ -63,6 +64,7 @@ export type ActionKind =
   | 'history'
   | 'reportDamage'
   | 'stickers'
+  | 'warehouse'
   | 'pause'
   | 'resume'
   | 'sendTest';
@@ -260,6 +262,14 @@ export const ACTIONS: Record<ActionKind, ActionSpec> = {
   stickers: {
     icon: Sticker,
     label: 'Tempel stiker',
+    color: 'primary',
+    variant: 'outline',
+    compactVariant: 'ghost',
+  },
+  // Catat Serial WH: membuka form pencatatan Serial Number Gudang (Penjualan atau Ready Stock) dari daftar Riwayat atau detail task.
+  warehouse: {
+    icon: PackageCheck,
+    label: 'Catat Serial WH',
     color: 'primary',
     variant: 'outline',
     compactVariant: 'ghost',

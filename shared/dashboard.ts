@@ -7,7 +7,7 @@ import {
 } from './serials';
 
 /** Grup widget di halaman Dashboard (urutan tampil). */
-export const DASHBOARD_GROUPS = ['handover', 'serial', 'report', 'sticker', 'postel'] as const;
+export const DASHBOARD_GROUPS = ['handover', 'serial', 'report', 'sticker'] as const;
 export type DashboardGroupId = (typeof DASHBOARD_GROUPS)[number];
 
 export const GROUP_LABELS: Record<DashboardGroupId, string> = {
@@ -15,25 +15,25 @@ export const GROUP_LABELS: Record<DashboardGroupId, string> = {
   serial: 'Serial Number',
   report: 'Laporan rusak',
   sticker: 'Stok Stiker',
-  postel: 'Postel',
 };
 
 export const WIDGET_IDS = [
   'hs.created',
   'hs.active',
-  'hs.status',
+  'hs.avgDuration',
   'hs.trend',
+  'hs.status',
   'hs.byLocation',
   'hs.byCustomer',
-  'hs.avgDuration',
   'hs.oldest',
-  'sn.recorded',
-  'sn.status',
+  'sn.total',
+  'sn.avgMinutes',
   'sn.trend',
-  'sn.byItem',
+  'sn.status',
   'sn.byBu',
-  'sn.custody',
-  'sn.transit',
+  'sn.byBrand',
+  'sn.byItem',
+  'sn.latest',
   'rp.open',
   'rp.opened',
   'rp.trend',
@@ -41,11 +41,12 @@ export const WIDGET_IDS = [
   'rp.oldest',
   'st.out',
   'st.low',
-  'st.attention',
+  'st.manualBook',
+  'st.postel',
   'st.movement',
-  'st.byType',
-  'pt.condition',
-  'pt.expiring',
+  'st.stickersByType',
+  'st.stockBySticker',
+  'st.attention',
 ] as const;
 export type WidgetId = (typeof WIDGET_IDS)[number];
 
@@ -56,6 +57,7 @@ export type WidgetVisual =
   | 'line'
   | 'bar'
   | 'barH'
+  | 'barScroll'
   | 'barGroup'
   | 'list';
 
@@ -89,6 +91,14 @@ export interface WidgetMeta {
    */
   deltaGood?: DeltaGood;
   listColumns?: readonly { key: string; label: string }[];
+  /**
+   * Letak di halaman (keputusan pemilik 2026-11-25): widget berurutan di grup yang sama dengan `row` yang sama tampil
+   * sebagai SATU baris kisi, dan `span` = lebar kartu dari 12 kolom di layar lebar. Jenis berbeda TIDAK dicampur satu
+   * baris (number card satu baris sendiri, grafik satu baris, daftar satu baris); satu-satunya pasangan sengaja adalah
+   * Hasil penutupan + Laporan terbuka terlama.
+   */
+  row: string;
+  span: number;
 }
 
 const HANDOVER_ACCESS: WidgetAccess = [
@@ -100,7 +110,6 @@ const SERIAL_ACCESS: WidgetAccess = [
   { module: 'serialservice', level: 'view', scope: 'bu' },
 ];
 const STOCK_ACCESS: WidgetAccess = [{ module: 'stickerstock', level: 'view', scope: 'location' }];
-const POSTEL_ACCESS: WidgetAccess = [{ module: 'sticker', level: 'view', scope: 'global' }];
 
 const NO_DATE = { kind: 'none' } as const;
 const dateColumn = (label: string) => ({ kind: 'column', label }) as const;
@@ -115,7 +124,8 @@ const HANDOVER: Base = {
 const SERIAL: Base = { group: 'serial', access: SERIAL_ACCESS, bu: true, location: 'serial' };
 const REPORT: Base = { group: 'report', access: SERIAL_ACCESS, bu: true, location: 'serial' };
 const STICKER: Base = { group: 'sticker', access: STOCK_ACCESS, bu: false, location: 'stock' };
-const POSTEL: Base = { group: 'postel', access: POSTEL_ACCESS, bu: false, location: 'none' };
+/** Hitungan stiker (bukan stok): tak mengikuti filter Lokasi. */
+const STICKER_CATALOG: Base = { ...STICKER, location: 'none' };
 
 function widget(
   base: Base,
@@ -123,94 +133,180 @@ function widget(
   visual: WidgetVisual,
   title: string,
   date: WidgetMeta['date'],
+  layout: { row: string; span: number },
   extra: { delta?: DeltaGood; listColumns?: WidgetMeta['listColumns'] } = {},
 ): WidgetMeta {
-  const meta: WidgetMeta = { ...base, id, visual, title, date, delta: extra.delta !== undefined };
+  const meta: WidgetMeta = {
+    ...base,
+    id,
+    visual,
+    title,
+    date,
+    delta: extra.delta !== undefined,
+    row: layout.row,
+    span: layout.span,
+  };
   if (extra.delta) meta.deltaGood = extra.delta;
   if (extra.listColumns) meta.listColumns = extra.listColumns;
   return meta;
 }
 
+/**
+ * Urutan array = urutan tampil. Tiap grup: number card di bagian paling atas, lalu grafik, lalu daftar singkat.
+ * Kolom `id` pada baris daftar (kunci tersembunyi) = id record untuk tautan di aplikasi; tidak pernah masuk DTO publik
+ * atau surel (hanya `listColumns` yang disalin).
+ */
 export const WIDGETS: readonly WidgetMeta[] = [
-  widget(HANDOVER, 'hs.created', 'number', 'Task dibuat', dateColumn('Tanggal dibuat'), {
-    delta: 'up',
-  }),
-  widget(HANDOVER, 'hs.active', 'number', 'Task aktif', NO_DATE),
-  widget(HANDOVER, 'hs.status', 'donut', 'Komposisi status', dateColumn('Tanggal dibuat')),
   widget(
     HANDOVER,
-    'hs.trend',
-    'line',
-    'Dibuat dan selesai',
-    dateColumn('Tanggal dibuat dan selesai'),
+    'hs.created',
+    'number',
+    'Task dibuat',
+    dateColumn('Tanggal dibuat'),
+    { row: 'numbers', span: 4 },
+    { delta: 'up' },
   ),
-  widget(HANDOVER, 'hs.byLocation', 'bar', 'Task per lokasi', dateColumn('Tanggal dibuat')),
-  widget(HANDOVER, 'hs.byCustomer', 'barH', 'Customer teratas', dateColumn('Tanggal dibuat')),
+  widget(HANDOVER, 'hs.active', 'number', 'Task aktif', NO_DATE, { row: 'numbers', span: 4 }),
   widget(
     HANDOVER,
     'hs.avgDuration',
     'number',
     'Rata-rata durasi selesai (jam)',
     dateColumn('Tanggal selesai'),
+    { row: 'numbers', span: 4 },
   ),
-  widget(HANDOVER, 'hs.oldest', 'list', 'Task aktif terlama', NO_DATE, {
-    listColumns: [
-      { key: 'number', label: 'Nomor' },
-      { key: 'customer', label: 'Customer' },
-      { key: 'location', label: 'Lokasi' },
-      { key: 'age', label: 'Umur' },
-      { key: 'progress', label: 'Progres' },
-    ],
+  widget(HANDOVER, 'hs.trend', 'line', 'Jumlah task per periode', dateColumn('Tanggal dibuat'), {
+    row: 'trend',
+    span: 12,
   }),
+  widget(HANDOVER, 'hs.status', 'donut', 'Komposisi status', dateColumn('Tanggal dibuat'), {
+    row: 'breakdown',
+    span: 4,
+  }),
+  widget(HANDOVER, 'hs.byLocation', 'donut', 'Task per lokasi', dateColumn('Tanggal dibuat'), {
+    row: 'breakdown',
+    span: 4,
+  }),
+  widget(HANDOVER, 'hs.byCustomer', 'barH', 'Customer teratas', dateColumn('Tanggal dibuat'), {
+    row: 'breakdown',
+    span: 4,
+  }),
+  widget(
+    HANDOVER,
+    'hs.oldest',
+    'list',
+    'Task aktif terlama',
+    NO_DATE,
+    { row: 'list', span: 12 },
+    {
+      listColumns: [
+        { key: 'number', label: 'Nomor' },
+        { key: 'customer', label: 'Customer' },
+        { key: 'location', label: 'Lokasi' },
+        { key: 'age', label: 'Lama berjalan (hari)' },
+        { key: 'progress', label: 'Progres' },
+      ],
+    },
+  ),
 
-  widget(SERIAL, 'sn.recorded', 'number', 'Serial dicatat', dateColumn('Tanggal dicatat'), {
-    delta: 'up',
+  widget(
+    SERIAL,
+    'sn.total',
+    'number',
+    'Total unit dicatat',
+    dateColumn('Tanggal dicatat'),
+    { row: 'numbers', span: 6 },
+    { delta: 'up' },
+  ),
+  widget(
+    SERIAL,
+    'sn.avgMinutes',
+    'number',
+    'Rata-rata waktu per unit (menit)',
+    dateColumn('Tanggal dicatat'),
+    { row: 'numbers', span: 6 },
+  ),
+  widget(SERIAL, 'sn.trend', 'line', 'Dicatat per periode', dateColumn('Tanggal dicatat'), {
+    row: 'trend',
+    span: 12,
   }),
-  widget(SERIAL, 'sn.status', 'donut', 'Komposisi status', dateColumn('Tanggal dicatat')),
-  widget(SERIAL, 'sn.trend', 'line', 'Dicatat per periode', dateColumn('Tanggal dicatat')),
-  widget(SERIAL, 'sn.byItem', 'barH', 'Item teratas', dateColumn('Tanggal dicatat')),
-  widget(SERIAL, 'sn.byBu', 'bar', 'Serial per BU', dateColumn('Tanggal dicatat')),
-  widget(SERIAL, 'sn.custody', 'pie', 'Posisi serial', dateColumn('Tanggal dicatat')),
-  widget(SERIAL, 'sn.transit', 'list', 'Sedang dalam pengiriman', NO_DATE, {
-    listColumns: [
-      { key: 'serial', label: 'Serial Number' },
-      { key: 'item', label: 'Item' },
-      { key: 'route', label: 'Dari → ke' },
-      { key: 'days', label: 'Lama (hari)' },
-    ],
+  widget(SERIAL, 'sn.status', 'donut', 'Komposisi status', dateColumn('Tanggal dicatat'), {
+    row: 'breakdown',
+    span: 6,
   }),
+  widget(SERIAL, 'sn.byBu', 'donut', 'Unit per BU', dateColumn('Tanggal dicatat'), {
+    row: 'breakdown',
+    span: 6,
+  }),
+  widget(SERIAL, 'sn.byBrand', 'barH', 'Unit per brand', dateColumn('Tanggal dicatat'), {
+    row: 'ranking',
+    span: 6,
+  }),
+  widget(SERIAL, 'sn.byItem', 'barH', 'Item teratas', dateColumn('Tanggal dicatat'), {
+    row: 'ranking',
+    span: 6,
+  }),
+  widget(
+    SERIAL,
+    'sn.latest',
+    'list',
+    'Entri unit terakhir',
+    dateColumn('Tanggal dicatat'),
+    { row: 'list', span: 12 },
+    {
+      listColumns: [
+        { key: 'item', label: 'Item' },
+        { key: 'date', label: 'Tanggal' },
+        { key: 'count', label: 'Jumlah' },
+        { key: 'by', label: 'Dicatat oleh' },
+      ],
+    },
+  ),
 
-  widget(REPORT, 'rp.open', 'number', 'Laporan terbuka', NO_DATE),
-  widget(REPORT, 'rp.opened', 'number', 'Laporan dibuka', dateColumn('Tanggal dibuka'), {
-    delta: 'down',
+  widget(REPORT, 'rp.open', 'number', 'Laporan terbuka', NO_DATE, { row: 'numbers', span: 6 }),
+  widget(
+    REPORT,
+    'rp.opened',
+    'number',
+    'Laporan dibuka',
+    dateColumn('Tanggal dibuka'),
+    { row: 'numbers', span: 6 },
+    { delta: 'down' },
+  ),
+  widget(REPORT, 'rp.trend', 'line', 'Laporan dibuat per periode', dateColumn('Tanggal dibuka'), {
+    row: 'trend',
+    span: 12,
+  }),
+  widget(REPORT, 'rp.result', 'donut', 'Hasil penutupan', dateColumn('Tanggal ditutup'), {
+    row: 'split',
+    span: 5,
   }),
   widget(
     REPORT,
-    'rp.trend',
-    'line',
-    'Dibuka dan ditutup',
-    dateColumn('Tanggal dibuka dan ditutup'),
+    'rp.oldest',
+    'list',
+    'Laporan terbuka terlama',
+    NO_DATE,
+    { row: 'split', span: 7 },
+    {
+      listColumns: [
+        { key: 'number', label: 'Nomor' },
+        { key: 'status', label: 'Status unit' },
+        { key: 'location', label: 'Lokasi' },
+        { key: 'days', label: 'Lama (hari)' },
+      ],
+    },
   ),
-  widget(REPORT, 'rp.result', 'donut', 'Hasil penutupan', dateColumn('Tanggal ditutup')),
-  widget(REPORT, 'rp.oldest', 'list', 'Laporan terbuka terlama', NO_DATE, {
-    listColumns: [
-      { key: 'number', label: 'Nomor' },
-      { key: 'status', label: 'Status serial' },
-      { key: 'location', label: 'Lokasi' },
-      { key: 'days', label: 'Lama (hari)' },
-    ],
-  }),
 
-  widget(STICKER, 'st.out', 'number', 'Stok habis', NO_DATE),
-  widget(STICKER, 'st.low', 'number', 'Stok menipis', NO_DATE),
-  widget(STICKER, 'st.attention', 'list', 'Stok perlu perhatian', NO_DATE, {
-    listColumns: [
-      { key: 'sticker', label: 'Stiker' },
-      { key: 'type', label: 'Jenis' },
-      { key: 'location', label: 'Lokasi' },
-      { key: 'stock', label: 'Stok' },
-      { key: 'min', label: 'Minimum' },
-    ],
+  widget(STICKER, 'st.out', 'number', 'Stok habis', NO_DATE, { row: 'numbers', span: 3 }),
+  widget(STICKER, 'st.low', 'number', 'Stok menipis', NO_DATE, { row: 'numbers', span: 3 }),
+  widget(STICKER_CATALOG, 'st.manualBook', 'number', 'Manual Book aktif', NO_DATE, {
+    row: 'numbers',
+    span: 3,
+  }),
+  widget(STICKER_CATALOG, 'st.postel', 'number', 'Postel aktif', NO_DATE, {
+    row: 'numbers',
+    span: 3,
   }),
   widget(
     STICKER,
@@ -218,18 +314,33 @@ export const WIDGETS: readonly WidgetMeta[] = [
     'barGroup',
     'Stok masuk dan keluar',
     dateColumn('Tanggal entri stok'),
+    { row: 'charts', span: 6 },
   ),
-  widget(STICKER, 'st.byType', 'bar', 'Total stok per jenis', NO_DATE),
-
-  widget(POSTEL, 'pt.condition', 'donut', 'Kondisi Postel', NO_DATE),
-  widget(POSTEL, 'pt.expiring', 'list', 'Postel segera habis atau kedaluwarsa', NO_DATE, {
-    listColumns: [
-      { key: 'name', label: 'Postel' },
-      { key: 'number', label: 'Nomor aktif' },
-      { key: 'expires', label: 'Tanggal habis' },
-      { key: 'days', label: 'Sisa hari' },
-    ],
+  widget(STICKER_CATALOG, 'st.stickersByType', 'donut', 'Jumlah stiker per jenis', NO_DATE, {
+    row: 'charts',
+    span: 6,
   }),
+  widget(STICKER, 'st.stockBySticker', 'barScroll', 'Total stok per stiker', NO_DATE, {
+    row: 'stockAll',
+    span: 12,
+  }),
+  widget(
+    STICKER,
+    'st.attention',
+    'list',
+    'Stok perlu perhatian',
+    NO_DATE,
+    { row: 'list', span: 12 },
+    {
+      listColumns: [
+        { key: 'sticker', label: 'Stiker' },
+        { key: 'type', label: 'Jenis' },
+        { key: 'location', label: 'Lokasi' },
+        { key: 'stock', label: 'Stok' },
+        { key: 'min', label: 'Minimum' },
+      ],
+    },
+  ),
 ];
 
 const WIDGET_BY_ID: ReadonlyMap<WidgetId, WidgetMeta> = new Map(
@@ -247,7 +358,7 @@ export interface GroupFilterField {
   label: string;
   kind: 'enum' | 'relation';
   options?: readonly { value: string; label: string }[];
-  relation?: 'customer' | 'item' | 'stickerType' | 'sticker';
+  relation?: 'customer' | 'item' | 'brand' | 'stickerType' | 'sticker';
 }
 
 /** Kunci filter global; field filter grup TIDAK BOLEH memakainya. */
@@ -281,6 +392,7 @@ export const GROUP_FILTERS: Record<DashboardGroupId, readonly GroupFilterField[]
       kind: 'enum',
       options: SERIAL_CUSTODIES.map((value) => ({ value, label: SERIAL_CUSTODY_LABELS[value] })),
     },
+    { key: 'brand', label: 'Brand', kind: 'relation', relation: 'brand' },
     { key: 'item', label: 'Item', kind: 'relation', relation: 'item' },
   ],
   report: [
@@ -306,18 +418,6 @@ export const GROUP_FILTERS: Record<DashboardGroupId, readonly GroupFilterField[]
   sticker: [
     { key: 'stickerType', label: 'Jenis stiker', kind: 'relation', relation: 'stickerType' },
     { key: 'sticker', label: 'Stiker', kind: 'relation', relation: 'sticker' },
-  ],
-  postel: [
-    {
-      key: 'condition',
-      label: 'Kondisi',
-      kind: 'enum',
-      options: [
-        { value: 'valid', label: 'Berlaku' },
-        { value: 'soon', label: 'Segera habis' },
-        { value: 'expired', label: 'Kedaluwarsa' },
-      ],
-    },
   ],
 };
 
@@ -431,6 +531,8 @@ export interface NumberData {
   kind: 'number';
   value: number;
   previous?: number;
+  /** Keterangan singkat di bawah angka (mis. "12 hari"); teks jadi dari server, tanpa data internal. */
+  note?: string;
 }
 export interface PartsData {
   kind: 'parts';
@@ -481,6 +583,7 @@ export interface DashboardOption {
 export interface DashboardOptionsDto {
   customers: DashboardOption[];
   items: DashboardOption[];
+  brands: DashboardOption[];
   stickerTypes: DashboardOption[];
   stickers: DashboardOption[];
   /** Kursor halaman berikutnya per daftar; hanya ada untuk daftar yang masih punya sisa. */
@@ -488,7 +591,13 @@ export interface DashboardOptionsDto {
 }
 
 /** Daftar pilihan relasi untuk filter grup. */
-export const DASHBOARD_OPTION_KINDS = ['customers', 'items', 'stickerTypes', 'stickers'] as const;
+export const DASHBOARD_OPTION_KINDS = [
+  'customers',
+  'items',
+  'brands',
+  'stickerTypes',
+  'stickers',
+] as const;
 export type DashboardOptionKind = (typeof DASHBOARD_OPTION_KINDS)[number];
 
 /** Batas halaman pilihan filter relasi (keputusan pemilik 2026-11-23: pencarian di server, bukan potong 500). */
