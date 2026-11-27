@@ -23,6 +23,7 @@ interface ItemOptionRow {
   key: string;
   proof_required: number | string;
   proof_min: number | string;
+  box_size: number | string;
 }
 
 /**
@@ -61,7 +62,7 @@ export async function warehouseItemOptions(
   }
   const limit = byIds ? (input.ids?.length ?? 0) : (input.limit ?? WAREHOUSE_LIMITS.itemOptionsMax);
   const rows = await env.DB.prepare(
-    `SELECT i.id, b.name AS brand_name, i.model, i.\`key\`, i.proof_required, i.proof_min FROM items i LEFT JOIN brands b ON b.id = i.brand_id WHERE ${liveWhere('i')} AND ${where.join(' AND ')} ORDER BY i.\`key\` LIMIT ?`,
+    `SELECT i.id, b.name AS brand_name, i.model, i.\`key\`, i.proof_required, i.proof_min, i.box_size FROM items i LEFT JOIN brands b ON b.id = i.brand_id WHERE ${liveWhere('i')} AND ${where.join(' AND ')} ORDER BY i.\`key\` LIMIT ?`,
   )
     .bind(...binds, limit + 1)
     .all<ItemOptionRow>();
@@ -91,6 +92,7 @@ export async function warehouseItemOptions(
       buIds: links.get(row.id.trim()) ?? [],
       proofRequired: Number(row.proof_required) === 1,
       proofMin: Number(row.proof_min),
+      boxSize: Number(row.box_size),
     };
   });
   return {

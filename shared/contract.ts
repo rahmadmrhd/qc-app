@@ -1487,6 +1487,8 @@ export interface WarehouseItemOptionDto {
   buIds: string[];
   proofRequired: boolean;
   proofMin: number;
+  /** Pcs per kardus dari master Item (0 = belum diisi). */
+  boxSize: number;
 }
 export interface ListWarehouseItemOptionsInput {
   query?: string;
