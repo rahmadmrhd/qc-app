@@ -1,6 +1,7 @@
 import type { ClFileDto } from '@shared/contract';
-import { screen, waitFor } from '@testing-library/react';
+import { act, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { useState } from 'react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { renderInRouter } from '@/test/render-in-router';
 
@@ -91,5 +92,34 @@ describe('BinaryUploadDialog', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Unggah' }));
     expect(await screen.findByText(/tidak boleh diawali garis miring/)).toBeTruthy();
     expect(apiMock).not.toHaveBeenCalled();
+  });
+
+  test('dialog ditutup saat unggahan hampir selesai: tidak berpindah halaman (onUploaded tak dipanggil)', async () => {
+    let finishUpload: (file: ClFileDto) => void = () => undefined;
+    apiMock.mockImplementation(async (id: string) => {
+      if (id === 'clUploads.start') return { uploadId: 'u1', chunkBytes: 4 * 1024 * 1024 };
+      if (id === 'clUploads.chunk') return { received: 1 };
+      if (id === 'clUploads.finish') {
+        return new Promise<ClFileDto>((resolve) => {
+          finishUpload = resolve;
+        });
+      }
+      throw new Error(`api tak terduga: ${id}`);
+    });
+    let close: () => void = () => undefined;
+    function Host() {
+      const [open, setOpen] = useState(true);
+      close = () => setOpen(false);
+      return <BinaryUploadDialog open={open} onOpenChange={onOpenChange} onUploaded={onUploaded} />;
+    }
+    await renderInRouter(<Host />);
+    await userEvent.upload(await screen.findByTestId('file-picker-input'), biner());
+    await userEvent.click(screen.getByRole('button', { name: 'Unggah' }));
+    await waitFor(() =>
+      expect(apiMock.mock.calls.map((call) => call[0])).toContain('clUploads.finish'),
+    );
+    act(() => close());
+    await act(async () => finishUpload(SAVED));
+    expect(onUploaded).not.toHaveBeenCalled();
   });
 });

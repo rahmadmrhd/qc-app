@@ -170,7 +170,7 @@ export function SettingsForm({ onCancel, onDone }: SettingsFormProps) {
         <Alert color="destructive">
           <AlertDescription>
             {corrupt
-              ? `${SETTINGS_PATH} di server tidak dapat dibaca (${corruptReason}). Perbaiki lewat editor berkas atau hubungi pengelola sebelum memakai form ini.`
+              ? `${SETTINGS_PATH} di server tidak dapat dibaca (${corruptReason}). Kembalikan revisi yang sehat lewat tab Riwayat berkas settings.json di Berkas Country Lock sebelum memakai form ini.`
               : describeError(list.error ?? detail.error)}
           </AlertDescription>
         </Alert>

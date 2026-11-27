@@ -53,9 +53,16 @@ export function FilesPage({ q, onSearchChange }: FilesPageProps) {
       header: 'Nama berkas',
       mobile: 'title',
       cell: (file) => (
-        <LinkCell to="/countrylock/files/$fileId" params={{ fileId: file.id }}>
-          {file.path}
-        </LinkCell>
+        <span className="flex flex-col">
+          <LinkCell to="/countrylock/files/$fileId" params={{ fileId: file.id }}>
+            {file.path}
+          </LinkCell>
+          {file.role === 'settings' ? (
+            <span className="text-xs text-muted-foreground">
+              Wajib ada; diubah lewat Pengaturan Router, tidak dapat dihapus.
+            </span>
+          ) : null}
+        </span>
       ),
     },
     {
@@ -83,6 +90,8 @@ export function FilesPage({ q, onSearchChange }: FilesPageProps) {
       action: 'delete',
       label: `Hapus ${file.path}`,
       shortLabel: 'Hapus',
+      // settings.json wajib ada (bundel tidak dapat terbit tanpanya); editor berkas juga menyembunyikannya.
+      hidden: file.role === 'settings',
       busy: remove.isPending && remove.variables === file.id,
       disabled: remove.isPending,
       onSelect: () => setDeleteTarget(file),

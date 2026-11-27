@@ -5,6 +5,17 @@ import { toast } from 'sonner';
 import { type DataColumn, DataTable, type RowAction } from '@/components/data-table';
 import { formatBytes } from '@/components/file-dialog/accept';
 import { Select } from '@/components/select';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { describeError } from '@/lib/api/describe-error';
@@ -86,6 +97,8 @@ export function HistoryPanel({ fileId, kind, language, canEdit }: HistoryPanelPr
   const [fromSeq, setFromSeq] = useState<number | null>(null);
   const [toSeq, setToSeq] = useState<number | null>(null);
   const [comparing, setComparing] = useState(false);
+  const [revertTarget, setRevertTarget] = useState<ClRevisionDto | null>(null);
+  const [revertError, setRevertError] = useState<string | null>(null);
   const latest = revisions[0]?.seq;
   const effectiveTo = toSeq ?? latest ?? null;
   const effectiveFrom = fromSeq ?? revisions[1]?.seq ?? null;
@@ -129,7 +142,7 @@ export function HistoryPanel({ fileId, kind, language, canEdit }: HistoryPanelPr
       cell: (revision) =>
         kind === 'binary' ? (
           <span className="inline-flex items-center gap-2">
-            <code className="text-xs">{revision.sha256.slice(0, 12)}</code>
+            <code className="break-all text-xs">{revision.sha256}</code>
             <Button
               type="button"
               size="sm"
@@ -157,17 +170,40 @@ export function HistoryPanel({ fileId, kind, language, canEdit }: HistoryPanelPr
       hidden: !canEdit || kind !== 'text' || revision.seq === latest,
       busy: revert.isPending && revert.variables?.seq === revision.seq,
       disabled: revert.isPending,
-      onSelect: () =>
-        revert.mutate(
-          { id: fileId, seq: revision.seq },
-          {
-            onSuccess: () =>
-              toast.success(`Revisi ${revision.seq} dikembalikan sebagai revisi baru`),
-            onError: (error) => toast.error(describeError(error)),
-          },
-        ),
+      onSelect: () => {
+        setRevertError(null);
+        setRevertTarget(revision);
+      },
     },
   ];
+
+  // Konfirmasi pengembalian: memuat ulang riwayat dulu; bila orang lain sudah menyimpan revisi baru sejak daftar ini
+  // dibuka, pengembalian dibatalkan (server belum mengunci versi pada rute ini, jadi ini penjaga terbaik di klien).
+  const confirmRevert = async () => {
+    const target = revertTarget;
+    if (!target) return;
+    setRevertError(null);
+    const fresh = await history.refetch();
+    const freshLatest = (fresh.data ?? []).reduce((max, item) => Math.max(max, item.seq), 0);
+    if (fresh.isError || freshLatest !== latest) {
+      setRevertError(
+        fresh.isError
+          ? describeError(fresh.error)
+          : `Berkas sudah diubah orang lain (kini revisi ${freshLatest}). Tinjau riwayat terbaru lalu coba lagi.`,
+      );
+      return;
+    }
+    revert.mutate(
+      { id: fileId, seq: target.seq },
+      {
+        onSuccess: () => {
+          toast.success(`Revisi ${target.seq} dikembalikan sebagai revisi baru`);
+          setRevertTarget(null);
+        },
+        onError: (error) => setRevertError(describeError(error)),
+      },
+    );
+  };
 
   return (
     <div className="space-y-4">
@@ -226,6 +262,41 @@ export function HistoryPanel({ fileId, kind, language, canEdit }: HistoryPanelPr
         isError={history.isLoadingError}
         onRetry={() => void history.refetch()}
       />
+      <AlertDialog
+        open={revertTarget !== null}
+        onOpenChange={(open) => {
+          if (!open && !revert.isPending) setRevertTarget(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Kembalikan revisi {revertTarget?.seq}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Isi revisi {revertTarget?.seq} dijadikan revisi BARU di atas revisi terbaru; riwayat
+              tidak ditulis ulang.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {revertError === null ? null : (
+            <Alert color="destructive">
+              <AlertDescription>{revertError}</AlertDescription>
+            </Alert>
+          )}
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={revert.isPending}>Batal</AlertDialogCancel>
+            <AlertDialogAction
+              color="primary"
+              disabled={revert.isPending}
+              onClick={(event) => {
+                // Dialog tetap terbuka sampai berhasil: galat dan konflik tampil di dalamnya.
+                event.preventDefault();
+                void confirmRevert();
+              }}
+            >
+              Kembalikan
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

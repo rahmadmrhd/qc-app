@@ -240,6 +240,10 @@ describe('FileEditorPage: riwayat', () => {
     // Revisi terbaru tidak punya tombol kembalikan.
     expect(screen.queryByRole('button', { name: 'Kembalikan revisi 3' })).toBeNull();
     await userEvent.click(screen.getByRole('button', { name: 'Kembalikan revisi 1' }));
+    // Pengembalian membuat revisi baru, jadi harus dikonfirmasi dulu.
+    await userEvent.click(
+      within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Kembalikan' }),
+    );
     await waitFor(() =>
       expect(apiMock).toHaveBeenCalledWith('clFiles.revert', { id: 'f1', seq: 1 }),
     );

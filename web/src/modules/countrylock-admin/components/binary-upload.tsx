@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { describeError } from '@/lib/api/describe-error';
 import { uploadBinary } from '../lib/upload-chunks';
+import { useAfterUpload } from '../queries';
 
 const FORM_ID = 'cl-binary-upload-form';
 
@@ -35,6 +36,7 @@ export function BinaryUploadDialog({
   const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState<number | null>(null);
+  const afterUpload = useAfterUpload();
   const controller = useRef<AbortController | null>(null);
   const uploading = progress !== null;
 
@@ -88,6 +90,13 @@ export function BinaryUploadDialog({
         signal: abort.signal,
         onProgress: (sent, total) => setProgress(Math.round((sent / total) * 100)),
       });
+      // Cache daftar/riwayat/draf disegarkan apa pun yang terjadi: berkasnya sudah ada di server.
+      afterUpload(saved);
+      if (abort.signal.aborted) {
+        // Dialog ditutup tepat saat perakitan akhir: jangan berpindah halaman atau menutup dialog lain.
+        toast.info(`${saved.path} sempat selesai diunggah sebelum dibatalkan`);
+        return;
+      }
       toast.success(`${saved.path} diunggah`);
       onUploaded(saved);
       onOpenChange(false);
@@ -143,7 +152,9 @@ export function BinaryUploadDialog({
               max={100}
               aria-label="Kemajuan unggahan"
             />
-            <p className="text-sm text-muted-foreground">Mengunggah… {progress}%</p>
+            <p className="text-sm text-muted-foreground">
+              Mengunggah… {progress}%. Tutup dialog (X atau Esc) untuk membatalkan.
+            </p>
           </div>
         )}
         {error === null ? null : (

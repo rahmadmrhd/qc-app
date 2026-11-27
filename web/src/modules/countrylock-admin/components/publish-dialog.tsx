@@ -81,7 +81,9 @@ export function PublishDialog({ open, onOpenChange, onPublished }: PublishDialog
         : data.changed
           ? null
           : 'Tidak ada perubahan dari bundel terbit terakhir';
-  const canSubmit = data !== undefined && blockedReason === null && note.trim() !== '';
+  // Selama draf dihitung ulang (dialog baru dibuka) hasil lama tidak boleh dipakai memutuskan boleh terbit.
+  const canSubmit =
+    data !== undefined && !draft.isFetching && blockedReason === null && note.trim() !== '';
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -110,7 +112,11 @@ export function PublishDialog({ open, onOpenChange, onPublished }: PublishDialog
       submitLabel="Terbitkan"
     >
       <form id={FORM_ID} onSubmit={submit} className="space-y-4">
-        {draft.isPending ? <p className="text-sm text-muted-foreground">Memeriksa draf…</p> : null}
+        {draft.isFetching ? (
+          <p role="status" className="text-sm text-muted-foreground">
+            Memeriksa draf…
+          </p>
+        ) : null}
         {draft.isError ? (
           <Alert color="destructive">
             <AlertDescription>{describeError(draft.error)}</AlertDescription>

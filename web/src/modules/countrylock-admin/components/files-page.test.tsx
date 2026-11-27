@@ -56,6 +56,18 @@ beforeEach(() => {
 const page = (q = '') => renderInRouter(<FilesPage q={q} onSearchChange={onSearchChange} />);
 
 describe('FilesPage', () => {
+  test('settings.json tidak dapat dihapus dari daftar: tombol Hapus tersembunyi dan alasannya tampil', async () => {
+    files = [
+      file('s', 'settings.json', { role: 'settings' }),
+      file('a', 'MIKROTIK/mikrotik-ac.txt'),
+    ];
+    await page();
+    await screen.findByText('settings.json');
+    expect(screen.queryByRole('button', { name: 'Hapus settings.json' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Hapus MIKROTIK/mikrotik-ac.txt' })).toBeTruthy();
+    expect(screen.getByText(/Wajib ada; diubah lewat Pengaturan Router/)).toBeTruthy();
+  });
+
   test('menampilkan berkas hidup beserta peran, versi, dan ukuran; yang terhapus disembunyikan', async () => {
     await page();
     expect(await screen.findByText('MIKROTIK/mikrotik-ac.txt')).toBeTruthy();
