@@ -37,7 +37,7 @@
 
 ---
 
-### Tugas 1: Fungsi murni dan kontrak bersama
+### Task 1: Fungsi murni dan kontrak bersama
 
 **Berkas:** ubah `shared/serial-warehouse.ts`, `shared/contract.ts`, `shared/api.ts`; tes `shared/serial-warehouse.test.ts`.
 
@@ -57,7 +57,7 @@
 - [ ] **Langkah 4:** `bun test shared`; harus lulus (termasuk `shared/api.test.ts` yang menjaga tabel dan kontrak sejalan).
 - [ ] **Langkah 5:** commit `feat(serialwh): fungsi murni dan kontrak stok ready per kardus`.
 
-### Tugas 2: Migrasi dan field pcs/kardus pada Item
+### Task 2: Migrasi dan field pcs/kardus pada Item
 
 **Berkas:** buat `server/migrations/0043_stok_ready_kardus.sql`; ubah `server/src/modules/item/{validate,service,repo}.ts`, `web/src/modules/item/components/item-form.tsx` dan `item-detail-view.tsx`; ubah `server/src/core/migrate.test.ts` bila daftar migrasi/indeks dijaga di sana; tes `server/src/modules/item/box-size.test.ts`.
 
@@ -71,7 +71,7 @@
 - [ ] **Langkah 4:** `bun run --cwd server test src/modules/item` dan `bun run --cwd server test src/core/migrate`; web `vitest run src/modules/item`; harus lulus.
 - [ ] **Langkah 5:** commit `feat(item): field pcs per kardus dan tabel kardus ready`.
 
-### Tugas 3: Mencatat ready dengan kardus
+### Task 3: Mencatat ready dengan kardus
 
 **Berkas:** buat `server/src/modules/serialwh/boxes.ts`; ubah `submit.ts`, `validate.ts`, `audit.ts`; tes `server/src/modules/serialwh/boxes.test.ts`.
 
@@ -86,7 +86,7 @@
 - [ ] **Langkah 4:** jalankan seluruh `bun run --cwd server test src/modules/serialwh`; harus lulus.
 - [ ] **Langkah 5:** commit `feat(serialwh): catat ready per kardus dengan nomor dan isi`.
 
-### Tugas 4: Pelepasan stok, penutupan kardus, dan penyapu
+### Task 4: Pelepasan stok, penutupan kardus, dan penyapu
 
 **Berkas:** ubah `submit.ts`, `sweep.ts`; tes `server/src/modules/serialwh/release.test.ts`.
 
@@ -100,7 +100,7 @@
 - [ ] **Langkah 4:** `bun run --cwd server test src/modules/serialwh`; harus lulus.
 - [ ] **Langkah 5:** commit `feat(serialwh): pelepasan stok ready saat pengeluaran selesai dan pembersihan penyapu`.
 
-### Tugas 5: Rute daftar Stok Ready
+### Task 5: Rute daftar Stok Ready
 
 **Berkas:** buat `server/src/modules/serialwh/stock.ts`; ubah `routes.ts`, `validate.ts`; tes `server/src/modules/serialwh/stock.test.ts`.
 
@@ -116,7 +116,7 @@ Aturan: serial di stok = baris `warehouse_ready_serials` dengan `released_dispat
 - [ ] **Langkah 4:** `bun run --cwd server test src/modules/serialwh` dan `bun run --cwd server test src/core/soft-delete-guard` (pemindai harus tidak menandai kueri baru); lulus.
 - [ ] **Langkah 5:** commit `feat(serialwh): rute daftar Stok Ready`.
 
-### Tugas 6: Isian kardus di dialog simpan (web)
+### Task 6: Isian kardus di dialog simpan (web)
 
 **Berkas:** ubah `web/src/modules/serialwh/components/confirm-dialog.tsx`, `dispatch-page.tsx`, `web/src/modules/serialwh/lib/submit.ts`; tes `confirm-dialog.test.tsx`, `lib/submit.test.ts`.
 
@@ -132,7 +132,7 @@ Perilaku: bila Tujuan Ready Stock, dialog menampilkan "Nomor kardus awal" (bawaa
 - [ ] **Langkah 4:** `bunx tsc --noEmit`, `bunx biome check --write src/modules/serialwh`, `bunx vitest run src/modules/serialwh`; lulus.
 - [ ] **Langkah 5:** commit `feat(serialwh): isian nomor dan isi kardus pada dialog simpan ready`.
 
-### Tugas 7: Halaman Stok Ready (web)
+### Task 7: Halaman Stok Ready (web)
 
 **Berkas:** buat `web/src/routes/_app/serial/gudang/ready.tsx`, `web/src/modules/serialwh/components/{ready-stock-page,ready-stock-table}.tsx`, `lib/{ready-stock-filter,hand-off}.ts`; ubah `web/src/modules/serialwh/queries.ts`, `web/src/app/navigation.ts`, `web/src/modules/serialwh/components/dispatch-page.tsx` (membaca serial oper); tes `ready-stock-page.test.tsx`, `lib/hand-off.test.ts`.
 
@@ -148,7 +148,7 @@ Perilaku halaman: `ListPage` bertajuk "Stok Ready"; butir sidebar "Stok Ready" d
 - [ ] **Langkah 4:** `bunx tsc --noEmit`, `bunx biome check --write src`, `bunx vitest run src/modules/serialwh src/app src/components/page` (jalankan di latar, keluaran ke berkas; berkas besar lambat); tes cakupan rute `route-meta-coverage.test.ts` dan penjaga navigasi ponsel harus lulus.
 - [ ] **Langkah 5:** commit `feat(serialwh): halaman Stok Ready per kardus dan oper ke pengeluaran`.
 
-### Tugas 8: Dokumen, changelog, dan pemeriksaan akhir
+### Task 8: Dokumen, changelog, dan pemeriksaan akhir
 
 **Berkas:** ubah `CLAUDE.md`, `docs/superpowers/specs/2026-11-26-serial-keluar-gudang-design.md`; buat dua fragmen changelog.
 
