@@ -41,6 +41,8 @@ interface SerialRow {
   serial: string;
   recorded_on: string;
   processing: number | string;
+  status: string;
+  custody: string;
 }
 
 interface BoxMeta {
@@ -240,7 +242,7 @@ export async function listReadyStock(
   );
   if (pageMetas.length > 0) {
     const serialQuery = stockSql(
-      `rs.serial_id, rs.box_id, s.serial, rd.dispatched_on AS recorded_on, ${PROCESSING_SQL} AS processing`,
+      `rs.serial_id, rs.box_id, s.serial, s.status, s.custody, rd.dispatched_on AS recorded_on, ${PROCESSING_SQL} AS processing`,
       filters,
       `AND b.id IN (${placeholders(pageMetas.length)}) ORDER BY rs.box_id, rs.seq`,
     );
@@ -258,6 +260,8 @@ export async function listReadyStock(
         capacity: box.capacity,
         recordedOn: row.recorded_on,
         processing: Number(row.processing) > 0,
+        status: row.status.trim(),
+        custody: row.custody.trim(),
       };
       box.serials.push(serial);
     }
@@ -268,7 +272,7 @@ export async function listReadyStock(
     const pickQuery = stockSql(
       'rs.box_id, rs.serial_id',
       filters,
-      `AND NOT ${PROCESSING_SQL} ORDER BY rs.box_id, rs.seq`,
+      `AND s.status = 'good' AND s.custody = 'qc' AND NOT ${PROCESSING_SQL} ORDER BY rs.box_id, rs.seq`,
     );
     const pickRows = await env.DB.prepare(pickQuery.sql)
       .bind(...pickQuery.binds)

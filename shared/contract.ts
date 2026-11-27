@@ -1623,6 +1623,9 @@ export interface ReadyStockSerialDto {
   recordedOn: string;
   /** Sedang di pengeluaran Penjualan yang belum selesai. */
   processing: boolean;
+  /** Nilai mentah `serials.status` dan `serials.custody`; hanya `good` di `qc` yang boleh dipilih. */
+  status: string;
+  custody: string;
 }
 export interface ReadyStockBoxDto {
   id: string;

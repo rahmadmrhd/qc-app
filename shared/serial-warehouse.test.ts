@@ -102,6 +102,23 @@ describe('kardus ready', () => {
     expect(pickByOrder(boxes, 0)).toEqual([]);
   });
 
+  test('readyStockClipboard memberi awalan apostrof pada serial berawalan rumus', () => {
+    const text = readyStockClipboard([
+      { box: 1, serial: '=SUM(A1)' },
+      { box: 2, serial: '+1' },
+      { box: 3, serial: '-2' },
+      { box: 4, serial: '@x' },
+      { box: 5, serial: 'AB-1' },
+    ]);
+    expect(text.split('\n').slice(1)).toEqual([
+      "1\t'=SUM(A1)",
+      "2\t'+1",
+      "3\t'-2",
+      "4\t'@x",
+      '5\tAB-1',
+    ]);
+  });
+
   test('readyStockClipboard', () => {
     expect(readyStockClipboard([{ box: 3, serial: 'A' }])).toBe('Kardus\tSerial\n3\tA');
   });

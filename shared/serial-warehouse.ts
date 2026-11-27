@@ -161,5 +161,7 @@ export function pickByOrder(
 
 /** Teks clipboard Stok Ready: `Kardus<TAB>Serial` per baris (`\n`, tanpa CRLF). */
 export function readyStockClipboard(rows: readonly { box: number; serial: string }[]): string {
-  return ['Kardus\tSerial', ...rows.map((r) => `${r.box}\t${r.serial}`)].join('\n');
+  // Serial berawalan rumus (`=`, `+`, `-`, `@`) diberi apostrof agar tidak dijalankan sebagai rumus di spreadsheet.
+  const safe = (serial: string): string => (/^[=+\-@]/.test(serial) ? `'${serial}` : serial);
+  return ['Kardus\tSerial', ...rows.map((r) => `${r.box}\t${safe(r.serial)}`)].join('\n');
 }

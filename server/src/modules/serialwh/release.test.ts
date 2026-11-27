@@ -167,7 +167,7 @@ describe('pelepasan stok ready', () => {
       })),
     })) as Out;
     expect(pendingReady.data?.status).toBe('pending');
-    expect(await boxRows()).toHaveLength(4);
+    expect(await boxRows()).toHaveLength(5);
     env.clock.set(Date.parse('2026-11-20T03:00:00.000Z'));
     expect(await sweepStaleDispatches(env)).toBeGreaterThanOrEqual(2);
     expect(await boxRows()).toEqual([
@@ -199,6 +199,34 @@ describe('pelepasan stok ready', () => {
     expect(skipped.map((r) => r.reason)).toEqual([
       'Sudah ada di pengeluaran lain yang belum selesai',
     ]);
+    expect(await releasedCount()).toBe(0);
+  });
+
+  test('Penjualan di BU lain melewati serial stok ready BU ini sebagai tidak ditemukan', async () => {
+    const stock = await seedReady();
+    const out = (await restCall(env, WH_USERS.editB, 'serialWarehouse.submit', {
+      clientId: crypto.randomUUID(),
+      chunkIndex: 0,
+      header: {
+        dispatchedOn: '2026-11-12',
+        orderNumber: 'SO-B1',
+        buId: 'bu-b',
+        customerName: 'PT B',
+        itemId: 'i-a1',
+        note: '',
+        handoverIds: [],
+        total: 1,
+        chunkSize: 200,
+      },
+      rows: stock.slice(0, 1).map((row) => ({
+        kind: 'existing' as const,
+        serialId: row.id,
+        serial: row.serial,
+      })),
+    })) as Out;
+    expect(out.ok).toBe(true);
+    const skipped = (out.data?.skipped ?? []) as { reason: string }[];
+    expect(skipped.map((r) => r.reason)).toEqual(['Serial tidak ditemukan']);
     expect(await releasedCount()).toBe(0);
   });
 });

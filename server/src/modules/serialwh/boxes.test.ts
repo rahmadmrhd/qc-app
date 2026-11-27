@@ -246,4 +246,59 @@ describe('catat ready dengan kardus', () => {
     expect(other.ok).toBe(false);
     expect(other.error?.fields?.boxStart).toBe('Nomor kardus sudah dipakai');
   });
+
+  test('rentang nomor dipesan di potongan 0: potongan lanjutan selalu menemukan kardusnya', async () => {
+    const id = crypto.randomUUID();
+    expect((await readyChunk(id, 0, 25, 5, serialsOf('M', 5), { boxStart: 30 })).ok).toBe(true);
+    expect(await boxes()).toEqual([
+      [30, 10, 5],
+      [31, 10, 0],
+      [32, 10, 0],
+    ]);
+    // Pencatatan lain yang berimpit ditolak di potongannya sendiri, bukan macet di lanjutan.
+    const clash = await readyChunk(crypto.randomUUID(), 0, 5, 5, serialsOf('N', 5), {
+      boxStart: 32,
+    });
+    expect(clash.ok).toBe(false);
+    expect(clash.error?.fields?.boxStart).toBe('Nomor kardus sudah dipakai');
+    for (let i = 1; i < 5; i += 1) {
+      expect((await readyChunk(id, i, 25, 5, serialsOf(`M${i}`, 5), { boxStart: 30 })).ok).toBe(
+        true,
+      );
+    }
+    expect(await boxes()).toEqual([
+      [30, 10, 10],
+      [31, 10, 10],
+      [32, 10, 5],
+    ]);
+  });
+
+  test('dua pencatatan serentak dengan rentang berimpit: tepat satu yang lolos', async () => {
+    const [a, b] = await Promise.all([
+      readyChunk(crypto.randomUUID(), 0, 25, 25, serialsOf('P', 25), { boxStart: 60 }),
+      readyChunk(crypto.randomUUID(), 0, 15, 15, serialsOf('Q', 15), { boxStart: 61 }),
+    ]);
+    expect([a.ok, b.ok].filter(Boolean)).toHaveLength(1);
+    const loser = a.ok ? b : a;
+    expect(loser.error?.code).toBe('VALIDATION');
+    expect(loser.error?.fields?.boxStart).toBe('Nomor kardus sudah dipakai');
+  });
+
+  test('serial dilewati: kardus pesanan yang tetap kosong dihapus saat selesai', async () => {
+    const first = await submitDispatch(env, WH_USERS.edit, {
+      ready: true,
+      boxStart: 1,
+      boxSize: 10,
+      fresh: serialsOf('R', 5),
+    });
+    expect(first.ok).toBe(true);
+    const all = [...serialsOf('R', 5), ...serialsOf('S', 20)];
+    const out = await readyChunk(crypto.randomUUID(), 0, 25, 200, all, { boxStart: 40 });
+    expect(out.ok).toBe(true);
+    expect(await boxes()).toEqual([
+      [1, 10, 5],
+      [40, 10, 10],
+      [41, 10, 10],
+    ]);
+  });
 });

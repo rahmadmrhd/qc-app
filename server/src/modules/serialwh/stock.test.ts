@@ -307,6 +307,20 @@ describe('serialWarehouse.readyStock', () => {
     expect((await call(WH_USERS.editB, {})).data.itemFacets).toEqual([]);
   });
 
+  test('serial bermasalah membawa status dan custody dan tidak ikut picked', async () => {
+    await box({ id: 'b1', number: 1, capacity: 3, serials: ['S-1', 'S-2', 'S-3'] });
+    await env.DB.prepare("UPDATE serials SET status = 'reported' WHERE serial = 'S-2'").run();
+    await env.DB.prepare("UPDATE serials SET custody = 'transit' WHERE serial = 'S-3'").run();
+    const out = await call(E, { pickCount: 10 });
+    const rows = out.data.boxes[0].serials as { serial: string; status: string; custody: string }[];
+    expect(rows.map((r) => [r.serial, r.status, r.custody])).toEqual([
+      ['S-1', 'good', 'qc'],
+      ['S-2', 'reported', 'qc'],
+      ['S-3', 'good', 'transit'],
+    ]);
+    expect(out.data.picked).toEqual(['id-S-1']);
+  });
+
   test('validasi masukan', async () => {
     expect((await call(E, { limit: 0 })).ok).toBe(false);
     expect((await call(E, { limit: 51 })).ok).toBe(false);

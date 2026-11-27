@@ -78,7 +78,7 @@ Rute `/serial/gudang/ready` ("Stok Ready"; butir sidebar di grup Serial Number, 
 - Pembantu **"Pilih N unit sesuai urutan"**: WH mengisi jumlah, sistem memilih mengikuti nomor kardus naik, kardus penuh lebih dulu lalu ecer *(pilihan pembangun)*; hasilnya hanya tanda centang yang dapat diubah bebas (loncat tetap boleh). Contoh: 35 unit, isi 10 → kardus 1, 2, 3 penuh dan 5 serial dari kardus 4.
 - Tombol aksi **"Keluarkan ke Penjualan"** (bagi `serialwh: edit`) membuka form Catat Serial WH dengan Tujuan Penjualan dan serial terpilih sudah berada di draf. No SO, customer, tautan Serah Terima, dan peringatan memakai dialog yang sudah ada; tidak ada alur keluar baru.
 - Pengeluaran selesai yang memuat serial ready **mengisi `released_dispatch_id`** pada transaksi yang sama dengan penyelesaiannya, sehingga serial keluar dari Stok Ready. Ini berlaku juga bila WH men-scan serial itu langsung di form tanpa lewat halaman Stok Ready *(pilihan pembangun)*. Pengeluaran yang dibatalkan penyapu tidak melepas apa pun.
-- Serial dari satu BU tidak dapat dikeluarkan oleh pengguna tanpa `serialwh: edit` pada BU itu.
+- Serial dari satu BU tidak dapat dikeluarkan oleh pengguna tanpa `serialwh: edit` pada BU itu. Penjualan tidak melepas stok ready BU lain: tiap BU punya data serial sendiri, jadi serial di stok ready BU yang berbeda dari BU pengeluaran dilewati sebagai "Serial tidak ditemukan" *(keputusan pemilik 2026-11-27, lihat bagian 10)*.
 
 ## 8. Hak, audit, dan batasan
 
@@ -93,7 +93,7 @@ Rute `/serial/gudang/ready` ("Stok Ready"; butir sidebar di grup Serial Number, 
 Pilihan pembangun (dapat dikoreksi): nama tabel dan kolom; kardus penuh dulu baru ecer pada "Pilih N unit"; tombol salin ke clipboard; pengeluaran lewat scan langsung juga melepas serial dari stok; label menu "Stok Ready".
 
 Putusan pembangun setelah pemeriksaan independen (semuanya pilihan pembangun, dapat dikoreksi):
-- **Potongan:** server yang menetapkan kardus, dari urutan global serial (`seq`) di seluruh pengiriman, bukan per potongan. `boxStart`, `boxSize`, dan penugasan kardus per baris ikut header yang di-hash, jadi potongan ulang tidak mengubah hasil. Kardus yang melintasi batas potongan dibuat sekali (dicari lewat nomornya) dan potongan berikutnya hanya menambah serial ke kardus itu. Batas potongan tidak perlu selaras dengan isi kardus.
+- **Potongan:** server yang menetapkan kardus, dari urutan global serial (`seq`) di seluruh pengiriman, bukan per potongan. `boxStart`, `boxSize`, dan penugasan kardus per baris ikut header yang di-hash, jadi potongan ulang tidak mengubah hasil. Seluruh rentang nomor kardus (`boxStart` sampai `boxStart + ceil(total / boxSize) - 1`) dipesan sebagai kardus kosong milik pengeluaran pada potongan pertama; potongan berikutnya hanya mengisi kardus yang sudah dipesan secara berurutan, dan kardus pesanan yang tetap kosong (serial dilewati) dihapus saat pengeluaran selesai *(keputusan pemilik 2026-11-27, lihat bagian 10; menggantikan pembuatan kardus per potongan)*. Batas potongan tidak perlu selaras dengan isi kardus.
 - **Serial yang dilewati:** kardus dihitung ulang dari serial yang benar-benar tersimpan, jadi tidak ada lubang di nomor dan kardus terakhir menjadi ecer bila perlu. Pratinjau di klien hanya perkiraan dan dialog menampilkan hasil akhir dari server setelah disimpan. Serial yang sudah tercatat WH tetapi tidak punya baris stok ready (mode Penjualan atau data lama) memang tidak pernah masuk Stok Ready.
 - **Dibatalkan penyapu:** baris `warehouse_ready_serials` dan kardus yang kosong akibatnya dihapus bersama pembatalan, sehingga nomor kardusnya bebas dipakai lagi. Hanya pencatatan yang selesai yang memegang nomor.
 - **Pelepasan serial:** pengisian `released_dispatch_id` dijaga CAS (hanya bila masih kosong). Serial ready yang sudah ada di pengeluaran Penjualan pending lain ditolak seperti aturan "sudah ada di pengeluaran pending" yang ada. Serial yang sudah keluar tidak lagi ada di stok, jadi tidak dapat dipilih ulang.
@@ -104,3 +104,13 @@ Putusan pembangun setelah pemeriksaan independen (semuanya pilihan pembangun, da
 - **Penyimpangan kecil dari agen web (pilihan pembangun, dapat dikoreksi):** (1) batas draf oper `HAND_OFF_ROWS_MAX = 5000` baris (`web/src/modules/serialwh/lib/hand-off.ts`; draf sebesar itu masih jauh di bawah kuota penyimpanan) dipakai sebagai batas "Keluarkan"; (2) "Pilih N unit" berupa isian jumlah di atas tabel Stok Ready (bukan tombol tetap).
 
 Terbuka bagi pemilik produk: tidak ada (keduanya dijawab 2026-11-27 dan sudah dimasukkan di atas).
+
+## 10. Keputusan pemilik setelah review akhir (2026-11-27)
+
+Semua butir di bawah disetujui pemilik produk pada 2026-11-27 setelah review akhir independen.
+
+- **Rentang nomor kardus dipesan di awal.** Potongan pertama membuat semua kardus kosong untuk `total` serial milik pengeluaran itu. Nomor yang masih dipakai kardus terbuka lain (BU + Tipe sama) ditolak langsung pada `boxStart` ("Nomor kardus sudah dipakai"), dijaga indeks unik sehingga dua pencatatan serentak dengan rentang berimpit tidak bisa lolos keduanya. Alasan: tabrakan nomor terdeteksi di awal, bukan di tengah pengiriman potongan. Kardus pesanan yang tetap kosong dihapus saat pengeluaran `done` (nomor bebas, tidak tampil); pembatalan penyapu menghapus semua kardus pengeluaran itu; nomor tertinggi (`maxBoxNumber`) tetap menghitung kardus pesanan milik pengeluaran pending.
+- **Penjualan hanya melepas stok ready BU yang sama.** Serial di stok ready BU lain dilewati dengan alasan "Serial tidak ditemukan" (tanpa membocorkan BU), juga dijaga di dalam batch. Alasan: tiap BU punya data serial sendiri.
+- **Hanya serial Lolos di QC yang dapat dipilih.** `ReadyStockSerialDto` membawa `status` dan `custody`; hanya `good` + `qc` yang ikut "Pilih N unit" (`pickCount`/`picked`), seperti serial yang sedang diproses.
+- **Salin ke clipboard aman dari injeksi rumus.** Sel serial berawalan `=`, `+`, `-`, atau `@` diberi awalan apostrof.
+- Pilihan pembangun yang dikoreksi review: kardus yang semua serialnya terhapus hidup menutup nomornya; audit memakai `boxToPlanned`; batas "Pilih N unit" `pickMax` = 5000 (satu konstanta bersama).

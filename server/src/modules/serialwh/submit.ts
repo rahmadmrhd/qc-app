@@ -40,7 +40,9 @@ import {
 import {
   BOX_TAKEN_MESSAGE,
   boxStatements,
+  dropEmptyBoxesStatement,
   readyHeldInOtherPending,
+  readyInOtherBu,
   releaseStatements,
 } from './boxes';
 import { addOrderLinksStmts, assertLinkableHandovers } from './handover-links';
@@ -440,7 +442,17 @@ async function submitOnce(
       plans.filter((plan) => !plan.createdNew).map((plan) => plan.serialId),
       existing?.id.trim() ?? '',
     );
+    // Tiap BU punya data serial sendiri: stok ready BU lain dilewati sebagai tidak ditemukan (tanpa membocorkan BU).
+    const otherBu = await readyInOtherBu(
+      env,
+      plans.filter((plan) => !plan.createdNew).map((plan) => plan.serialId),
+      buId,
+    );
     plans = plans.filter((plan) => {
+      if (otherBu.has(plan.serialId)) {
+        skip(plan.serial, SKIP_REASONS.notFound);
+        return false;
+      }
       if (!held.has(plan.serialId)) return true;
       skip(plan.serial, SKIP_REASONS.inOtherPending);
       return false;
@@ -642,9 +654,11 @@ async function submitOnce(
       statements.push(
         env.DB.prepare(
           // Ready: juga gagal bila serial itu kini tercatat pada pengeluaran selesai atau pending mana pun (balapan).
-          `UPDATE serials SET id = CASE WHEN status = 'good' AND custody = 'qc' AND deleted_at = '' AND item_id = ?${ready ? " AND NOT EXISTS (SELECT 1 FROM warehouse_dispatch_serials rg JOIN warehouse_dispatches rd ON rd.id = rg.dispatch_id WHERE rg.serial_id = serials.id AND rd.status IN ('done', 'pending'))" : " AND NOT EXISTS (SELECT 1 FROM warehouse_ready_serials rr JOIN warehouse_dispatch_serials wd ON wd.serial_id = rr.serial_id JOIN warehouse_dispatches pd ON pd.id = wd.dispatch_id WHERE rr.serial_id = serials.id AND rr.released_dispatch_id = '' AND pd.kind = 'order' AND pd.status = 'pending' AND pd.id <> ?)"} THEN id ELSE ${CAS_FAIL_SQL} END WHERE id = ?`,
+          `UPDATE serials SET id = CASE WHEN status = 'good' AND custody = 'qc' AND deleted_at = '' AND item_id = ?${ready ? " AND NOT EXISTS (SELECT 1 FROM warehouse_dispatch_serials rg JOIN warehouse_dispatches rd ON rd.id = rg.dispatch_id WHERE rg.serial_id = serials.id AND rd.status IN ('done', 'pending'))" : " AND NOT EXISTS (SELECT 1 FROM warehouse_ready_serials rr JOIN warehouse_dispatch_serials wd ON wd.serial_id = rr.serial_id JOIN warehouse_dispatches pd ON pd.id = wd.dispatch_id WHERE rr.serial_id = serials.id AND rr.released_dispatch_id = '' AND pd.kind = 'order' AND pd.status = 'pending' AND pd.id <> ?) AND NOT EXISTS (SELECT 1 FROM warehouse_ready_serials rx JOIN warehouse_ready_boxes rb ON rb.id = rx.box_id WHERE rx.serial_id = serials.id AND rx.released_dispatch_id = '' AND rb.bu_id <> ?)"} THEN id ELSE ${CAS_FAIL_SQL} END WHERE id = ?`,
         ).bind(
-          ...(ready ? [header.itemId, plan.serialId] : [header.itemId, dispatchId, plan.serialId]),
+          ...(ready
+            ? [header.itemId, plan.serialId]
+            : [header.itemId, dispatchId, buId, plan.serialId]),
         ),
       );
     }
@@ -665,7 +679,7 @@ async function submitOnce(
         dispatchId,
         buId,
         itemId: header.itemId,
-        header: { boxStart: header.boxStart, boxSize: header.boxSize },
+        header: { boxStart: header.boxStart, boxSize: header.boxSize, total: header.total },
         serialIds: plans.map((plan) => plan.serialId),
         firstSeq: input.chunkIndex * header.chunkSize,
         user: user.email,
@@ -680,6 +694,8 @@ async function submitOnce(
       `UPDATE warehouse_dispatches SET completed_at = CASE WHEN status <> 'pending' THEN ${CAS_FAIL_SQL} WHEN chunks_received + 1 = chunk_count THEN ? ELSE completed_at END, status = CASE WHEN chunks_received + 1 = chunk_count THEN 'done' ELSE status END, created_count = created_count + ?, chunks_received = chunks_received + 1 WHERE id = ?`,
     ).bind(now, created, dispatchId),
   );
+  // Pencatatan ready selesai: kardus pesanan yang tetap kosong (serial dilewati) dihapus.
+  if (ready) statements.push(dropEmptyBoxesStatement(env, dispatchId));
   // Penjualan selesai melepas serial ready dari stok dan menutup kardus yang kosong (no-op bila bukan `done`).
   if (!ready) statements.push(...releaseStatements(env, dispatchId));
   // Audit penyelesaian: bersyarat di SQL (status `done` dan belum tercatat), aman untuk potongan serentak.

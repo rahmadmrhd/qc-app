@@ -3,7 +3,7 @@ import type { Env } from '@server/core/env';
 import { appError } from '@server/core/errors';
 import { newId } from '@server/core/id';
 import { liveWhere } from '@server/core/soft-delete';
-import { assignBoxes } from '@shared/serial-warehouse';
+import { assignBoxes, WAREHOUSE_BOX_LIMITS } from '@shared/serial-warehouse';
 import { placeholders } from './repo';
 
 export const BOX_TAKEN_MESSAGE = 'Nomor kardus sudah dipakai';
@@ -16,11 +16,16 @@ interface OwnBoxRow {
   used: number | string;
 }
 
+/** Batas jumlah kardus yang dipesan sekaligus pada potongan pertama (menjaga ukuran satu batch). */
+const RESERVE_BOXES_MAX = 2000;
+
 /**
- * Pernyataan penulisan kardus ready untuk satu potongan: serial berurutan dibagi ke kardus bernomor naik. Kardus terakhir
- * milik pengeluaran ini yang belum penuh (potongan sebelumnya) dilanjutkan lebih dulu; kardus baru bernomor mulai
- * `max(boxStart, nomor tertinggi milik pengeluaran + 1)`. Nomor baru yang masih dipakai kardus terbuka lain (BU + Tipe
- * sama) = `VALIDATION` pada `boxStart`; indeks unik `warehouse_ready_boxes_open` menjaga balapan.
+ * Pernyataan penulisan kardus ready untuk satu potongan. Potongan pertama MEMESAN seluruh rentang nomor
+ * `boxStart .. boxStart + ceil(total / boxSize) - 1` sebagai kardus kosong milik pengeluaran ini (nomor yang masih
+ * dipakai kardus terbuka lain, BU + Tipe sama, = `VALIDATION` pada `boxStart`; indeks unik `warehouse_ready_boxes_open`
+ * menjaga balapan), sehingga potongan lanjutan hanya mengisi kardus yang sudah dipesan secara berurutan. Kardus pesanan
+ * yang tetap kosong dihapus saat pengeluaran selesai (`dropEmptyBoxesStatement`). Serial di luar pesanan (`total`
+ * terlampaui) mengisi kardus baru setelah nomor tertinggi pengeluaran ini.
  */
 export async function boxStatements(
   env: Env,
@@ -28,7 +33,7 @@ export async function boxStatements(
     dispatchId: string;
     buId: string;
     itemId: string;
-    header: { boxStart: number; boxSize: number };
+    header: { boxStart: number; boxSize: number; total: number };
     serialIds: string[];
     firstSeq: number;
     user: string;
@@ -36,10 +41,26 @@ export async function boxStatements(
   },
 ): Promise<DbStatement[]> {
   const { dispatchId, buId, itemId, header, serialIds, firstSeq, user, now } = input;
-  if (serialIds.length === 0) return [];
   await closeDeadBoxes(env, buId, itemId);
+  const statements: DbStatement[] = [];
+  const boxInsert = (id: string, number: number): DbStatement =>
+    env.DB.prepare(
+      "INSERT INTO warehouse_ready_boxes (id, bu_id, item_id, number, capacity, dispatch_id, closed_key, created_at, created_by) VALUES (?, ?, ?, ?, ?, ?, '', ?, ?)",
+    ).bind(id, buId, itemId, number, header.boxSize, dispatchId, now, user);
+  const assertFree = async (numbers: number[]): Promise<void> => {
+    if (numbers.length === 0) return;
+    const taken = await env.DB.prepare(
+      `SELECT number FROM warehouse_ready_boxes WHERE bu_id = ? AND item_id = ? AND closed_key = '' AND number IN (${placeholders(numbers.length)}) LIMIT 1`,
+    )
+      .bind(buId, itemId, ...numbers)
+      .first<{ number: number | string }>();
+    if (taken) {
+      throw appError('VALIDATION', BOX_TAKEN_MESSAGE, { boxStart: BOX_TAKEN_MESSAGE });
+    }
+  };
+
   const own = await env.DB.prepare(
-    'SELECT b.id, b.number, b.capacity, b.closed_key, (SELECT COUNT(*) FROM warehouse_ready_serials r WHERE r.box_id = b.id) AS used FROM warehouse_ready_boxes b WHERE b.dispatch_id = ? ORDER BY b.number',
+    "SELECT b.id, b.number, b.capacity, (SELECT COUNT(*) FROM warehouse_ready_serials r WHERE r.box_id = b.id) AS used FROM warehouse_ready_boxes b WHERE b.dispatch_id = ? AND b.closed_key = '' ORDER BY b.number",
   )
     .bind(dispatchId)
     .all<OwnBoxRow>();
@@ -47,56 +68,84 @@ export async function boxStatements(
     id: row.id.trim(),
     number: Number(row.number),
     capacity: Number(row.capacity),
-    open: row.closed_key.trim() === '',
     used: Number(row.used),
   }));
-  const last = boxes[boxes.length - 1];
-  const carry =
-    last && last.open && last.used < last.capacity
-      ? { number: last.number, used: last.used }
-      : undefined;
-  const startNumber = Math.max(header.boxStart, last ? last.number + 1 : 0);
-  const parts = assignBoxes({
-    startNumber,
-    size: header.boxSize,
-    ...(carry ? { carry } : {}),
-    count: serialIds.length,
-  });
-  const fresh = parts.filter((part) => !(carry && part.number === carry.number));
-  if (fresh.length > 0) {
-    const taken = await env.DB.prepare(
-      `SELECT number FROM warehouse_ready_boxes WHERE bu_id = ? AND item_id = ? AND closed_key = '' AND number IN (${placeholders(fresh.length)}) LIMIT 1`,
-    )
-      .bind(buId, itemId, ...fresh.map((part) => part.number))
-      .first<{ number: number | string }>();
-    if (taken) {
-      throw appError('VALIDATION', BOX_TAKEN_MESSAGE, { boxStart: BOX_TAKEN_MESSAGE });
+  if (boxes.length === 0) {
+    const count = Math.ceil(header.total / header.boxSize);
+    if (count > RESERVE_BOXES_MAX) {
+      throw appError('VALIDATION', 'Jumlah kardus terlalu banyak', {
+        total: 'Jumlah kardus terlalu banyak',
+      });
+    }
+    if (header.boxStart + count - 1 > WAREHOUSE_BOX_LIMITS.numberMax) {
+      throw appError('VALIDATION', 'Nomor kardus melebihi batas', {
+        boxStart: 'Nomor kardus melebihi batas',
+      });
+    }
+    const numbers = Array.from({ length: count }, (_, k) => header.boxStart + k);
+    await assertFree(numbers);
+    for (const number of numbers) {
+      const id = newId();
+      statements.push(boxInsert(id, number));
+      boxes.push({ id, number, capacity: header.boxSize, used: 0 });
     }
   }
-  const statements: DbStatement[] = [];
-  let cursor = 0;
-  for (const part of parts) {
-    let boxId: string;
-    if (carry && part.number === carry.number && last) {
-      boxId = last.id;
-    } else {
-      boxId = newId();
-      statements.push(
-        env.DB.prepare(
-          "INSERT INTO warehouse_ready_boxes (id, bu_id, item_id, number, capacity, dispatch_id, closed_key, created_at, created_by) VALUES (?, ?, ?, ?, ?, ?, '', ?, ?)",
-        ).bind(boxId, buId, itemId, part.number, header.boxSize, dispatchId, now, user),
-      );
+
+  // Isi kardus pesanan berurutan; sisanya (di luar pesanan) menjadi kardus baru setelah yang tertinggi.
+  const placements: { boxId: string; take: number }[] = [];
+  let left = serialIds.length;
+  for (const box of boxes) {
+    if (left === 0) break;
+    const take = Math.min(left, box.capacity - box.used);
+    if (take > 0) {
+      placements.push({ boxId: box.id, take });
+      left -= take;
     }
-    for (let k = 0; k < part.take; k += 1) {
+  }
+  if (left > 0) {
+    const top = boxes[boxes.length - 1]?.number ?? header.boxStart - 1;
+    const extra = assignBoxes({ startNumber: top + 1, size: header.boxSize, count: left });
+    await assertFree(extra.map((part) => part.number));
+    for (const part of extra) {
+      const id = newId();
+      statements.push(boxInsert(id, part.number));
+      placements.push({ boxId: id, take: part.take });
+    }
+  }
+  let cursor = 0;
+  for (const placement of placements) {
+    for (let k = 0; k < placement.take; k += 1) {
       statements.push(
         env.DB.prepare(
           "INSERT INTO warehouse_ready_serials (serial_id, box_id, dispatch_id, seq, released_dispatch_id) VALUES (?, ?, ?, ?, '')",
-        ).bind(serialIds[cursor], boxId, dispatchId, firstSeq + cursor),
+        ).bind(serialIds[cursor], placement.boxId, dispatchId, firstSeq + cursor),
       );
       cursor += 1;
     }
   }
   return statements;
+}
+
+/** Menghapus kardus pesanan yang tetap kosong begitu pengeluaran ready berstatus `done` (nomornya bebas dan tak tampil). */
+export function dropEmptyBoxesStatement(env: Env, dispatchId: string): DbStatement {
+  return env.DB.prepare(
+    "DELETE FROM warehouse_ready_boxes WHERE dispatch_id = ? AND NOT EXISTS (SELECT 1 FROM warehouse_ready_serials r WHERE r.box_id = warehouse_ready_boxes.id) AND EXISTS (SELECT 1 FROM warehouse_dispatches WHERE id = ? AND status = 'done')",
+  ).bind(dispatchId, dispatchId);
+}
+
+/** Serial (dari `serialIds`) yang ada di stok ready BU LAIN daripada `buId` (belum dilepas). */
+export async function readyInOtherBu(
+  env: Env,
+  serialIds: string[],
+  buId: string,
+): Promise<Set<string>> {
+  if (serialIds.length === 0) return new Set();
+  const rows = await env.DB.prepare(
+    `SELECT DISTINCT rr.serial_id FROM warehouse_ready_serials rr JOIN warehouse_ready_boxes rb ON rb.id = rr.box_id WHERE rr.released_dispatch_id = '' AND rb.bu_id <> ? AND rr.serial_id IN (${placeholders(serialIds.length)})`,
+  )
+    .bind(buId, ...serialIds)
+    .all<{ serial_id: string }>();
+  return new Set(rows.results.map((row) => row.serial_id.trim()));
 }
 
 /**
