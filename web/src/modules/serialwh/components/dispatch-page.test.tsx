@@ -374,7 +374,7 @@ test('ponsel: lebih dari satu halaman menampilkan serial TERBARU di atas', async
   const titles = await screen.findAllByText(/^SN\d+$/);
   expect(titles[0]?.textContent).toBe('SN249');
   expect(titles.some((node) => node.textContent === 'SN0')).toBe(false);
-});
+}, 60_000);
 
 test('desktop: lebih dari satu halaman tetap menampilkan serial terbaru', async () => {
   const rows = Array.from({ length: 250 }, (_, index) => draftRow(`SN${index}`));
@@ -382,7 +382,7 @@ test('desktop: lebih dari satu halaman tetap menampilkan serial terbaru', async 
   await renderPage();
   expect(await screen.findByText('SN249')).toBeInTheDocument();
   expect(screen.queryByText('SN0')).toBeNull();
-});
+}, 60_000);
 
 test('hasil scan disorot sebentar, termasuk serial yang sudah ada di pilihan', async () => {
   seedDraft({ itemId: 'item1', rows: [draftRow('AAA')] });

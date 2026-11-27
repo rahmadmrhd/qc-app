@@ -181,6 +181,14 @@ const AUDIT_FIELD_LABELS: Record<string, string> = {
   recipientCount: 'Jumlah penerima',
   recipientsMark: 'Daftar penerima',
   linkDays: 'Masa berlaku tautan',
+  dispatchId: 'Pengeluaran',
+  dispatchedOn: 'Tanggal keluar',
+  itemId: 'Tipe',
+  serialTotal: 'Jumlah serial',
+  serialCount: 'Serial Number masuk',
+  createdCount: 'Serial baru',
+  skippedCount: 'Serial dilewati',
+  newOrder: 'SO baru',
 };
 
 export function auditFieldLabel(key: string): string {

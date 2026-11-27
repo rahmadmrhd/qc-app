@@ -330,6 +330,7 @@ function ConfirmBody({
               onChange={setCustomerName}
               customers={options?.customers ?? []}
               inactiveNames={options?.inactiveCustomerNames ?? []}
+              savedAs="pengeluaran"
             />
             {touched && errors.customer ? (
               <p role="alert" className="text-xs text-destructive-text">
