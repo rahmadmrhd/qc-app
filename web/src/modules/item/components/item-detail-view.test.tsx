@@ -24,6 +24,7 @@ const item: ItemDto = {
   firmware: '',
   proofRequired: false,
   proofMin: 1,
+  boxSize: 0,
   status: 'active',
   aliases: ['AirFiber 5XHD', 'AF-5XHD'],
   imageCount: 2,

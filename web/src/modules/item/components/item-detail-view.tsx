@@ -131,6 +131,7 @@ export function ItemDetailView({
               label: 'Wajib foto bukti',
               value: item.proofRequired ? `Ya (min ${item.proofMin})` : 'Tidak',
             },
+            { label: 'Pcs per kardus', value: String(item.boxSize), hidden: item.boxSize <= 0 },
           ]}
         />
       </ViewSection>

@@ -160,6 +160,7 @@ test('mengirim brandId, businessUnitIds, dan nilai lengkap lainnya', async () =>
       firmware: '',
       proofRequired: false,
       proofMin: 1,
+      boxSize: 0,
       aliasesText: 'ES24\nAirSwitch',
       stickerPhotos: [],
       accessories: [{ name: 'Kabel daya', qty: 1 }],
