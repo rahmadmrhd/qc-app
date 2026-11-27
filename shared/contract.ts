@@ -1990,6 +1990,32 @@ export interface RevertClFileInput {
   message?: string;
 }
 
+/** Membuka sesi unggah biner bertahap (peran `router` saja). */
+export interface StartClUploadInput {
+  path: string;
+  role: 'router';
+  size: number;
+  /** 64 heksadesimal huruf kecil. */
+  sha256: string;
+}
+
+export interface ClUploadSessionDto {
+  uploadId: string;
+  /** Ukuran potongan yang harus dikirim klien (potongan terakhir boleh lebih kecil). */
+  chunkBytes: number;
+}
+
+/** `idx` ikut jalur URL (`/chunks/{idx}`), jadi berupa teks angka. */
+export interface ChunkClUploadInput {
+  id: string;
+  idx: string;
+  bytes: Uint8Array;
+}
+
+export interface FinishClUploadInput {
+  id: string;
+}
+
 export interface ApiContract {
   'auth.me': { input: null; output: MeDto };
   'access.users.list': { input: ListUsersInput | null; output: UserDto[] };
@@ -2308,6 +2334,9 @@ export interface ApiContract {
   'clFiles.history': { input: ListClFileHistoryInput; output: ClRevisionDto[] };
   'clFiles.revision': { input: GetClRevisionInput; output: ClRevisionDetailDto };
   'clFiles.revert': { input: RevertClFileInput; output: ClFileDetailDto };
+  'clUploads.start': { input: StartClUploadInput; output: ClUploadSessionDto };
+  'clUploads.chunk': { input: ChunkClUploadInput; output: { received: number } };
+  'clUploads.finish': { input: FinishClUploadInput; output: ClFileDto };
 }
 
 export type ApiId = keyof ApiContract;

@@ -855,6 +855,19 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
   'clFiles.history': { verb: 'GET', path: '/countrylock/files/{id}/history' },
   'clFiles.revision': { verb: 'GET', path: '/countrylock/files/{id}/revisions/{seq}' },
   'clFiles.revert': { verb: 'POST', path: '/countrylock/files/{id}/revert', etag: 'updatedAt' },
+  'clUploads.start': { verb: 'POST', path: '/countrylock/uploads', status: 201 },
+  'clUploads.chunk': {
+    verb: 'PUT',
+    path: '/countrylock/uploads/{id}/chunks/{idx}',
+    binary: 'request',
+    rawBody: {
+      field: 'bytes',
+      contentType: 'application/octet-stream',
+      maxBytes: 4_195_328, // = CL_CHUNK_BYTES + 1024 (shared/countrylock-bundle.ts)
+      tooLarge: 'Potongan unggahan maksimal 4 MB',
+    },
+  },
+  'clUploads.finish': { verb: 'POST', path: '/countrylock/uploads/{id}/finish' },
 };
 
 export interface RequestParts {

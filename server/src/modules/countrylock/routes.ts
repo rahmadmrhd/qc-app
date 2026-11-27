@@ -10,6 +10,14 @@ import {
   saveClFile,
 } from './files-service';
 import {
+  finishClUpload,
+  putClUploadChunk,
+  startClUpload,
+  validateChunkClUpload,
+  validateFinishClUpload,
+  validateStartClUpload,
+} from './upload-service';
+import {
   validateGetClFile,
   validateGetClRevision,
   validateRevertClFile,
@@ -23,7 +31,10 @@ type CountryLockMethod =
   | 'clFiles.remove'
   | 'clFiles.history'
   | 'clFiles.revision'
-  | 'clFiles.revert';
+  | 'clFiles.revert'
+  | 'clUploads.start'
+  | 'clUploads.chunk'
+  | 'clUploads.finish';
 
 /**
  * Country Lock admin (draf bundel). Modul izin global `countrylock`: `view` = memakai Country Lock desktop (tidak membuka
@@ -65,6 +76,21 @@ export function countryLockRoutes(): Pick<RouteTable, CountryLockMethod> {
       permission: { module: 'countrylock', level: 'edit' },
       validate: validateRevertClFile,
       handler: (input, ctx) => revertClFile(ctx.env, input, ctx.user),
+    },
+    'clUploads.start': {
+      permission: { module: 'countrylock', level: 'edit' },
+      validate: validateStartClUpload,
+      handler: (input, ctx) => startClUpload(ctx.env, input, ctx.user),
+    },
+    'clUploads.chunk': {
+      permission: { module: 'countrylock', level: 'edit' },
+      validate: validateChunkClUpload,
+      handler: (input, ctx) => putClUploadChunk(ctx.env, input, ctx.user),
+    },
+    'clUploads.finish': {
+      permission: { module: 'countrylock', level: 'edit' },
+      validate: validateFinishClUpload,
+      handler: (input, ctx) => finishClUpload(ctx.env, input, ctx.user),
     },
   };
 }

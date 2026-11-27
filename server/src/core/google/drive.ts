@@ -6,6 +6,7 @@ import type {
   DriveDownload,
   DriveFolderEntry,
   DriveFolderPage,
+  DriveRange,
   DriveStorageQuota,
   DriveUploadResult,
 } from '@server/core/bridge-client';
@@ -643,14 +644,31 @@ export function createDriveApi(
       };
     },
 
-    async downloadFile(fileId, folderId): Promise<DriveDownload | null> {
+    async downloadFile(fileId, folderId, range?: DriveRange): Promise<DriveDownload | null> {
       if (!isDriveId(fileId)) return null;
       const meta = await metaInFolder('downloadFile', fileId, folderId);
       if (meta === null) return null;
+      const total = Number(meta.size ?? 0);
+      let served: DriveRange | undefined;
+      if (range !== undefined) {
+        if (
+          !Number.isSafeInteger(range.start) ||
+          !Number.isSafeInteger(range.end) ||
+          range.start < 0 ||
+          range.end < range.start ||
+          range.start >= total
+        ) {
+          validation('Rentang byte tidak valid');
+        }
+        served = { start: range.start, end: Math.min(range.end, total - 1) };
+      }
       const response = await http.request({
         op: 'downloadFile',
         method: 'GET',
         url: `${DRIVE}/files/${path(fileId)}?alt=media`,
+        ...(served === undefined
+          ? {}
+          : { headers: { range: `bytes=${served.start}-${served.end}` } }),
         idempotent: true,
         timeoutMs: CHUNK_TIMEOUT_MS,
         // Installer ~100 MB di jaringan lambat butuh > 120 dtk: batas hanya sampai header, bukan seluruh badan.
@@ -660,7 +678,10 @@ export function createDriveApi(
       if (!response.ok) return failResponse('downloadFile', response);
       return {
         mime: meta.mimeType,
-        size: Number(meta.size ?? response.headers.get('content-length') ?? 0),
+        size: Number(
+          meta.size ?? (served === undefined ? response.headers.get('content-length') : 0) ?? 0,
+        ),
+        ...(served === undefined ? {} : { range: served }),
         body: (response.body ??
           new ReadableStream({
             start: (controller) => controller.close(),

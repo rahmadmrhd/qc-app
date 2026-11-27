@@ -90,3 +90,62 @@ describe('clFiles.*', () => {
     expect(staleBase.status).toBe(409);
   });
 });
+
+describe('clUploads.*', () => {
+  const sha = async (bytes: Uint8Array) =>
+    [...new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))]
+      .map((b) => b.toString(16).padStart(2, '0'))
+      .join('');
+
+  test('countrylock: view ditolak FORBIDDEN pada semua rute clUploads', async () => {
+    const inputs: Array<[string, unknown]> = [
+      ['clUploads.start', { path: 'a.bin', role: 'router', size: 1, sha256: 'a'.repeat(64) }],
+      ['clUploads.chunk', { id: 'x', idx: '0', bytes: new Uint8Array([1]) }],
+      ['clUploads.finish', { id: 'x' }],
+    ];
+    for (const [id, input] of inputs) {
+      const result = await call(VIEWER, id, input);
+      expect(result.ok, id).toBe(false);
+      expect(result.error?.code, id).toBe('FORBIDDEN');
+    }
+  });
+
+  test('edit boleh: mulai, kirim potongan, selesai lewat kabel REST', async () => {
+    const bytes = new Uint8Array([1, 2, 3, 4, 5]);
+    const started = await call(EDITOR, 'clUploads.start', {
+      path: 'mikrotik/os.npk',
+      role: 'router',
+      size: bytes.length,
+      sha256: await sha(bytes),
+    });
+    expect(started.ok).toBe(true);
+    expect(started.data.chunkBytes).toBe(4 * 1024 * 1024);
+    const sent = await call(EDITOR, 'clUploads.chunk', {
+      id: started.data.uploadId,
+      idx: '0',
+      bytes,
+    });
+    expect(sent.data).toEqual({ received: 1 });
+    const done = await call(EDITOR, 'clUploads.finish', { id: started.data.uploadId });
+    expect(done.ok).toBe(true);
+    expect(done.data).toMatchObject({
+      path: 'mikrotik/os.npk',
+      kind: 'binary',
+      headRev: 1,
+      size: 5,
+    });
+    // sesi milik pengguna lain tidak terlihat
+    const other = await call(MANAGER, 'clUploads.finish', { id: started.data.uploadId });
+    expect(other.error?.code).toBe('NOT_FOUND');
+  });
+
+  test('potongan lebih besar dari batas = 413 di kabel', async () => {
+    const rest = restClient(env);
+    const response = await rest.put('/countrylock/uploads/x/chunks/0', {
+      email: EDITOR,
+      raw: new Uint8Array(4 * 1024 * 1024 + 2048),
+      headers: { 'content-type': 'application/octet-stream' },
+    });
+    expect(response.status).toBe(413);
+  });
+});

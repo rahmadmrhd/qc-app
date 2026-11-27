@@ -1,3 +1,4 @@
+import { DbError } from '@server/core/db';
 import type { Env } from '@server/core/env';
 import { nowIso } from '@server/core/env';
 import { newId } from '@server/core/id';
@@ -31,6 +32,20 @@ const INITIAL_FIRMWARES: readonly {
 ];
 
 /**
+ * `INSERT ... SELECT ... WHERE NOT EXISTS` memegang kunci celah pada indeks unik, jadi dua proses yang start serentak
+ * dapat saling menunggu (deadlock, galat 1213). Korban deadlock dicoba lagi: percobaan berikutnya melihat baris pemenang.
+ */
+async function retryDeadlock<T>(run: () => Promise<T>): Promise<T> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await run();
+    } catch (error) {
+      if (!(error instanceof DbError) || error.kind !== 'deadlock' || attempt >= 5) throw error;
+    }
+  }
+}
+
+/**
  * Mengisi `cl_firmwares` dengan firmware awal. Idempoten dan aman dijalankan serentak: sebuah `(brand, code)` hanya
  * dimasukkan bila belum ada baris SAMA SEKALI, hidup maupun sudah dihapus admin (firmware yang sengaja dihapus tidak
  * dihidupkan lagi saat start berikutnya); bentrokan serentak di indeks `cl_firmwares_code_live` diabaikan
@@ -44,24 +59,26 @@ export async function seedCountryLockFirmwares(env: Env): Promise<{ inserted: nu
   for (const firmware of INITIAL_FIRMWARES) {
     const sort = (perBrand[firmware.brand] ?? 0) + 10;
     perBrand[firmware.brand] = sort;
-    const result = await env.DB.prepare(
-      `INSERT INTO cl_firmwares (id, brand, code, label, script_path, parallel, sort, removed_at, created_at, updated_at)
+    const result = await retryDeadlock(() =>
+      env.DB.prepare(
+        `INSERT INTO cl_firmwares (id, brand, code, label, script_path, parallel, sort, removed_at, created_at, updated_at)
        SELECT ?, ?, ?, ?, NULL, 0, ?, '', ?, ? FROM DUAL
        WHERE NOT EXISTS (SELECT 1 FROM cl_firmwares WHERE brand = ? AND code = ?)
        ON DUPLICATE KEY UPDATE id = id`,
-    )
-      .bind(
-        newId(),
-        firmware.brand,
-        firmware.code,
-        firmware.label,
-        sort,
-        now,
-        now,
-        firmware.brand,
-        firmware.code,
       )
-      .run();
+        .bind(
+          newId(),
+          firmware.brand,
+          firmware.code,
+          firmware.label,
+          sort,
+          now,
+          now,
+          firmware.brand,
+          firmware.code,
+        )
+        .run(),
+    );
     inserted += result.meta.changes > 0 ? 1 : 0;
   }
   return { inserted };

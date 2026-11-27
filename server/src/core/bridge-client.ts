@@ -50,9 +50,18 @@ export interface DriveUploadResult {
   md5Checksum: string;
 }
 
+/** Rentang byte (indeks mulai dan akhir, KEDUANYA termasuk, seperti header `Range: bytes=a-b`). */
+export interface DriveRange {
+  start: number;
+  end: number;
+}
+
 export interface DriveDownload {
   mime: string;
+  /** Ukuran SELURUH berkas (bukan hanya rentang yang dialirkan). */
   size: number;
+  /** Rentang yang benar-benar dialirkan bila diminta `range` (akhir sudah dijepit ke ukuran berkas). */
+  range?: DriveRange;
   body: ReadableStream<Uint8Array>;
 }
 
@@ -84,8 +93,11 @@ export interface BridgeClient {
   ): Promise<DriveUploadResult>;
   /** `null` bila tak ada atau tak terbaca. Berkas yang bukan anak `folderId` = galat akses (bukan `null`). */
   readFile(fileId: string, folderId: string): Promise<BridgeFile | null>;
-  /** Seperti `readFile` tetapi mengalirkan isi (cadangan besar); `null` bila tak ada. */
-  downloadFile(fileId: string, folderId: string): Promise<DriveDownload | null>;
+  /**
+   * Seperti `readFile` tetapi mengalirkan isi (cadangan besar); `null` bila tak ada. `range` (header `Range` ke Drive)
+   * mengalirkan hanya byte itu; rentang di luar ukuran berkas = galat (pemanggil memeriksa ukuran lebih dulu).
+   */
+  downloadFile(fileId: string, folderId: string, range?: DriveRange): Promise<DriveDownload | null>;
   /** `null` bila tak ada, tak terbaca, atau di tempat sampah. Bukan anak `folderId` = galat akses. */
   fileInfo(fileId: string, folderId: string): Promise<BridgeFileInfo | null>;
   folderExists(folderId: string): Promise<boolean>;

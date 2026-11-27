@@ -435,6 +435,26 @@ export function createFakeGoogle(options: {
       if (!file) return googleError(404, 'notFound', 'File not found');
       if (method === 'GET') {
         if (url.searchParams.get('alt') === 'media') {
+          const rangeHeader = /^bytes=(\d+)-(\d*)$/.exec(request.headers.get('range') ?? '');
+          if (rangeHeader) {
+            const start = Number(rangeHeader[1]);
+            const end = Math.min(
+              rangeHeader[2] === '' ? file.bytes.length - 1 : Number(rangeHeader[2]),
+              file.bytes.length - 1,
+            );
+            if (start >= file.bytes.length) {
+              return googleError(416, 'requestedRangeNotSatisfiable');
+            }
+            const part = file.bytes.slice(start, end + 1);
+            return new Response(part as unknown as ArrayBuffer, {
+              status: 206,
+              headers: {
+                'content-type': file.mimeType,
+                'content-length': String(part.length),
+                'content-range': `bytes ${start}-${end}/${file.bytes.length}`,
+              },
+            });
+          }
           return new Response(file.bytes as unknown as ArrayBuffer, {
             status: 200,
             headers: { 'content-type': file.mimeType, 'content-length': String(file.bytes.length) },

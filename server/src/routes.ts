@@ -266,6 +266,9 @@ export const ALL_API_IDS: Record<ApiId, true> = {
   'clFiles.history': true,
   'clFiles.revision': true,
   'clFiles.revert': true,
+  'clUploads.start': true,
+  'clUploads.chunk': true,
+  'clUploads.finish': true,
 };
 
 /**

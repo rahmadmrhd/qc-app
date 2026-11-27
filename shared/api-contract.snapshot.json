@@ -398,6 +398,28 @@
     "ifMatch": "expectedUpdatedAt"
   },
   {
+    "id": "clUploads.chunk",
+    "verb": "PUT",
+    "path": "/countrylock/uploads/{id}/chunks/{idx}",
+    "status": 200,
+    "rawBody": {
+      "field": "bytes",
+      "contentType": "application/octet-stream"
+    }
+  },
+  {
+    "id": "clUploads.finish",
+    "verb": "POST",
+    "path": "/countrylock/uploads/{id}/finish",
+    "status": 200
+  },
+  {
+    "id": "clUploads.start",
+    "verb": "POST",
+    "path": "/countrylock/uploads",
+    "status": 201
+  },
+  {
     "id": "customers.get",
     "verb": "GET",
     "path": "/customers/{id}",

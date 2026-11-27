@@ -16,6 +16,7 @@ import {
   toRequestParts,
 } from './api';
 import type { ApiId, ApiInput } from './contract';
+import { CL_CHUNK_BYTES } from './countrylock-bundle';
 import { MAX_IMAGE_BYTES } from './files';
 import { POSTEL_LIMITS } from './postel';
 import { QR_LIMITS } from './qrcode';
@@ -636,6 +637,9 @@ const EXAMPLES: { [M in ApiId]: ApiInput<M> } = {
   'clFiles.history': { id: 'f1' },
   'clFiles.revision': { id: 'f1', seq: '2' },
   'clFiles.revert': { id: 'f1', seq: 1, message: 'balik' },
+  'clUploads.start': { path: 'mikrotik/os.npk', role: 'router', size: 10, sha256: 'a'.repeat(64) },
+  'clUploads.chunk': { id: 'u1', idx: '0', bytes: new Uint8Array([1, 2, 3]) },
+  'clUploads.finish': { id: 'u1' },
 };
 
 const ROUNDTRIP_IDS = IDS;
@@ -1023,6 +1027,7 @@ describe('rute biner', () => {
   test('batas ukuran tiap rute memakai konstanta yang ada (tidak dinaikkan)', () => {
     expect(API_ROUTES['files.upload'].rawBody?.maxBytes).toBe(MAX_IMAGE_BYTES);
     expect(API_ROUTES['serialProofs.upload'].rawBody?.maxBytes).toBe(MAX_IMAGE_BYTES);
+    expect(API_ROUTES['clUploads.chunk'].rawBody?.maxBytes).toBe(CL_CHUNK_BYTES + 1024);
     expect(API_ROUTES['postelFiles.upload'].rawBody?.maxBytes).toBe(
       POSTEL_LIMITS.attachmentMaxBytes,
     );

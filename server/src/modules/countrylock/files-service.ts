@@ -66,6 +66,13 @@ function toRevisionDto(revision: ClRevisionRecord): ClRevisionDto {
   };
 }
 
+/** Ringkasan berkas (tanpa isi teks) menurut id, juga yang terhapus; tak ada = `NOT_FOUND`. */
+export async function loadClFileDto(env: Env, id: string): Promise<ClFileDto> {
+  const head = await getFileHead(env.DB, id);
+  if (head === null) throw appError('NOT_FOUND', NOT_FOUND_MESSAGE);
+  return toFileDto(head);
+}
+
 /** Isi teks sebuah revisi terbaru berkas dibaca ulang dari basis data agar DTO selalu sama dengan yang tersimpan. */
 async function loadDetail(env: Env, id: string): Promise<ClFileDetailDto> {
   const head = await getFileHead(env.DB, id);
