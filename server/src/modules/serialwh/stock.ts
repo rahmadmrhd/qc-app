@@ -1,0 +1,220 @@
+import type { Env } from '@server/core/env';
+import { appError } from '@server/core/errors';
+import { liveWhere } from '@server/core/soft-delete';
+import type { UserContext } from '@server/modules/access/context';
+import { escapeLike } from '@server/modules/serial/repo';
+import type {
+  ListReadyStockInput,
+  ReadyStockBoxDto,
+  ReadyStockPageDto,
+  ReadyStockSerialDto,
+} from '@shared/contract';
+import { boxKindOf, pickByOrder } from '@shared/serial-warehouse';
+import { whBuIds } from './access';
+import { placeholders } from './repo';
+import { READY_STOCK_LIMITS } from './stock-validate';
+
+/** Serial yang sedang ada di pengeluaran Penjualan yang belum selesai. */
+const PROCESSING_SQL =
+  "EXISTS (SELECT 1 FROM warehouse_dispatch_serials wds JOIN warehouse_dispatches pd ON pd.id = wds.dispatch_id WHERE wds.serial_id = rs.serial_id AND pd.kind = 'order' AND pd.status = 'pending')";
+
+interface Filters {
+  buIds: string[];
+  itemIds?: string[];
+  query: string;
+}
+
+interface BoxRow {
+  id: string;
+  number: number | string;
+  capacity: number | string;
+  remaining: number | string;
+}
+
+interface SerialRow {
+  serial_id: string;
+  box_id: string;
+  serial: string;
+  recorded_on: string;
+  processing: number | string;
+}
+
+interface BoxMeta {
+  id: string;
+  number: number;
+  capacity: number;
+  remaining: number;
+  kind: 'full' | 'loose';
+}
+
+/** Kursor halaman: `<bagian>|<nomor>|<id>` (bagian 0 = penuh, 1 = ecer). */
+const encodeCursor = (box: BoxMeta): string =>
+  `${box.kind === 'full' ? 0 : 1}|${box.number}|${box.id}`;
+
+function decodeCursor(raw: string): { part: number; number: number; id: string } {
+  const match = /^([01])\|(\d{1,9})\|(.+)$/.exec(raw);
+  if (!match?.[1] || !match[2] || !match[3]) throw appError('VALIDATION', 'Kursor tidak valid');
+  return { part: Number(match[1]), number: Number(match[2]), id: match[3] };
+}
+
+/**
+ * SQL dasar stok: serial di kardus, belum dilepas, pencatatan readynya selesai, dan serial hidup. Syarat BU, Tipe, dan
+ * pencarian ada di tingkat kardus (pencarian menampilkan seluruh kardus yang cocok, bukan hanya serial yang cocok).
+ */
+function stockSql(
+  select: string,
+  filters: Filters,
+  tail: string,
+): { sql: string; binds: unknown[] } {
+  const where = [
+    "rs.released_dispatch_id = ''",
+    "rd.status = 'done'",
+    `b.bu_id IN (${placeholders(filters.buIds.length)})`,
+  ];
+  const binds: unknown[] = [...filters.buIds];
+  if (filters.itemIds) {
+    where.push(`b.item_id IN (${placeholders(filters.itemIds.length)})`);
+    binds.push(...filters.itemIds);
+  }
+  if (filters.query !== '') {
+    const like = `%${escapeLike(filters.query.toLowerCase())}%`;
+    const asNumber = /^\d{1,9}$/.test(filters.query) ? Number(filters.query) : -1;
+    where.push(
+      `(b.number = ? OR b.id IN (SELECT q.box_id FROM warehouse_ready_serials q JOIN serials qs ON qs.id = q.serial_id WHERE q.released_dispatch_id = '' AND ${liveWhere('qs')} AND LOWER(qs.serial) LIKE ? ESCAPE '!'))`,
+    );
+    binds.push(asNumber, like);
+  }
+  const sql = `SELECT ${select} FROM warehouse_ready_boxes b JOIN warehouse_ready_serials rs ON rs.box_id = b.id JOIN serials s ON s.id = rs.serial_id JOIN warehouse_dispatches rd ON rd.id = rs.dispatch_id WHERE ${liveWhere('s')} AND ${where.join(' AND ')} ${tail}`;
+  return { sql, binds };
+}
+
+/**
+ * Stok Ready per kardus pada BU ber-`serialwh: view` (irisan dengan `buIds`). Kardus penuh dulu (nomor naik), lalu ecer;
+ * paginasi menurut kardus. `totals` dan `picked` dihitung atas SELURUH hasil terfilter, bukan hanya halaman ini.
+ */
+export async function listReadyStock(
+  env: Env,
+  user: UserContext,
+  input: ListReadyStockInput,
+): Promise<ReadyStockPageDto> {
+  const readable = whBuIds(user, 'view');
+  const buIds = input.buIds ? readable.filter((id) => input.buIds?.includes(id)) : readable;
+  const empty: ReadyStockPageDto = {
+    boxes: [],
+    nextCursor: null,
+    totals: { units: 0, fullBoxes: 0, looseBoxes: 0, maxBoxNumber: 0 },
+    ...(input.pickCount !== undefined ? { picked: [] } : {}),
+  };
+  if (buIds.length === 0) return empty;
+  const filters: Filters = {
+    buIds,
+    ...(input.itemIds ? { itemIds: input.itemIds } : {}),
+    query: (input.query ?? '').trim(),
+  };
+  const cursor = input.cursor === undefined ? null : decodeCursor(input.cursor);
+  const limit = input.limit ?? READY_STOCK_LIMITS.listDefault;
+
+  const boxQuery = stockSql(
+    'b.id, b.number, b.capacity, COUNT(*) AS remaining',
+    filters,
+    'GROUP BY b.id, b.number, b.capacity',
+  );
+  const boxRows = await env.DB.prepare(boxQuery.sql)
+    .bind(...boxQuery.binds)
+    .all<BoxRow>();
+  const metas: BoxMeta[] = boxRows.results.map((row) => {
+    const remaining = Number(row.remaining);
+    const capacity = Number(row.capacity);
+    return {
+      id: row.id,
+      number: Number(row.number),
+      capacity,
+      remaining,
+      kind: boxKindOf(remaining, capacity),
+    };
+  });
+  const partOf = (box: BoxMeta): number => (box.kind === 'full' ? 0 : 1);
+  metas.sort((a, b) => partOf(a) - partOf(b) || a.number - b.number || (a.id < b.id ? -1 : 1));
+  if (metas.length === 0) return empty;
+
+  const totals = {
+    units: metas.reduce((sum, box) => sum + box.remaining, 0),
+    fullBoxes: metas.filter((box) => box.kind === 'full').length,
+    looseBoxes: metas.filter((box) => box.kind === 'loose').length,
+    maxBoxNumber: metas.reduce((max, box) => Math.max(max, box.number), 0),
+  };
+
+  const start = cursor
+    ? metas.findIndex(
+        (box) =>
+          partOf(box) > cursor.part ||
+          (partOf(box) === cursor.part &&
+            (box.number > cursor.number || (box.number === cursor.number && box.id > cursor.id))),
+      )
+    : 0;
+  const pageMetas = start < 0 ? [] : metas.slice(start, start + limit);
+  const hasMore = start >= 0 && start + limit < metas.length;
+  const last = pageMetas[pageMetas.length - 1];
+
+  const boxes = new Map<string, ReadyStockBoxDto>(
+    pageMetas.map((meta) => [meta.id, { ...meta, serials: [] }]),
+  );
+  if (pageMetas.length > 0) {
+    const serialQuery = stockSql(
+      `rs.serial_id, rs.box_id, s.serial, rd.dispatched_on AS recorded_on, ${PROCESSING_SQL} AS processing`,
+      filters,
+      `AND b.id IN (${placeholders(pageMetas.length)}) ORDER BY rs.box_id, rs.seq`,
+    );
+    const serialRows = await env.DB.prepare(serialQuery.sql)
+      .bind(...serialQuery.binds, ...pageMetas.map((meta) => meta.id))
+      .all<SerialRow>();
+    for (const row of serialRows.results) {
+      const box = boxes.get(row.box_id);
+      if (!box) continue;
+      const serial: ReadyStockSerialDto = {
+        id: row.serial_id,
+        serial: row.serial,
+        boxId: box.id,
+        boxNumber: box.number,
+        capacity: box.capacity,
+        recordedOn: row.recorded_on,
+        processing: Number(row.processing) > 0,
+      };
+      box.serials.push(serial);
+    }
+  }
+
+  let picked: string[] | undefined;
+  if (input.pickCount !== undefined) {
+    const pickQuery = stockSql(
+      'rs.box_id, rs.serial_id',
+      filters,
+      `AND NOT ${PROCESSING_SQL} ORDER BY rs.box_id, rs.seq`,
+    );
+    const pickRows = await env.DB.prepare(pickQuery.sql)
+      .bind(...pickQuery.binds)
+      .all<{ box_id: string; serial_id: string }>();
+    const idsByBox = new Map<string, string[]>();
+    for (const row of pickRows.results) {
+      const list = idsByBox.get(row.box_id);
+      if (list) list.push(row.serial_id);
+      else idsByBox.set(row.box_id, [row.serial_id]);
+    }
+    picked = pickByOrder(
+      metas.map((meta) => ({
+        id: meta.id,
+        number: meta.number,
+        kind: meta.kind,
+        serialIds: idsByBox.get(meta.id) ?? [],
+      })),
+      input.pickCount,
+    );
+  }
+
+  return {
+    boxes: pageMetas.map((meta) => boxes.get(meta.id) as ReadyStockBoxDto),
+    nextCursor: hasMore && last ? encodeCursor(last) : null,
+    totals,
+    ...(picked ? { picked } : {}),
+  };
+}

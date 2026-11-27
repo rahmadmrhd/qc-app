@@ -12,6 +12,8 @@ import {
 } from './orders';
 import { getWarehouseReady, listWarehouseReady } from './ready';
 import { warehouseLookup, warehouseSerials } from './scan';
+import { listReadyStock } from './stock';
+import { validateListReadyStock } from './stock-validate';
 import { submitWarehouseChunk } from './submit';
 import {
   validateWarehouseCopyText,
@@ -51,7 +53,8 @@ type WarehouseMethod =
   | 'serialWarehouse.readyList'
   | 'serialWarehouse.ready'
   | 'serialWarehouse.dispatchList'
-  | 'serialWarehouse.dispatchGet';
+  | 'serialWarehouse.dispatchGet'
+  | 'serialWarehouse.readyStock';
 
 const EDIT = { module: 'serialwh', level: 'edit' } as const;
 const VIEW = { module: 'serialwh', level: 'view' } as const;
@@ -146,6 +149,11 @@ export function serialwhRoutes(): Pick<RouteTable, WarehouseMethod> {
       permission: VIEW,
       validate: validateWarehouseGetDispatch,
       handler: (input, ctx) => getWarehouseDispatch(ctx.env, ctx.user, input),
+    },
+    'serialWarehouse.readyStock': {
+      permission: VIEW,
+      validate: validateListReadyStock,
+      handler: (input, ctx) => listReadyStock(ctx.env, ctx.user, input),
     },
   };
 }
