@@ -90,12 +90,14 @@ Tujuan: **aplikasi desktop "QC App"** yang UI-nya adalah web QC yang sama, denga
 
 ## 4. Paket konfigurasi
 
+> **Keputusan pemilik 2026-11-28** (disetujui pemilik produk; tanggal absolut 2026-11-28; alasan: server dibangun sebagai sumber tunggal dan aplikasi desktop tidak lagi membawa folder paket). Mengubah §4.1, §4.2, §4.3, §5, §5.1, dan §9 di bawah: **(1) server menjadi sumber tunggal** script, firmware, berkas router, dokumen pengaturan, dan konfigurasi router; desktop hanya menyalin bundel yang diterbitkan server, tanpa operator memilih atau menyimpan berkas apa pun. **(2) OCR stiker ditunda** (fase 4 §9). **(3) Firmware didaftarkan dinamis** di server (`cl_firmwares`), tidak lagi daftar tetap di kode. **(4) Tidak ada jalur legacy**: `config.QC`, peta `sshKeys`, field `folder`/`version`/`manualCredentialInput`, dan `plink.exe`/`putty.exe` tidak dibawa. Rincian, bentuk bundel, dan pilihan pembangun ada di `docs/superpowers/specs/2026-11-28-country-lock-sync-bundel-design.md`. Istilah "paket" di bawah berarti "bundel" sejak tanggal ini.
+
 ### 4.1 Isi
-Satu **paket** bernomor versi berisi:
+Satu **bundel** bernomor versi (istilah 2026-11-28 untuk "paket"), diterbitkan server, berisi:
 
 | Berkas | Tujuan | Catatan |
 |---|---|---|
-| `config.QC` | laptop | JSON; skema §4.2 |
+| Dokumen pengaturan (pengganti `config.QC`, 2026-11-28) | laptop | JSON hasil form; skema §4.2 |
 | Skrip inject per merk dan firmware (`MIKROTIK/*.txt`, `UBIQUITI/*.txt`) | laptop | dikirim baris per baris lewat SSH; berisi placeholder (§6.3) |
 | Berkas router jump (`role: asset`): `customblock-*.npk`, `routeros-*.npk`, `*.bin`, `system.cfg*` | **router** | hanya **disalin** ke `/temp/` di router jump (§5) |
 | Konfigurasi router jump (`role: config`): skrip RouterOS `.rsc` | **router** | **diterapkan** ke router (bukan hanya disalin); lihat §5.1 |
@@ -117,23 +119,23 @@ Berkas beralamat hash (`sha256`); versi adalah bilangan bulat yang naik tiap **p
 
 **Satu paket untuk semua** [Pemilik: semua router jump dan konfigurasinya sama]: tidak ada lapisan override per laptop atau per router di paket. Hal yang khas laptop (mis. `ExcludeIp`, alamat server, token) hidup di pengaturan lokal desktop, bukan di paket.
 
-### 4.2 Skema `config.QC` (JSON)
+### 4.2 Skema dokumen pengaturan (JSON; pengganti `config.QC`, keputusan 2026-11-28)
 Bentuk mengikuti `config.QC` nyata dan `ConfigFile.Read` lama (lihat lampiran §6): node `mikrotik`, `ubiquiti`, `server`, dengan `firmware` (kode → `{label, file}`), `mode.single` dan `mode.multi`, `connectVia` (`Target`|`Server`), `interfaceBridge`, `interfaceList`, `interfaceComp`. Perubahan dari aplikasi lama:
 - Peta `sshKeys` **dihapus**: `{sshKey}` diisi dari host key router saat jabat tangan SSH [Pilihan perancang]. Entri nyata `71DC07CB8FB2` memang rusak (berakhiran `==)`).
 - `version` di dalam berkas digantikan versi manifest.
-- Kunci tak dikenal **dipertahankan apa adanya** (mis. `manualCredentialInput`, ada di `config.QC` pemilik tetapi tidak ada di kode repo lama; artinya belum diketahui, §15).
+- Kunci tak dikenal **ditolak** (keputusan pemilik 2026-11-28: tidak ada jalur legacy; `manualCredentialInput` tidak dibawa, dan butir §15 tentangnya ditutup).
 - Divalidasi dengan skema zod di `shared/` dan JSON Schema untuk editor.
 - Aturan kesalahan lama yang menyesatkan (node `mikrotik` wajib walau Multi hanya Ubiquiti) diperbaiki: yang wajib hanyalah yang dipakai mode/merk tersebut.
-- `ExcludeIp` (IP PC operator, dikecualikan dari pemindaian Multi) **bukan bagian paket**: nilainya khas laptop, jadi pengaturan lokal desktop.
+- `ExcludeIp` (IP PC operator, dikecualikan dari pemindaian Multi) **diturunkan dari IP komputer** di bundel (keputusan pemilik 2026-11-28; sebelumnya pengaturan lokal desktop).
 - Kata sandi perangkat/router di `config.QC` disimpan polos [Pemilik: bukan rahasia; kredensial bawaan pabrik dan router berjalan lokal].
 
 ### 4.3 Server
-- Modul server baru (mis. `countrylock`) mengikuti resep `docs/adding-a-module.md`; izin baru untuk melihat/mengelola paket (nama diserahkan ke builder).
-- **Admin di web**: editor kode ala VS Code (Monaco) tertanam untuk `config.QC` dan skrip, dengan validasi JSON Schema; unggah untuk berkas biner; penguncian versi (`If-Match`/`ETag`, pola yang sudah ada) agar dua admin tidak saling menimpa; Log Audit [Pemilik: editor di web; kunci versi dan audit = Pilihan perancang].
+- Modul server `countrylock` (dibangun 2026-11-28) mengikuti resep `docs/adding-a-module.md`; izin `countrylock` = none/view/edit/manage.
+- **Admin di web**: editor kode ala VS Code tertanam (semula Monaco; dibangun dengan CodeMirror 6 karena Monaco 851 KB gzip melewati anggaran potongan 600 KB; deviasi pembangun yang **belum disetujui pemilik**) untuk `config.QC` dan skrip, dengan validasi JSON Schema; unggah untuk berkas biner; penguncian versi (`If-Match`/`ETag`, pola yang sudah ada) agar dua admin tidak saling menimpa; Log Audit [Pemilik: editor di web; kunci versi dan audit = Pilihan perancang].
 - **Draf lalu publikasi eksplisit, dengan riwayat dan pemulihan [Pilihan perancang]**: menyimpan hanya mengubah draf; **menerbitkan** membuat versi manifest baru yang tidak dapat diubah. Admin dapat memulihkan versi lama (menerbitkannya sebagai versi baru). Ini mencegah suntingan setengah jadi sampai ke semua laptop dan memblokir inject di semua router (A5).
 - **Unduhan klien desktop tanpa login** [Pemilik]: manifest dan berkas diambil dengan **token bersama** di header Bearer, tanpa sesi pengguna, memakai pola yang sama dengan `/sync` (token bersama + pembatas percobaan salah per IP). **Catatan 2026-11-08:** modul `/sync` dihapus dari repo; pola token dan pembatas (`authenticateSync`/`settleAttempt`) dapat diambil dari riwayat git (sebelum penghapusan) dan tabel `rate_limits`, `limiterAddress`, serta job `purgeExpiredRateLimits` sengaja dipertahankan untuk ini. Token berupa variabel lingkungan sehingga bisa diganti tanpa ubah kode; server kini di VPS pribadi dan nanti di server kantor di balik VPN [Pemilik]. Endpoint baca-saja; manifest memakai `ETag` supaya desktop hanya mengunduh bila berubah. (Pengecualian: manifest dan berkas UI §3.4 diunduh PUBLIK tanpa token ini; keputusan 2026-11-13.)
-- Berkas biner paket disimpan di **disk server** (volume Docker, beralamat hash), bukan Google Drive dan bukan cache memori `cachedFileContent` (32 MB per proses) [Pilihan perancang]; masuk dalam cadangan server.
-- **Batas yang perlu ditangani**: badan permintaan server dibatasi 16 MB (`MAX_REQUEST_BODY_BYTES`). Berkas `.npk`/`.bin` bisa lebih besar, jadi unggahan admin memakai unggah bertahap (chunk) atau rute berbatas lebih besar; unduhan memakai streaming dengan dukungan `Range` agar dapat dilanjutkan.
+- Berkas biner disimpan di **Google Drive** (subfolder `COUNTRYLOCK_FOLDER_ID` di bawah `GOOGLE_ROOT_FOLDER_ID`, dinamai `sha256`, dibuat otomatis; keputusan pemilik 2026-11-28, menggantikan "disk server" di sini), bukan cache memori `cachedFileContent` (32 MB per proses). Biner tidak ikut cadangan harian database; metadatanya (`cl_blobs`) ikut.
+- **Batas yang perlu ditangani**: badan JSON REST dibatasi 2 MB (`MAX_JSON_BODY_BYTES`). Berkas `.npk`/`.bin` bisa lebih besar, jadi unggahan admin memakai unggah bertahap (potongan 4 MiB, `clUploads.*`); unduhan memakai streaming dengan dukungan `Range` agar dapat dilanjutkan.
 - Kontrak API final mengikuti aturan `API_ROUTES` (`shared/api.ts`) dan kernel REST yang baru stabil setelah Task 24 migrasi (§12).
 
 ### 4.4 Penanaman ke laptop
@@ -154,19 +156,22 @@ Algoritma sinkron router (dijalankan oleh `desktop/` saat router jump terjangkau
 4. Tulis penanda **terakhir**, setelah semua berkas valid. Penanda lama berarti sinkron belum selesai dan akan diulang.
 5. Tampilkan progres dan hasil; galat (router putus, ruang penuh, SFTP ditolak) tidak membuat router dianggap sinkron.
 
-**Gerbang inject** [Pilihan perancang]: inject diblokir bila **himpunan berkas bertujuan router** di penanda router (path + hash) berbeda dari yang ada di paket aktif laptop, dengan tombol "Sinkronkan router" yang tersedia. Gerbang membandingkan berkas router saja, **bukan nomor versi paket penuh**; jadi suntingan skrip atau konfigurasi (yang hanya menyentuh laptop) tidak memblokir inject. Ini menutup A2: router tidak pernah dipakai dengan berkas usang tanpa sepengetahuan operator. Berkas biner paket di-cache di laptop (ukuran total belum diketahui, §15) sehingga sinkron router bisa dilakukan tanpa server.
+**Gerbang inject** [Pilihan perancang]: inject diblokir bila **himpunan berkas bertujuan router** di penanda router (path + hash) berbeda dari yang ada di paket aktif laptop, dengan tombol "Sinkronkan router" yang tersedia. Gerbang membandingkan `routerHash` bundel aktif (keputusan pemilik 2026-11-28: berkas router, keadaan router yang diinginkan, dan kredensial router) dengan penanda di router, **bukan nomor versi bundel**; jadi suntingan skrip yang hanya menyentuh laptop (`computerHash`) tidak memblokir inject. Ini menutup A2: router tidak pernah dipakai dengan berkas usang tanpa sepengetahuan operator. Berkas biner paket di-cache di laptop (ukuran total belum diketahui, §15) sehingga sinkron router bisa dilakukan tanpa server.
 
-**Memperbarui logika**: admin menyunting skrip/berkas/konfigurasi di web → manifest versi baru → desktop mengunduh paket baru (§4.4) → pada koneksi router berikutnya sinkron router mengirim hanya berkas yang berubah. Perubahan skrip/konfigurasi hanya menyentuh laptop; perubahan berkas biner menyentuh laptop dan router.
+**Memperbarui logika**: admin menyunting skrip/berkas/konfigurasi di web → manifest versi baru → desktop mengunduh paket baru (§4.4) → pada koneksi router berikutnya sinkron router mengirim hanya berkas yang berubah. Perubahan skrip hanya menyentuh laptop; perubahan berkas router, keadaan router yang diinginkan, atau kredensial router menyentuh router juga (keputusan pemilik 2026-11-28).
 
-### 5.1 Konfigurasi router jump (`.rsc`) [Pemilik, 2026-11-06]
+### 5.1 Konfigurasi router jump: keadaan deklaratif lewat REST [Pemilik, 2026-11-06; diubah 2026-11-28]
 
-Selain `config.QC` dan berkas `/temp`, **konfigurasi router jump itu sendiri** (skrip RouterOS `.rsc`) dikelola di server dan disinkronkan ke router. Konfigurasi ini mendefinisikan hal-hal yang diandalkan `config.QC`: bridge yang dirujuk (`BridgeAll`, `UBNTSingle`), DHCP server yang dibaca pemindaian Multi, layanan SSH/SFTP/FTP, dan alamat `server.ip`. Karena itu `config.QC` dan konfigurasi router satu paket dan harus selaras.
+> **Keputusan pemilik 2026-11-28 (B6):** tidak ada konfigurasi `.rsc` mentah. Konfigurasi router dinyatakan lewat form terstruktur (spek baru §5.6) dan diterapkan lewat REST RouterOS v7. Butir di bawah yang menyebut `.rsc`, `/import`, atau SSH untuk penerapan dibaca sebagai sejarah.
+
+
+Selain `config.QC` dan berkas `/temp`, **konfigurasi router jump itu sendiri** (keadaan yang diinginkan dalam bentuk form terstruktur, bukan `.rsc` mentah; keputusan 2026-11-28) dikelola di server dan disinkronkan ke router. Konfigurasi ini mendefinisikan hal-hal yang diandalkan `config.QC`: bridge yang dirujuk (`BridgeAll`, `UBNTSingle`), DHCP server yang dibaca pemindaian Multi, layanan SSH/SFTP/FTP, dan alamat `server.ip`. Karena itu dokumen pengaturan dan konfigurasi router satu bundel dan harus selaras (`config.QC` tidak ada lagi).
 
 - Manifest membedakan `role: asset` (disalin ke `/temp/`) dan `role: config` (diterapkan). Penanda di router mencatat hash konfigurasi yang **terakhir berhasil diterapkan**.
-- Urutan penerapan [Pilihan perancang]: unggah `.rsc` ke router → **cadangan pra-penerapan** di router (`/export` dan `/system backup save`, bernama sesuai versi) → terapkan lewat SSH → verifikasi keadaan yang diharapkan (koneksi ulang, objek kunci ada) → tulis penanda **terakhir**. Penerapan yang terputus tidak meninggalkan penanda palsu.
+- Urutan penerapan [Pilihan perancang]: **cadangan pra-penerapan** di router (`/export` dan `/system backup save`, bernama sesuai versi) → terapkan lewat REST RouterOS v7 → verifikasi keadaan yang diharapkan (koneksi ulang, objek kunci ada) → tulis penanda **terakhir**. Penerapan yang terputus tidak meninggalkan penanda palsu.
 - **Penerapan konfigurasi tidak otomatis saat koneksi**; operator menyetujui lewat dialog yang menampilkan versi dan ringkasan, karena konfigurasi router dapat memutus sesi SSH atau mengunci akses [Pilihan perancang]. Sinkron berkas `asset` (§5) tetap dapat otomatis.
 - **Semua router jump memakai konfigurasi yang sama** [Pemilik]. Nilai khas per router (mis. *identity*) **tidak disimpan di paket**: bila perlu, diisi operator di **dialog sinkron konfigurasi** saat penerapan [Pemilik: "tidak perlu, atau bisa diatur saat sync konfigurasi dari dialog"].
-- **Mekanisme penerapan** [Pilihan perancang, bukan keputusan pemilik; ubah bila tidak cocok]: skrip **idempoten dijalankan di router yang sedang hidup** lewat `/import` (tanpa reboot); mode "keadaan penuh pada router yang direset" (`reset-configuration run-after-reset`) hanya opsional per berkas bila kelak dibutuhkan.
+- **Mekanisme penerapan** [Pilihan perancang, bukan keputusan pemilik; ubah bila tidak cocok]: keadaan yang diinginkan diterapkan lewat REST RouterOS v7 di router yang sedang hidup (tanpa reboot; keputusan pemilik 2026-11-28 menggantikan skrip `.rsc` lewat `/import`); mode "keadaan penuh pada router yang direset" (`reset-configuration run-after-reset`) hanya opsional per berkas bila kelak dibutuhkan.
 - Anti-tujuan tambahan **A6**: router terkunci dari desktop (akses manajemen terputus) akibat penerapan konfigurasi.
 - Catatan kode lama: komentar `SshInjectSession` menyebut RouterOS *device-mode* memblokir `:import` pada Mikrotik uji; wajib dicek apakah router jump terkena batasan yang sama (§11). **Dijawab pemilik 2026-11-12:** router jump dipastikan sudah di-*unlock* sehingga `:import` tidak diblokir *device-mode*; spike (§11 butir 7) tetap mengukurnya sebagai konfirmasi di perangkat nyata, bukan lagi risiko terbuka.
 
@@ -236,9 +241,9 @@ Ringkas (selengkapnya di lampiran §8.1): router jump selalu Mikrotik; serial = 
 |---|---|---|
 | 0 | Spike perangkat nyata (§11); logika murni di `shared/` + skema config; dokumen | tidak bergantung migrasi |
 | 1 | Shell Electron, jembatan SSH/ping, `qc://`, installer dengan **UI dasar dibundel** dan penyaji `app://`; Country Lock mode tunggal; antrean lokal | spike lulus |
-| 2 | Modul server paket konfigurasi + editor web + unduhan klien; sinkron router; katalog Tipe offline (cache item `isCountryLock` + gambar stiker + instruksi penempelan stiker per item beserta aturan jenis→stiker, keputusan pemilik 2026-11-16, §6.6); **pengiriman bundel UI bertanda tangan dengan `minBridge` (§3.4)** | migrasi VPS/REST selesai (sudah); katalog offline dikerjakan lebih dulu sebagai potongan sendiri (`feat/desktop-katalog-offline`), paket konfigurasi/sinkron router menyusul (gerbang uji perangkat nyata) |
+| 2 | Modul server paket konfigurasi + editor web + unduhan klien (**bagian server dibangun 2026-11-28 sebagai fase 1 spek sinkron bundel; komputer dan router menyusul**); sinkron router; katalog Tipe offline (cache item `isCountryLock` + gambar stiker + instruksi penempelan stiker per item beserta aturan jenis→stiker, keputusan pemilik 2026-11-16, §6.6); **pengiriman bundel UI bertanda tangan dengan `minBridge` (§3.4)** | migrasi VPS/REST selesai (sudah); katalog offline dikerjakan lebih dulu sebagai potongan sendiri (`feat/desktop-katalog-offline`), paket konfigurasi/sinkron router menyusul (gerbang uji perangkat nyata) |
 | 3 | Mode Multi-Device: **dikerjakan 2026-11-19** (§6.4; menunggu uji perangkat nyata, checklist E2E bagian J) | fase 1 |
-| 4 | OCR stiker | fase 1 |
+| 4 | OCR stiker | fase 1 — **DITUNDA 2026-11-28** (keputusan pemilik): tidak dikerjakan sampai pemilik membukanya lagi |
 | 5 | Unggah hasil ke server: **dikerjakan 2026-11-18 sebagai Catat Serial Number bersama** (§6.6; menggantikan antrean pending + tombol unggah) | proyek 2 (Daftar Serial Number; sudah ada) |
 
 ## 10. Kriteria sukses
