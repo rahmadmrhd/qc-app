@@ -49,6 +49,7 @@ import { Route as AppAccessRolesIndexRouteImport } from './routes/_app/access/ro
 import { Route as AppAccessRolesRoleIdRouteImport } from './routes/_app/access/roles/$roleId'
 import { Route as AppAccessUsersIndexRouteImport } from './routes/_app/access/users/index'
 import { Route as AppAccessUsersUserIdRouteImport } from './routes/_app/access/users/$userId'
+import { Route as AppCountrylockFilesIndexRouteImport } from './routes/_app/countrylock/files/index'
 import { Route as AppDashboardLaporanIndexRouteImport } from './routes/_app/dashboard/laporan/index'
 import { Route as AppDashboardLaporanNewRouteImport } from './routes/_app/dashboard/laporan/new'
 import { Route as AppDashboardTautanIndexRouteImport } from './routes/_app/dashboard/tautan/index'
@@ -72,6 +73,7 @@ import { Route as AppSerialReportsIndexRouteImport } from './routes/_app/serial/
 import { Route as AppSerialReportsCaseIdRouteImport } from './routes/_app/serial/reports/$caseId'
 import { Route as AppStickerTypesIndexRouteImport } from './routes/_app/sticker/types/index'
 import { Route as AppStickerTypesTypeIdRouteImport } from './routes/_app/sticker/types/$typeId'
+import { Route as AppCountrylockFilesFileIdIndexRouteImport } from './routes/_app/countrylock/files/$fileId/index'
 import { Route as AppDashboardLaporanReportIdIndexRouteImport } from './routes/_app/dashboard/laporan/$reportId/index'
 import { Route as AppDashboardLaporanReportIdEditRouteImport } from './routes/_app/dashboard/laporan/$reportId/edit'
 import { Route as AppQrcodeDefaultPresetIdIndexRouteImport } from './routes/_app/qrcode/default/$presetId/index'
@@ -282,6 +284,12 @@ const AppAccessUsersUserIdRoute = AppAccessUsersUserIdRouteImport.update({
   path: '/access/users/$userId',
   getParentRoute: () => AppRoute,
 } as any)
+const AppCountrylockFilesIndexRoute =
+  AppCountrylockFilesIndexRouteImport.update({
+    id: '/countrylock/files/',
+    path: '/countrylock/files/',
+    getParentRoute: () => AppRoute,
+  } as any)
 const AppDashboardLaporanIndexRoute =
   AppDashboardLaporanIndexRouteImport.update({
     id: '/dashboard/laporan/',
@@ -401,6 +409,12 @@ const AppStickerTypesTypeIdRoute = AppStickerTypesTypeIdRouteImport.update({
   path: '/sticker/types/$typeId',
   getParentRoute: () => AppRoute,
 } as any)
+const AppCountrylockFilesFileIdIndexRoute =
+  AppCountrylockFilesFileIdIndexRouteImport.update({
+    id: '/countrylock/files/$fileId/',
+    path: '/countrylock/files/$fileId/',
+    getParentRoute: () => AppRoute,
+  } as any)
 const AppDashboardLaporanReportIdIndexRoute =
   AppDashboardLaporanReportIdIndexRouteImport.update({
     id: '/dashboard/laporan/$reportId/',
@@ -495,6 +509,7 @@ export interface FileRoutesByFullPath {
   '/access/locations/': typeof AppAccessLocationsIndexRoute
   '/access/roles/': typeof AppAccessRolesIndexRoute
   '/access/users/': typeof AppAccessUsersIndexRoute
+  '/countrylock/files/': typeof AppCountrylockFilesIndexRoute
   '/dashboard/laporan/': typeof AppDashboardLaporanIndexRoute
   '/dashboard/tautan/': typeof AppDashboardTautanIndexRoute
   '/handover/$handoverId/': typeof AppHandoverHandoverIdIndexRoute
@@ -510,6 +525,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/laporan/$reportId/edit': typeof AppDashboardLaporanReportIdEditRoute
   '/qrcode/default/$presetId/edit': typeof AppQrcodeDefaultPresetIdEditRoute
   '/serial/gudang/riwayat/$dispatchId': typeof AppSerialGudangRiwayatDispatchIdRoute
+  '/countrylock/files/$fileId/': typeof AppCountrylockFilesFileIdIndexRoute
   '/dashboard/laporan/$reportId/': typeof AppDashboardLaporanReportIdIndexRoute
   '/qrcode/default/$presetId/': typeof AppQrcodeDefaultPresetIdIndexRoute
   '/serial/gudang/riwayat/': typeof AppSerialGudangRiwayatIndexRoute
@@ -566,6 +582,7 @@ export interface FileRoutesByTo {
   '/access/locations': typeof AppAccessLocationsIndexRoute
   '/access/roles': typeof AppAccessRolesIndexRoute
   '/access/users': typeof AppAccessUsersIndexRoute
+  '/countrylock/files': typeof AppCountrylockFilesIndexRoute
   '/dashboard/laporan': typeof AppDashboardLaporanIndexRoute
   '/dashboard/tautan': typeof AppDashboardTautanIndexRoute
   '/handover/$handoverId': typeof AppHandoverHandoverIdIndexRoute
@@ -581,6 +598,7 @@ export interface FileRoutesByTo {
   '/dashboard/laporan/$reportId/edit': typeof AppDashboardLaporanReportIdEditRoute
   '/qrcode/default/$presetId/edit': typeof AppQrcodeDefaultPresetIdEditRoute
   '/serial/gudang/riwayat/$dispatchId': typeof AppSerialGudangRiwayatDispatchIdRoute
+  '/countrylock/files/$fileId': typeof AppCountrylockFilesFileIdIndexRoute
   '/dashboard/laporan/$reportId': typeof AppDashboardLaporanReportIdIndexRoute
   '/qrcode/default/$presetId': typeof AppQrcodeDefaultPresetIdIndexRoute
   '/serial/gudang/riwayat': typeof AppSerialGudangRiwayatIndexRoute
@@ -639,6 +657,7 @@ export interface FileRoutesById {
   '/_app/access/locations/': typeof AppAccessLocationsIndexRoute
   '/_app/access/roles/': typeof AppAccessRolesIndexRoute
   '/_app/access/users/': typeof AppAccessUsersIndexRoute
+  '/_app/countrylock/files/': typeof AppCountrylockFilesIndexRoute
   '/_app/dashboard/laporan/': typeof AppDashboardLaporanIndexRoute
   '/_app/dashboard/tautan/': typeof AppDashboardTautanIndexRoute
   '/_app/handover/$handoverId/': typeof AppHandoverHandoverIdIndexRoute
@@ -654,6 +673,7 @@ export interface FileRoutesById {
   '/_app/dashboard/laporan/$reportId/edit': typeof AppDashboardLaporanReportIdEditRoute
   '/_app/qrcode/default/$presetId/edit': typeof AppQrcodeDefaultPresetIdEditRoute
   '/_app/serial/gudang/riwayat/$dispatchId': typeof AppSerialGudangRiwayatDispatchIdRoute
+  '/_app/countrylock/files/$fileId/': typeof AppCountrylockFilesFileIdIndexRoute
   '/_app/dashboard/laporan/$reportId/': typeof AppDashboardLaporanReportIdIndexRoute
   '/_app/qrcode/default/$presetId/': typeof AppQrcodeDefaultPresetIdIndexRoute
   '/_app/serial/gudang/riwayat/': typeof AppSerialGudangRiwayatIndexRoute
@@ -712,6 +732,7 @@ export interface FileRouteTypes {
     | '/access/locations/'
     | '/access/roles/'
     | '/access/users/'
+    | '/countrylock/files/'
     | '/dashboard/laporan/'
     | '/dashboard/tautan/'
     | '/handover/$handoverId/'
@@ -727,6 +748,7 @@ export interface FileRouteTypes {
     | '/dashboard/laporan/$reportId/edit'
     | '/qrcode/default/$presetId/edit'
     | '/serial/gudang/riwayat/$dispatchId'
+    | '/countrylock/files/$fileId/'
     | '/dashboard/laporan/$reportId/'
     | '/qrcode/default/$presetId/'
     | '/serial/gudang/riwayat/'
@@ -783,6 +805,7 @@ export interface FileRouteTypes {
     | '/access/locations'
     | '/access/roles'
     | '/access/users'
+    | '/countrylock/files'
     | '/dashboard/laporan'
     | '/dashboard/tautan'
     | '/handover/$handoverId'
@@ -798,6 +821,7 @@ export interface FileRouteTypes {
     | '/dashboard/laporan/$reportId/edit'
     | '/qrcode/default/$presetId/edit'
     | '/serial/gudang/riwayat/$dispatchId'
+    | '/countrylock/files/$fileId'
     | '/dashboard/laporan/$reportId'
     | '/qrcode/default/$presetId'
     | '/serial/gudang/riwayat'
@@ -855,6 +879,7 @@ export interface FileRouteTypes {
     | '/_app/access/locations/'
     | '/_app/access/roles/'
     | '/_app/access/users/'
+    | '/_app/countrylock/files/'
     | '/_app/dashboard/laporan/'
     | '/_app/dashboard/tautan/'
     | '/_app/handover/$handoverId/'
@@ -870,6 +895,7 @@ export interface FileRouteTypes {
     | '/_app/dashboard/laporan/$reportId/edit'
     | '/_app/qrcode/default/$presetId/edit'
     | '/_app/serial/gudang/riwayat/$dispatchId'
+    | '/_app/countrylock/files/$fileId/'
     | '/_app/dashboard/laporan/$reportId/'
     | '/_app/qrcode/default/$presetId/'
     | '/_app/serial/gudang/riwayat/'
@@ -1166,6 +1192,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAccessUsersUserIdRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/countrylock/files/': {
+      id: '/_app/countrylock/files/'
+      path: '/countrylock/files'
+      fullPath: '/countrylock/files/'
+      preLoaderRoute: typeof AppCountrylockFilesIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/dashboard/laporan/': {
       id: '/_app/dashboard/laporan/'
       path: '/dashboard/laporan'
@@ -1327,6 +1360,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppStickerTypesTypeIdRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/countrylock/files/$fileId/': {
+      id: '/_app/countrylock/files/$fileId/'
+      path: '/countrylock/files/$fileId'
+      fullPath: '/countrylock/files/$fileId/'
+      preLoaderRoute: typeof AppCountrylockFilesFileIdIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/dashboard/laporan/$reportId/': {
       id: '/_app/dashboard/laporan/$reportId/'
       path: '/dashboard/laporan/$reportId'
@@ -1426,6 +1466,7 @@ interface AppRouteChildren {
   AppAccessLocationsIndexRoute: typeof AppAccessLocationsIndexRoute
   AppAccessRolesIndexRoute: typeof AppAccessRolesIndexRoute
   AppAccessUsersIndexRoute: typeof AppAccessUsersIndexRoute
+  AppCountrylockFilesIndexRoute: typeof AppCountrylockFilesIndexRoute
   AppDashboardLaporanIndexRoute: typeof AppDashboardLaporanIndexRoute
   AppDashboardTautanIndexRoute: typeof AppDashboardTautanIndexRoute
   AppHandoverHandoverIdIndexRoute: typeof AppHandoverHandoverIdIndexRoute
@@ -1441,6 +1482,7 @@ interface AppRouteChildren {
   AppDashboardLaporanReportIdEditRoute: typeof AppDashboardLaporanReportIdEditRoute
   AppQrcodeDefaultPresetIdEditRoute: typeof AppQrcodeDefaultPresetIdEditRoute
   AppSerialGudangRiwayatDispatchIdRoute: typeof AppSerialGudangRiwayatDispatchIdRoute
+  AppCountrylockFilesFileIdIndexRoute: typeof AppCountrylockFilesFileIdIndexRoute
   AppDashboardLaporanReportIdIndexRoute: typeof AppDashboardLaporanReportIdIndexRoute
   AppQrcodeDefaultPresetIdIndexRoute: typeof AppQrcodeDefaultPresetIdIndexRoute
   AppSerialGudangRiwayatIndexRoute: typeof AppSerialGudangRiwayatIndexRoute
@@ -1495,6 +1537,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppAccessLocationsIndexRoute: AppAccessLocationsIndexRoute,
   AppAccessRolesIndexRoute: AppAccessRolesIndexRoute,
   AppAccessUsersIndexRoute: AppAccessUsersIndexRoute,
+  AppCountrylockFilesIndexRoute: AppCountrylockFilesIndexRoute,
   AppDashboardLaporanIndexRoute: AppDashboardLaporanIndexRoute,
   AppDashboardTautanIndexRoute: AppDashboardTautanIndexRoute,
   AppHandoverHandoverIdIndexRoute: AppHandoverHandoverIdIndexRoute,
@@ -1510,6 +1553,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppDashboardLaporanReportIdEditRoute: AppDashboardLaporanReportIdEditRoute,
   AppQrcodeDefaultPresetIdEditRoute: AppQrcodeDefaultPresetIdEditRoute,
   AppSerialGudangRiwayatDispatchIdRoute: AppSerialGudangRiwayatDispatchIdRoute,
+  AppCountrylockFilesFileIdIndexRoute: AppCountrylockFilesFileIdIndexRoute,
   AppDashboardLaporanReportIdIndexRoute: AppDashboardLaporanReportIdIndexRoute,
   AppQrcodeDefaultPresetIdIndexRoute: AppQrcodeDefaultPresetIdIndexRoute,
   AppSerialGudangRiwayatIndexRoute: AppSerialGudangRiwayatIndexRoute,

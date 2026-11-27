@@ -36,3 +36,19 @@ test('tombol memakai children sebagai label dan nonaktif bila disabled', () => {
   );
   expect(screen.getByRole('button', { name: 'Pilih PDF' })).toBeDisabled();
 });
+
+test('anyType: berkas jenis apa pun diteruskan tanpa pemisahan dan input tanpa atribut accept', async () => {
+  const onFiles = vi.fn();
+  render(
+    <FilePicker accept={[]} anyType onFiles={onFiles}>
+      Pilih berkas
+    </FilePicker>,
+  );
+  const input = screen.getByTestId('file-picker-input') as HTMLInputElement;
+  expect(input.hasAttribute('accept')).toBe(false);
+  await userEvent.upload(input, [file('system.npk', 'application/octet-stream')]);
+  expect(onFiles).toHaveBeenCalledTimes(1);
+  const [files, rejected] = onFiles.mock.calls[0] ?? [];
+  expect(files.map((f: File) => f.name)).toEqual(['system.npk']);
+  expect(rejected).toEqual([]);
+});

@@ -12,6 +12,7 @@ import {
   Contact,
   Download,
   FileBadge,
+  FileCode,
   FileText,
   History,
   House,
@@ -372,6 +373,14 @@ export const NAV_GROUPS: NavGroup[] = [
             to: '/access/audit',
             icon: History,
             permission: { module: 'access', level: 'view' },
+          },
+          // Admin bundel Country Lock (menyunting draf, menerbitkan bundel): `countrylock: edit`; `view` hanya memakai
+          // aplikasi desktop.
+          {
+            label: 'Berkas Country Lock',
+            to: '/countrylock/files',
+            icon: FileCode,
+            permission: { module: 'countrylock', level: 'edit' },
           },
         ],
       },
