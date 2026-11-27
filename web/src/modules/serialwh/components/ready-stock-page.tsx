@@ -6,7 +6,7 @@ import {
   WAREHOUSE_LIMITS,
 } from '@shared/serial-warehouse';
 import { useInfiniteQuery } from '@tanstack/react-query';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { ActionButton } from '@/components/action-button';
 import {
@@ -435,7 +435,10 @@ function ReadyStockFilters({
 }) {
   const me = useMe();
   // Pilihan Tipe dari facet stok (terbaca bagi pemegang view); tidak butuh rute pilihan Item.
-  const itemMap = new Map(itemFacets.map((facet) => [facet.id, facet.label]));
+  // Label terakhir yang pernah diketahui dipertahankan: facet bisa kosong sesaat saat daftar dimuat ulang.
+  const knownLabels = useRef(new Map<string, string>());
+  for (const facet of itemFacets) knownLabels.current.set(facet.id, facet.label);
+  const itemMap = knownLabels.current;
   const itemOptions: LinkOption[] = itemFacets.map((facet) => ({
     id: facet.id,
     label: facet.label,

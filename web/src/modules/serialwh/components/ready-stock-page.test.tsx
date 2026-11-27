@@ -341,3 +341,39 @@ test('salin semua terfilter tetap menyertakan serial bermasalah', async () => {
   await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
   expect(writeText.mock.calls[0]?.[0]).toContain('2	SN-s5');
 });
+
+test('label chip Tipe tetap saat facet berubah/kosong setelah filter diterapkan', async () => {
+  function Switcher() {
+    const [search, setSearch] = useState<ReadySearchParams>(readySearchSchema.parse({}));
+    return (
+      <>
+        <button type="button" onClick={() => setSearch({ itemIds: ['item1'] })}>
+          terapkan
+        </button>
+        <ReadyStockPage
+          search={search}
+          onSearchChange={(patch) => setSearch((prev) => ({ ...prev, ...patch }))}
+        />
+      </>
+    );
+  }
+  apiMock.mockImplementation((id: string, input: Record<string, unknown>) => {
+    if (id === 'serialWarehouse.readyStock') {
+      return Promise.resolve({
+        ...page(),
+        itemFacets: input.itemIds ? [] : [{ id: 'item1', label: 'Tenda AX300' }],
+      });
+    }
+    return Promise.resolve({ found: [], items: [], nextCursor: null });
+  });
+  await renderInRouter(<Switcher />);
+  await screen.findByText('SN-s1');
+  await userEvent.click(screen.getByRole('button', { name: 'terapkan' }));
+  await waitFor(() =>
+    expect(listCalls().some((call) => (call[1] as { itemIds?: string[] }).itemIds)).toBe(true),
+  );
+  expect(
+    await screen.findByText('Tenda AX300', { selector: 'button *, button' }),
+  ).toBeInTheDocument();
+  expect(screen.queryByText('Tipe terpilih')).not.toBeInTheDocument();
+});
