@@ -90,6 +90,7 @@ const VIEW = [
   '/serial/$serialId',
   '/serial/reports/$caseId',
   '/serial/gudang/riwayat/$orderId',
+  '/serial/gudang/riwayat/ready/$readyId',
   '/sticker/$stickerId',
   '/sticker/types/$typeId',
 ];

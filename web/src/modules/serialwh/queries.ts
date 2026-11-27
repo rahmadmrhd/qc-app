@@ -4,6 +4,7 @@ import type {
   ListWarehouseItemOptionsInput,
   ListWarehouseOrderOptionsInput,
   ListWarehouseOrdersInput,
+  ListWarehouseReadyInput,
   ListWarehouseSerialsInput,
   SetWarehouseOrderLinksInput,
   WarehouseLookupInput,
@@ -27,6 +28,7 @@ export type WarehouseSerialsFilter = Omit<ListWarehouseSerialsInput, 'cursor'>;
 export type WarehouseOrderOptionsFilter = Omit<ListWarehouseOrderOptionsInput, 'cursor'>;
 export type WarehouseCandidatesFilter = Omit<ListWarehouseHandoverCandidatesInput, 'cursor'>;
 export type WarehouseOrdersFilter = Omit<ListWarehouseOrdersInput, 'cursor'>;
+export type WarehouseReadyFilter = Omit<ListWarehouseReadyInput, 'cursor'>;
 
 /** Pilihan Item pada BU ber-`serialwh: edit` (cari di server, berkursor). */
 export function warehouseItemOptionsQueryOptions(filter: WarehouseItemOptionsFilter = {}) {
@@ -115,6 +117,25 @@ export function warehouseOrderQueryOptions(id: string) {
   return queryOptions({
     queryKey: serialwhKeys.order(id),
     queryFn: () => api('serialWarehouse.getOrder', { id }),
+  });
+}
+
+/** Riwayat pencatatan ready tanpa SO (berkursor). */
+export function warehouseReadyListQueryOptions(filter: WarehouseReadyFilter = {}) {
+  return infiniteQueryOptions({
+    queryKey: serialwhKeys.readyList(filter),
+    queryFn: ({ pageParam }) =>
+      api('serialWarehouse.readyList', { ...filter, ...(pageParam ? { cursor: pageParam } : {}) }),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (last) => last.nextCursor ?? undefined,
+    placeholderData: keepPreviousData,
+  });
+}
+
+export function warehouseReadyQueryOptions(id: string) {
+  return queryOptions({
+    queryKey: serialwhKeys.ready(id),
+    queryFn: () => api('serialWarehouse.ready', { id }),
   });
 }
 

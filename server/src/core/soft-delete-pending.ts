@@ -56,6 +56,18 @@ export const SOFT_DELETE_EXEMPT: Record<string, string> = {
     'Penampil rujukan: Riwayat pengeluaran menampilkan nama Item walau Item terhapus (LEFT JOIN); catatan historis, bukan keputusan hak.',
   'server/src/modules/serialwh/orders.ts#brands@1#8c9bf38b':
     'Penampil rujukan: nama merk Item pada Riwayat pengeluaran tetap tampil walau merk terhapus.',
+  'server/src/modules/serialwh/ready.ts#business_units@1#58e24d93':
+    'Pencatatan ready menampilkan kode/nama BU walau BU terhapus (BU terhapus tetap memberi hak); dibatasi `bu_id` hak pemanggil.',
+  'server/src/modules/serialwh/ready.ts#items@1#58e24d93':
+    'Penampil rujukan: pencatatan ready menampilkan nama Item walau Item terhapus (LEFT JOIN); catatan historis, bukan keputusan hak.',
+  'server/src/modules/serialwh/ready.ts#brands@1#58e24d93':
+    'Penampil rujukan: nama merk Item pada pencatatan ready tetap tampil walau merk terhapus.',
+  'server/src/modules/serialwh/ready.ts#business_units@2#029fbcaf':
+    'Pencatatan ready menampilkan kode/nama BU walau BU terhapus (BU terhapus tetap memberi hak); dibatasi `bu_id` hak pemanggil.',
+  'server/src/modules/serialwh/ready.ts#items@2#029fbcaf':
+    'Penampil rujukan: pencatatan ready menampilkan nama Item walau Item terhapus (LEFT JOIN); catatan historis, bukan keputusan hak.',
+  'server/src/modules/serialwh/ready.ts#brands@2#029fbcaf':
+    'Penampil rujukan: nama merk Item pada pencatatan ready tetap tampil walau merk terhapus.',
   'server/src/modules/serialwh/repo.ts#business_units@1#223dac03':
     'Penampil rujukan: DTO serial menampilkan kode/nama BU walau BU terhapus; serial sudah tersaring liveWhere pada s.',
   'server/src/modules/serialwh/repo.ts#items@1#223dac03':

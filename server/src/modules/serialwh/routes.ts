@@ -9,14 +9,17 @@ import {
   listWarehouseOrders,
   warehouseCopyText,
 } from './orders';
+import { getWarehouseReady, listWarehouseReady } from './ready';
 import { warehouseLookup, warehouseSerials } from './scan';
 import { submitWarehouseChunk } from './submit';
 import {
   validateWarehouseCopyText,
   validateWarehouseDispatchSerials,
   validateWarehouseGetOrder,
+  validateWarehouseGetReady,
   validateWarehouseItemOptions,
   validateWarehouseListOrders,
+  validateWarehouseListReady,
   validateWarehouseLookup,
   validateWarehouseOrderOptions,
   validateWarehouseSerials,
@@ -41,7 +44,9 @@ type WarehouseMethod =
   | 'serialWarehouse.copyText'
   | 'serialWarehouse.listOrders'
   | 'serialWarehouse.setLinks'
-  | 'serialWarehouse.getOrder';
+  | 'serialWarehouse.getOrder'
+  | 'serialWarehouse.readyList'
+  | 'serialWarehouse.ready';
 
 const EDIT = { module: 'serialwh', level: 'edit' } as const;
 const VIEW = { module: 'serialwh', level: 'view' } as const;
@@ -116,6 +121,16 @@ export function serialwhRoutes(): Pick<RouteTable, WarehouseMethod> {
       permission: VIEW,
       validate: validateWarehouseGetOrder,
       handler: (input, ctx) => getWarehouseOrder(ctx.env, ctx.user, input),
+    },
+    'serialWarehouse.readyList': {
+      permission: VIEW,
+      validate: validateWarehouseListReady,
+      handler: (input, ctx) => listWarehouseReady(ctx.env, ctx.user, input),
+    },
+    'serialWarehouse.ready': {
+      permission: VIEW,
+      validate: validateWarehouseGetReady,
+      handler: (input, ctx) => getWarehouseReady(ctx.env, ctx.user, input),
     },
   };
 }

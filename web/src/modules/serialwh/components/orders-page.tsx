@@ -5,9 +5,15 @@ import { type DataColumn, DataTable, LinkCell } from '@/components/data-table';
 import { ListPage } from '@/components/page/list-page';
 import { Badge } from '@/components/ui/badge';
 import { formatDay } from '@/modules/serial/lib/labels';
-import { type OrdersSearchParams, ordersFilterOfSearch } from '../lib/orders-filter';
+import {
+  type OrdersSearchParams,
+  ordersFilterOfSearch,
+  tabSwitchPatch,
+} from '../lib/orders-filter';
 import { warehouseOrdersQueryOptions } from '../queries';
+import { HistoryTabs } from './history-tabs';
 import { OrdersFilters } from './orders-filters';
+import { ReadyListPage } from './ready-list-page';
 
 export type OrdersSearch = OrdersSearchParams;
 
@@ -22,6 +28,13 @@ export interface OrdersPageProps {
  * semua potongannya terkirim), dan jumlah task Serah Terima tertaut. Tanpa pilihan massal.
  */
 export function OrdersPage({ search, onSearchChange }: OrdersPageProps) {
+  if (search.tab === 'ready') {
+    return <ReadyListPage search={search} onSearchChange={onSearchChange} />;
+  }
+  return <OrdersListPage search={search} onSearchChange={onSearchChange} />;
+}
+
+function OrdersListPage({ search, onSearchChange }: OrdersPageProps) {
   const filter = ordersFilterOfSearch(search);
   const list = useInfiniteQuery(warehouseOrdersQueryOptions(filter));
   const items = list.data?.pages.flatMap((page) => page.items) ?? [];
@@ -77,7 +90,15 @@ export function OrdersPage({ search, onSearchChange }: OrdersPageProps) {
           ? `${items.length}${list.hasNextPage ? '+' : ''} SO`
           : undefined
       }
-      filters={<OrdersFilters search={search} onChange={onSearchChange} rows={items} />}
+      filters={
+        <>
+          <HistoryTabs
+            tab="order"
+            onChange={(tab) => onSearchChange(tabSwitchPatch(tab, search))}
+          />
+          <OrdersFilters search={search} onChange={onSearchChange} rows={items} />
+        </>
+      }
     >
       <DataTable
         rows={items}

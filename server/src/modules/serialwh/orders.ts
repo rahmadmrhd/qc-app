@@ -142,12 +142,12 @@ export async function listWarehouseOrders(
   };
 }
 
-interface DispatchListRow extends DispatchRow {
+export interface DispatchListRow extends DispatchRow {
   brand_name: string | null;
   model: string | null;
 }
 
-function toDispatch(row: DispatchListRow): WarehouseDispatchDto {
+export function toDispatch(row: DispatchListRow): WarehouseDispatchDto {
   const status = row.status.trim();
   return {
     id: row.id.trim(),
@@ -219,6 +219,11 @@ const DISPATCH_NOT_FOUND = 'Pengeluaran tidak ditemukan';
 async function loadReadableDispatch(env: Env, user: UserContext, id: string): Promise<DispatchRow> {
   const dispatch = await loadDispatchRow(env.DB, id);
   if (!dispatch) throw appError('NOT_FOUND', DISPATCH_NOT_FOUND);
+  if (dispatch.kind.trim() === 'ready') {
+    // Catat ready: tanpa SO, BU ada di baris pengeluaran.
+    assertWhBu(user, dispatch.bu_id.trim(), 'view', DISPATCH_NOT_FOUND);
+    return dispatch;
+  }
   const order = await loadOrderRow(env.DB, dispatch.order_id.trim());
   if (!order) throw appError('NOT_FOUND', DISPATCH_NOT_FOUND);
   assertWhBu(user, order.bu_id.trim(), 'view', DISPATCH_NOT_FOUND);

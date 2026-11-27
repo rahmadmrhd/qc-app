@@ -612,6 +612,7 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
       testDate: 'string',
       query: 'string',
       hideRecordedBuId: 'string',
+      forMode: 'string',
       cursor: 'string',
       limit: 'number',
     },
@@ -672,6 +673,20 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
     path: '/serial-warehouse/orders/{id}',
     etag: 'updatedAt',
   },
+  // Catat ready (tanpa SO). Jalur statis SEBELUM yang berparameter.
+  'serialWarehouse.readyList': {
+    verb: 'GET',
+    path: '/serial-warehouse/ready',
+    query: {
+      buIds: 'list',
+      from: 'string',
+      to: 'string',
+      status: 'string',
+      cursor: 'string',
+      limit: 'number',
+    },
+  },
+  'serialWarehouse.ready': { verb: 'GET', path: '/serial-warehouse/ready/{id}' },
   // Bukti foto QC Serial Number. `serialProofs.get` TANPA `etag` dan memakai `cache: 'revalidate'` (`private, no-cache`): isi pada
   // id yang sama berubah dari foto asli (draft/antre) menjadi hasil bercap (selesai), jadi ETag `id` atau `immutable`
   // akan menyajikan foto basi; tanpa validator, tiap tampilan mengunduh ulang berkasnya.

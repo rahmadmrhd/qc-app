@@ -94,6 +94,8 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   'serialwh.dispatch_create': 'Keluar Gudang dicatat',
   'serialwh.dispatch_done': 'Keluar Gudang selesai',
   'serialwh.dispatch_cancel': 'Keluar Gudang dibatalkan otomatis',
+  'serialwh.ready_create': 'Ready Gudang dicatat',
+  'serialwh.ready_done': 'Ready Gudang selesai',
   'serialwh.links_update': 'Tautan task SO diubah',
   'export.sheets': 'Data diekspor ke Sheets',
   'dashboard.share_create': 'Tautan dashboard dibuat',
@@ -195,7 +197,25 @@ export function auditFieldLabel(key: string): string {
   return AUDIT_FIELD_LABELS[key] ?? key;
 }
 
-export function auditActionLabel(action: string): string {
+/** Aksi Keluar Gudang yang berbagi kunci antara mode SO dan ready; label ready dipilih menurut jenis/target. */
+const READY_ACTION_LABELS: Record<string, string> = {
+  'serialwh.dispatch_cancel': 'Ready Gudang dibatalkan otomatis',
+};
+
+/**
+ * Label aksi audit. `context` (jenis aktivitas `warehouseReady` atau target jejak berawalan "Ready ") memilih label
+ * mode ready untuk aksi yang kuncinya dipakai bersama mode SO.
+ */
+export function auditActionLabel(
+  action: string,
+  context?: { kind?: string; target?: string },
+): string {
+  const ready =
+    context?.kind === 'warehouseReady' || context?.target?.startsWith('Ready ') === true;
+  if (ready) {
+    const label = READY_ACTION_LABELS[action];
+    if (label) return label;
+  }
   return AUDIT_ACTION_LABELS[action] ?? action;
 }
 

@@ -50,6 +50,8 @@ export async function seedWarehouseWorld(env: Env): Promise<void> {
 }
 
 export interface DispatchOptions {
+  /** Catat ready (tanpa SO): `orderNumber`/`customerName`/`handoverIds` diabaikan. */
+  ready?: boolean;
   orderNumber?: string;
   buId?: string;
   customerName?: string;
@@ -84,13 +86,14 @@ export async function submitDispatch(env: Env, email: string, options: DispatchO
     clientId: crypto.randomUUID(),
     chunkIndex: 0,
     header: {
+      ...(options.ready ? { mode: 'ready' } : {}),
       dispatchedOn: options.dispatchedOn ?? '2026-11-12',
-      orderNumber: options.orderNumber ?? 'SO-1',
+      orderNumber: options.ready ? '' : (options.orderNumber ?? 'SO-1'),
       buId: options.buId ?? 'bu-a',
-      customerName: options.customerName ?? 'PT Maju',
+      customerName: options.ready ? '' : (options.customerName ?? 'PT Maju'),
       itemId: options.itemId ?? 'i-a1',
       note: options.note ?? '',
-      handoverIds: options.handoverIds ?? [],
+      handoverIds: options.ready ? [] : (options.handoverIds ?? []),
       total: rows.length,
       chunkSize: 200,
     },

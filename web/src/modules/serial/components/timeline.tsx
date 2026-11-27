@@ -1,5 +1,9 @@
 import type { SerialCaseDto, SerialEventDto } from '@shared/contract';
-import { WAREHOUSE_SOURCE, warehouseRecordedNote } from '@shared/serial-warehouse';
+import {
+  WAREHOUSE_READY_NOTE,
+  WAREHOUSE_SOURCE,
+  warehouseRecordedNote,
+} from '@shared/serial-warehouse';
 import type { SerialStatus } from '@shared/serials';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
@@ -62,6 +66,7 @@ function eventTitle(event: SerialEventDto): string {
     return legEventLabel(event.type, event.data.leg);
   }
   if (event.type === 'recorded' && event.data.source === WAREHOUSE_SOURCE) {
+    if (event.data.mode === 'ready') return WAREHOUSE_READY_NOTE;
     const orderNumber = text(event.data.orderNumber);
     return orderNumber ? warehouseRecordedNote(orderNumber) : 'Dicatat Gudang';
   }

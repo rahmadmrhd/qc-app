@@ -17,7 +17,7 @@ import { draftDispatchId } from '../lib/draft-store';
 import { fetchWarehouseCopyText, warehouseDispatchSerialsQueryOptions } from '../queries';
 import { ClipboardResultDialog } from './clipboard-result-dialog';
 
-const DISPATCH_STATUS = {
+export const DISPATCH_STATUS = {
   pending: { label: 'Belum selesai', color: 'warning' },
   done: { label: 'Selesai', color: 'success' },
   cancelled: { label: 'Dibatalkan otomatis', color: 'destructive' },

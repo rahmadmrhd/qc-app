@@ -2,10 +2,12 @@ import { appError } from '@server/core/errors';
 import { readFilterList, readObject } from '@server/core/validate';
 import type {
   GetWarehouseOrderInput,
+  GetWarehouseReadyInput,
   ListWarehouseDispatchSerialsInput,
   ListWarehouseItemOptionsInput,
   ListWarehouseOrderOptionsInput,
   ListWarehouseOrdersInput,
+  ListWarehouseReadyInput,
   ListWarehouseSerialsInput,
   WarehouseCopyTextInput,
   WarehouseLookupInput,
@@ -21,6 +23,7 @@ import {
   normalizeOrderNumber,
   orderNumberProblem,
   WAREHOUSE_LIMITS,
+  type WarehouseDispatchStatus,
 } from '@shared/serial-warehouse';
 import { isIsoDate, normalizeSerial, serialProblem } from '@shared/serials';
 
@@ -77,6 +80,10 @@ export function validateWarehouseSerials(raw: unknown): ListWarehouseSerialsInpu
   if (testDate !== '' && !isIsoDate(testDate)) reader.fail('testDate', 'Tanggal tidak valid');
   const query = reader.str('query', { max: 100 });
   const hideRecordedBuId = reader.str('hideRecordedBuId', { max: 100 });
+  const forMode = reader.str('forMode', { max: 10 });
+  if (forMode !== '' && forMode !== 'order' && forMode !== 'ready') {
+    reader.fail('forMode', 'Mode tidak valid');
+  }
   const cursor = reader.str('cursor', { max: 200 });
   const limit = readLimit(reader, WAREHOUSE_LIMITS.listMax);
   reader.done();
@@ -87,6 +94,7 @@ export function validateWarehouseSerials(raw: unknown): ListWarehouseSerialsInpu
     ...(testDate !== '' ? { testDate } : {}),
     ...(query !== '' ? { query } : {}),
     ...(hideRecordedBuId !== '' ? { hideRecordedBuId } : {}),
+    ...(forMode === 'order' || forMode === 'ready' ? { forMode } : {}),
     ...(cursor !== '' ? { cursor } : {}),
     ...(limit !== undefined ? { limit } : {}),
   };
@@ -149,27 +157,55 @@ function parseHeader(raw: unknown): WarehouseSubmitHeader {
   if (typeof raw.dispatchedOn !== 'string' || !isIsoDate(raw.dispatchedOn)) {
     return invalid('dispatchedOn', 'Tanggal keluar tidak valid');
   }
-  if (typeof raw.orderNumber !== 'string') return invalid('orderNumber', 'No SO tidak valid');
-  const orderNumber = normalizeOrderNumber(raw.orderNumber);
-  const problem = orderNumberProblem(orderNumber);
-  if (problem !== null) {
-    return invalid(
-      'orderNumber',
-      problem === 'empty'
-        ? 'No SO wajib diisi'
-        : problem === 'too_long'
-          ? `No SO maksimal ${WAREHOUSE_LIMITS.orderNumberMax} karakter`
-          : 'No SO tidak valid',
-    );
+  const modeRaw = raw.mode;
+  if (modeRaw !== undefined && modeRaw !== null && modeRaw !== 'order' && modeRaw !== 'ready') {
+    return invalid('mode', 'Mode tidak valid');
   }
-  if (raw.orderId !== undefined && raw.orderId !== null && !isText(raw.orderId, 100)) {
-    return invalid('orderId', 'ID SO tidak valid');
+  const ready = modeRaw === 'ready';
+  let orderNumber = '';
+  if (ready) {
+    // Catat ready tidak punya SO: isian SO/customer/task ditolak bila terisi (kosong/tiada diterima).
+    if (raw.orderId !== undefined && raw.orderId !== null && raw.orderId !== '') {
+      return invalid('orderId', 'Catat ready tidak memakai SO');
+    }
+    if (raw.orderNumber !== undefined && raw.orderNumber !== null && raw.orderNumber !== '') {
+      return invalid('orderNumber', 'Catat ready tidak memakai No SO');
+    }
+  } else {
+    if (typeof raw.orderNumber !== 'string') return invalid('orderNumber', 'No SO tidak valid');
+    orderNumber = normalizeOrderNumber(raw.orderNumber);
+    const problem = orderNumberProblem(orderNumber);
+    if (problem !== null) {
+      return invalid(
+        'orderNumber',
+        problem === 'empty'
+          ? 'No SO wajib diisi'
+          : problem === 'too_long'
+            ? `No SO maksimal ${WAREHOUSE_LIMITS.orderNumberMax} karakter`
+            : 'No SO tidak valid',
+      );
+    }
+    if (raw.orderId !== undefined && raw.orderId !== null && !isText(raw.orderId, 100)) {
+      return invalid('orderId', 'ID SO tidak valid');
+    }
   }
   if (!isText(raw.buId, 100)) return invalid('buId', 'BU tidak valid');
   const customerName = typeof raw.customerName === 'string' ? raw.customerName.trim() : '';
-  if (typeof raw.customerName !== 'string') return invalid('customerName', 'Customer tidak valid');
-  const customerProblem = customerNameProblem(customerName);
-  if (customerProblem !== null) return invalid('customerName', customerProblem);
+  if (ready) {
+    if (
+      raw.customerName !== undefined &&
+      raw.customerName !== null &&
+      (typeof raw.customerName !== 'string' || customerName !== '')
+    ) {
+      return invalid('customerName', 'Catat ready tidak memakai customer');
+    }
+  } else {
+    if (typeof raw.customerName !== 'string') {
+      return invalid('customerName', 'Customer tidak valid');
+    }
+    const customerProblem = customerNameProblem(customerName);
+    if (customerProblem !== null) return invalid('customerName', customerProblem);
+  }
   if (!isText(raw.itemId, 100)) return invalid('itemId', 'Item tidak valid');
   const note = typeof raw.note === 'string' ? raw.note.trim() : '';
   if (
@@ -179,7 +215,10 @@ function parseHeader(raw: unknown): WarehouseSubmitHeader {
   ) {
     return invalid('note', 'Catatan tidak valid');
   }
-  const handoverIds = raw.handoverIds;
+  const handoverIds = ready && raw.handoverIds === undefined ? [] : raw.handoverIds;
+  if (ready && Array.isArray(handoverIds) && handoverIds.length > 0) {
+    return invalid('handoverIds', 'Catat ready tidak memakai task Serah Terima');
+  }
   if (
     !Array.isArray(handoverIds) ||
     handoverIds.length > WAREHOUSE_LIMITS.handoverLinksMax ||
@@ -202,8 +241,11 @@ function parseHeader(raw: unknown): WarehouseSubmitHeader {
     return invalid('chunkSize', `Ukuran potongan harus 1-${WAREHOUSE_LIMITS.chunkMax}`);
   }
   return {
+    ...(ready ? { mode: 'ready' as const } : {}),
     dispatchedOn: raw.dispatchedOn,
-    ...(typeof raw.orderId === 'string' && raw.orderId !== '' ? { orderId: raw.orderId } : {}),
+    ...(!ready && typeof raw.orderId === 'string' && raw.orderId !== ''
+      ? { orderId: raw.orderId }
+      : {}),
     orderNumber,
     buId: raw.buId,
     customerName,
@@ -319,6 +361,39 @@ export function validateWarehouseListOrders(raw: unknown): ListWarehouseOrdersIn
     ...(cursor !== '' ? { cursor } : {}),
     ...(limit !== undefined ? { limit } : {}),
   };
+}
+
+const DISPATCH_STATUSES: readonly string[] = ['pending', 'done', 'cancelled'];
+
+export function validateWarehouseListReady(raw: unknown): ListWarehouseReadyInput {
+  const reader = readObject(raw ?? {});
+  const buIds = readFilterList(reader, 'buIds');
+  const from = reader.str('from', { max: 10 });
+  if (from !== '' && !isIsoDate(from)) reader.fail('from', 'Tanggal tidak valid');
+  const to = reader.str('to', { max: 10 });
+  if (to !== '' && !isIsoDate(to)) reader.fail('to', 'Tanggal tidak valid');
+  const status = reader.str('status', { max: 10 });
+  if (status !== '' && !DISPATCH_STATUSES.includes(status)) {
+    reader.fail('status', 'Status tidak valid');
+  }
+  const cursor = reader.str('cursor', { max: 200 });
+  const limit = readLimit(reader, WAREHOUSE_LIMITS.listMax);
+  reader.done();
+  return {
+    ...(buIds ? { buIds } : {}),
+    ...(from !== '' ? { from } : {}),
+    ...(to !== '' ? { to } : {}),
+    ...(status !== '' ? { status: status as WarehouseDispatchStatus } : {}),
+    ...(cursor !== '' ? { cursor } : {}),
+    ...(limit !== undefined ? { limit } : {}),
+  };
+}
+
+export function validateWarehouseGetReady(raw: unknown): GetWarehouseReadyInput {
+  const reader = readObject(raw ?? {});
+  const id = reader.str('id', { required: true, max: 100 });
+  reader.done();
+  return { id };
 }
 
 export function validateWarehouseGetOrder(raw: unknown): GetWarehouseOrderInput {

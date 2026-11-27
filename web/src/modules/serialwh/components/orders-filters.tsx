@@ -20,12 +20,18 @@ export interface OrdersFiltersProps {
   onChange: (patch: Partial<OrdersSearchParams>) => void;
   /** Baris yang sudah dimuat: sumber nama customer bagi pengguna yang hanya boleh melihat (tanpa `options`). */
   rows: readonly WarehouseOrderSummaryDto[];
+  /** `ready` = tab Ready: tanpa kolom cari dan Customer, status memuat "Dibatalkan otomatis". */
+  mode?: 'order' | 'ready';
 }
 
 const STATUS_OPTIONS = [
   { value: 'all', label: 'Semua status' },
   { value: 'pending', label: 'Belum selesai' },
   { value: 'done', label: 'Selesai' },
+];
+const READY_STATUS_OPTIONS = [
+  ...STATUS_OPTIONS,
+  { value: 'cancelled', label: 'Dibatalkan otomatis' },
 ];
 
 interface DateRange {
@@ -87,7 +93,9 @@ function rangeDisplay(from: string | undefined, to: string | undefined): string 
  * `FILTER_LIST_MAX`). Pilihan customer dari `serialWarehouse.options` hanya bagi pengguna `serialwh: edit` (rute itu
  * butuh edit), selain itu dari baris yang sudah dimuat.
  */
-export function OrdersFilters({ search, onChange, rows }: OrdersFiltersProps) {
+export function OrdersFilters({ search, onChange, rows, mode = 'order' }: OrdersFiltersProps) {
+  const isReady = mode === 'ready';
+  const statusOptions = isReady ? READY_STATUS_OPTIONS : STATUS_OPTIONS;
   const me = useMe();
   const canOptions = canUseWarehouse(me);
   const options = useQuery({ ...warehouseOptionsQueryOptions(), enabled: canOptions });
@@ -119,32 +127,38 @@ export function OrdersFilters({ search, onChange, rows }: OrdersFiltersProps) {
 
   return (
     <FilterBar
-      search={{
-        value: text,
-        onChange: setText,
-        placeholder: 'Cari No SO',
-        label: 'Cari No SO',
-      }}
+      {...(isReady
+        ? {}
+        : {
+            search: {
+              value: text,
+              onChange: setText,
+              placeholder: 'Cari No SO',
+              label: 'Cari No SO',
+            },
+          })}
     >
-      <FilterChip
-        label="Customer"
-        display={multiFilterDisplay(customerIds.map(customerLabel))}
-        onClear={() => onChange({ customerIds: undefined })}
-      >
-        <LinkMultiField
-          maxSelected={FILTER_LIST_MAX}
-          id="wh-orders-customer"
-          label="Filter customer"
-          hideLabel
-          placeholder="Semua customer"
-          localFilter
-          highlight
-          value={customerIds}
-          labelOf={customerLabel}
-          options={customerOptions}
-          onChange={(next) => onChange({ customerIds: next.length > 0 ? next : undefined })}
-        />
-      </FilterChip>
+      {isReady ? null : (
+        <FilterChip
+          label="Customer"
+          display={multiFilterDisplay(customerIds.map(customerLabel))}
+          onClear={() => onChange({ customerIds: undefined })}
+        >
+          <LinkMultiField
+            maxSelected={FILTER_LIST_MAX}
+            id="wh-orders-customer"
+            label="Filter customer"
+            hideLabel
+            placeholder="Semua customer"
+            localFilter
+            highlight
+            value={customerIds}
+            labelOf={customerLabel}
+            options={customerOptions}
+            onChange={(next) => onChange({ customerIds: next.length > 0 ? next : undefined })}
+          />
+        </FilterChip>
+      )}
       <FilterChip
         label="BU"
         display={multiFilterDisplay(buIds.map(buLabel))}
@@ -178,7 +192,7 @@ export function OrdersFilters({ search, onChange, rows }: OrdersFiltersProps) {
       <FilterChip
         label="Status"
         display={
-          status === 'all' ? null : (STATUS_OPTIONS.find((o) => o.value === status)?.label ?? null)
+          status === 'all' ? null : (statusOptions.find((o) => o.value === status)?.label ?? null)
         }
         onClear={() => onChange({ status: undefined })}
       >
@@ -186,10 +200,12 @@ export function OrdersFilters({ search, onChange, rows }: OrdersFiltersProps) {
           id="wh-orders-status"
           label="Filter status"
           hideLabel
-          options={STATUS_OPTIONS}
+          options={statusOptions}
           value={status}
           onValueChange={(next) =>
-            onChange({ status: next === 'all' ? undefined : (next as 'pending' | 'done') })
+            onChange({
+              status: next === 'all' ? undefined : (next as 'pending' | 'done' | 'cancelled'),
+            })
           }
         />
       </FilterChip>

@@ -363,6 +363,7 @@ describe('skema baseline', () => {
       { name: '0038_dashboard_report_cc_bcc.sql' },
       { name: '0039_serial_created_by_index.sql' },
       { name: '0040_serial_keluar_gudang.sql' },
+      { name: '0041_serial_ready_wh.sql' },
     ]);
   });
 
@@ -588,6 +589,7 @@ describe('skema baseline', () => {
         'warehouse_dispatch_serials.warehouse_dispatch_serials_order_serial',
         'warehouse_dispatch_serials.warehouse_dispatch_serials_serial',
         'warehouse_dispatches.warehouse_dispatches_client_id',
+        'warehouse_dispatches.warehouse_dispatches_kind_bu',
         'warehouse_dispatches.warehouse_dispatches_order',
         'warehouse_dispatches.warehouse_dispatches_status',
         'warehouse_order_handovers.warehouse_order_handovers_handover',

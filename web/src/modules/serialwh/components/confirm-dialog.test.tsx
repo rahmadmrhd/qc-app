@@ -6,7 +6,9 @@ import type {
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { useState } from 'react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import { pickSelect } from '@/test/link-field';
 import { mockMatchMedia } from '@/test/match-media';
 import { makeExistingRow, makeNewRow } from '../lib/draft';
 import type { WarehouseDraftRow } from '../lib/draft-store';
@@ -27,7 +29,7 @@ vi.mock('./handover-link-picker', () => ({
   ),
 }));
 
-import { ConfirmDialog, type ConfirmDialogProps } from './confirm-dialog';
+import { ConfirmDialog, type ConfirmDialogProps, type WarehousePurpose } from './confirm-dialog';
 
 let media: ReturnType<typeof mockMatchMedia>;
 let orders: WarehouseOrderOptionDto[] = [];
@@ -68,8 +70,16 @@ const order = (over: Partial<WarehouseOrderOptionDto> = {}): WarehouseOrderOptio
   ...over,
 });
 
-function setup(rows: WarehouseDraftRow[], over: Partial<ConfirmDialogProps> = {}) {
-  const props: ConfirmDialogProps = {
+function Host(props: Omit<ConfirmDialogProps, 'purpose' | 'onPurposeChange'>) {
+  const [purpose, setPurpose] = useState<WarehousePurpose>('order');
+  return <ConfirmDialog {...props} purpose={purpose} onPurposeChange={setPurpose} />;
+}
+
+function setup(
+  rows: WarehouseDraftRow[],
+  over: Partial<Omit<ConfirmDialogProps, 'purpose' | 'onPurposeChange'>> = {},
+) {
+  const props: Omit<ConfirmDialogProps, 'purpose' | 'onPurposeChange'> = {
     open: true,
     onOpenChange: vi.fn(),
     rows,
@@ -91,7 +101,7 @@ function setup(rows: WarehouseDraftRow[], over: Partial<ConfirmDialogProps> = {}
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
     <QueryClientProvider client={client}>
-      <ConfirmDialog {...props} />
+      <Host {...props} />
     </QueryClientProvider>,
   );
   return props;
@@ -203,4 +213,57 @@ test('No SO atau customer kosong tidak dikirim', async () => {
   await userEvent.click(await screen.findByRole('button', { name: 'Simpan & salin' }));
   expect(props.onConfirm).not.toHaveBeenCalled();
   expect(await screen.findByText('No SO wajib diisi')).toBeInTheDocument();
+});
+
+test('tujuan bawaan Keluar ke SO mengirim mode order dan field SO', async () => {
+  const props = setup([makeExistingRow(whSerial())]);
+  await userEvent.type(await screen.findByLabelText('No SO'), 'SO-7');
+  await userEvent.type(screen.getByLabelText('Customer'), 'PT Baru');
+  await userEvent.click(screen.getByRole('button', { name: 'Simpan & salin' }));
+  expect(props.onConfirm).toHaveBeenCalledWith(
+    expect.objectContaining({ mode: 'order', orderNumber: 'SO-7' }),
+  );
+});
+
+test('Catat ready menyembunyikan No SO, customer, dan tautan task; mengirim mode ready tanpa SO', async () => {
+  const props = setup([makeExistingRow(whSerial())]);
+  await userEvent.type(await screen.findByLabelText('Catatan'), '  stok ready ');
+  await pickSelect(screen, 'Tujuan', 'Catat ready');
+  expect(screen.queryByLabelText('No SO')).not.toBeInTheDocument();
+  expect(screen.queryByLabelText('Customer')).not.toBeInTheDocument();
+  expect(screen.queryByTestId('picker')).not.toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: 'Simpan & salin' }));
+  expect(props.onConfirm).toHaveBeenCalledTimes(1);
+  const values = vi.mocked(props.onConfirm).mock.calls[0]?.[0];
+  expect(values).toEqual({
+    mode: 'ready',
+    dispatchedOn: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+    orderNumber: '',
+    buId: 'bu1',
+    customerName: '',
+    note: 'stok ready',
+    handoverIds: [],
+  });
+});
+
+test('Catat ready: label Tanggal catat, tanpa peringatan SO, dengan keterangan serial Tercatat WH', async () => {
+  setup([
+    makeExistingRow(
+      whSerial({ recorded: true, dispatches: [{ buCode: 'Z', dispatchedOn: '2026-11-10' }] }),
+    ),
+  ]);
+  expect(await screen.findByLabelText('Tanggal keluar')).toBeInTheDocument();
+  await pickSelect(screen, 'Tujuan', 'Catat ready');
+  expect(screen.getByLabelText('Tanggal catat')).toBeInTheDocument();
+  expect(screen.queryByLabelText('Tanggal keluar')).not.toBeInTheDocument();
+  expect(screen.queryByText(/pernah keluar/i)).not.toBeInTheDocument();
+  expect(screen.getByText(/sudah Tercatat WH akan dilewati/)).toBeInTheDocument();
+});
+
+test('Catat ready tetap mewajibkan BU', async () => {
+  const props = setup([makeExistingRow(whSerial())], { formBuId: '' });
+  await pickSelect(screen, 'Tujuan', 'Catat ready');
+  await userEvent.click(screen.getByRole('button', { name: 'Simpan & salin' }));
+  expect(props.onConfirm).not.toHaveBeenCalled();
+  expect(await screen.findByText('BU wajib dipilih')).toBeInTheDocument();
 });

@@ -71,7 +71,7 @@ import {
   warehouseSerialsQueryOptions,
 } from '../queries';
 import { ClipboardResultDialog } from './clipboard-result-dialog';
-import { ConfirmDialog, type ConfirmValues } from './confirm-dialog';
+import { ConfirmDialog, type ConfirmValues, type WarehousePurpose } from './confirm-dialog';
 import { type DispatchFilters, DispatchHeader } from './dispatch-header';
 import { DispatchTable } from './dispatch-table';
 import { ScanBar, type ScanLine } from './scan-bar';
@@ -151,6 +151,10 @@ export function DispatchPage({ handoverId, onCancel }: DispatchPageProps) {
   );
 
   const [skipped, setSkipped] = useState<readonly WarehouseSkippedRowDto[]>(initial?.skipped ?? []);
+  // Tujuan pengeluaran (dipilih di dialog simpan); kiriman yang dilanjutkan memakai mode headernya.
+  const [purpose, setPurpose] = useState<WarehousePurpose>(
+    initial?.submission?.header.mode === 'ready' ? 'ready' : 'order',
+  );
 
   // Nilai terkini yang dibaca antrean scan (berjalan setelah render ulang) dan penulis draf.
   const live = useRef({ itemId, filters, rows, submission, skipped });
@@ -255,6 +259,7 @@ export function DispatchPage({ handoverId, onCancel }: DispatchPageProps) {
       ...(filters.testDate !== '' ? { testDate: filters.testDate } : {}),
       ...(queryText !== '' ? { query: queryText } : {}),
       ...(filters.hideRecorded && filters.buId !== '' ? { hideRecordedBuId: filters.buId } : {}),
+      ...(purpose === 'ready' ? { forMode: 'ready' as const } : {}),
     }),
   );
   const candidates = useMemo(
@@ -292,7 +297,9 @@ export function DispatchPage({ handoverId, onCancel }: DispatchPageProps) {
     text: string;
     count: number;
     skipped: readonly WarehouseSkippedRowDto[];
-    orderId: string;
+    dispatchId: string;
+    /** Tiada pada pencatatan ready (tanpa SO). */
+    orderId?: string;
     copied: boolean;
   } | null>(null);
   const [failedSerial, setFailedSerial] = useState<{ serial: string; message: string } | null>(
@@ -529,7 +536,7 @@ export function DispatchPage({ handoverId, onCancel }: DispatchPageProps) {
           const next = {
             ...(live.current.submission ?? sub),
             sentChunks,
-            orderId: output.orderId,
+            ...(output.orderId ? { orderId: output.orderId } : {}),
             dispatchId: output.dispatchId,
           };
           live.current.submission = next;
@@ -572,7 +579,8 @@ export function DispatchPage({ handoverId, onCancel }: DispatchPageProps) {
               text,
               skipped: allSkipped,
               count: okSerials.length,
-              orderId: output.orderId,
+              dispatchId: output.dispatchId,
+              ...(output.orderId ? { orderId: output.orderId } : {}),
               copied: ok,
             });
             return;
@@ -607,6 +615,7 @@ export function DispatchPage({ handoverId, onCancel }: DispatchPageProps) {
     // Kiriman baru: tanda "dilewati" dari kiriman sebelumnya tidak berlaku lagi.
     commitSkipped([]);
     const sub = freezeSubmission(live.current.rows, {
+      ...(values.mode === 'ready' ? { mode: 'ready' as const } : {}),
       dispatchedOn: values.dispatchedOn,
       ...(values.orderId ? { orderId: values.orderId } : {}),
       orderNumber: values.orderNumber,
@@ -876,6 +885,8 @@ export function DispatchPage({ handoverId, onCancel }: DispatchPageProps) {
         options={options.data}
         handoverContext={handoverContext}
         originHandoverId={handoverId}
+        purpose={purpose}
+        onPurposeChange={setPurpose}
         onRemoveRows={(ids) => removeKeys(ids)}
         onConfirm={startSubmit}
       />
@@ -916,9 +927,16 @@ export function DispatchPage({ handoverId, onCancel }: DispatchPageProps) {
         onOpenHistory={
           result && canReadWarehouse(me)
             ? () => {
-                const orderId = result.orderId;
+                const { orderId, dispatchId } = result;
                 setResult(null);
-                stack.push({ to: '/serial/gudang/riwayat/$orderId', params: { orderId } });
+                if (orderId) {
+                  stack.push({ to: '/serial/gudang/riwayat/$orderId', params: { orderId } });
+                } else {
+                  stack.push({
+                    to: '/serial/gudang/riwayat/ready/$readyId',
+                    params: { readyId: dispatchId },
+                  });
+                }
               }
             : undefined
         }

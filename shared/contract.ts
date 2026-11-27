@@ -37,7 +37,11 @@ import type { NotificationDto } from './notifications';
 import type { PartialPermissionMap, PermissionMap } from './permissions';
 import type { PostelCondition, PostelRole } from './postel';
 import type { QrExportStatus, QrLayout, QrLinkSource, QrNamePlacement, QrStyle } from './qrcode';
-import type { WarehouseDispatchMode, WarehouseDispatchStatus } from './serial-warehouse';
+import type {
+  WarehouseDispatchMode,
+  WarehouseDispatchStatus,
+  WarehouseSubmitMode,
+} from './serial-warehouse';
 import type {
   SerialCustody,
   SerialEventType,
@@ -1538,6 +1542,11 @@ export interface ListWarehouseSerialsInput {
   testDate?: string;
   query?: string;
   hideRecordedBuId?: string;
+  /**
+   * Arti `hideRecordedBuId`: `order` (bawaan) = sembunyikan serial yang sudah punya pengeluaran SO selesai di BU itu;
+   * `ready` = sembunyikan serial yang punya catatan WH selesai mana pun (mode apa pun, BU mana pun).
+   */
+  forMode?: WarehouseSubmitMode;
   cursor?: string;
   limit?: number;
 }
@@ -1576,6 +1585,11 @@ export interface WarehouseOrderOptionsPageDto {
   nextCursor: string | null;
 }
 export interface WarehouseSubmitHeader {
+  /**
+   * `order` (bawaan bila tiada) = keluar ke SO; `ready` = catat ready tanpa SO: `orderId` harus tiada, `orderNumber` dan
+   * `customerName` kosong (`''`), `handoverIds` kosong (`[]`); selain itu `VALIDATION`. `buId` wajib (BU `serialwh: edit`).
+   */
+  mode?: WarehouseSubmitMode;
   dispatchedOn: string;
   orderId?: string;
   orderNumber: string;
@@ -1603,8 +1617,10 @@ export interface WarehouseSkippedRowDto {
 }
 export interface WarehouseSubmitOutput {
   dispatchId: string;
-  orderId: string;
-  orderNumber: string;
+  /** Tiada pada pencatatan ready (tanpa SO). */
+  orderId?: string;
+  /** Tiada pada pencatatan ready (tanpa SO). */
+  orderNumber?: string;
   status: WarehouseDispatchStatus;
   chunksReceived: number;
   chunkCount: number;
@@ -1679,6 +1695,30 @@ export interface WarehouseOrderDto extends WarehouseOrderSummaryDto {
   handovers: WarehouseLinkedHandoverDto[];
   /** `serialwh: edit` pada BU SO. */
   canEdit: boolean;
+}
+/** Pencatatan ready (tanpa SO): satu pengeluaran `mode ready`. */
+export interface WarehouseReadyDto extends WarehouseDispatchDto {
+  buId: string;
+  buCode: string;
+  /** Hanya bila BU itu terbaca pemanggil (selalu terbaca di rute ini). */
+  buName?: string;
+  /** `serialwh: edit` pada BU pencatatan. */
+  canEdit: boolean;
+}
+export interface ListWarehouseReadyInput {
+  buIds?: string[];
+  from?: string;
+  to?: string;
+  status?: WarehouseDispatchStatus;
+  cursor?: string;
+  limit?: number;
+}
+export interface WarehouseReadyPageDto {
+  items: WarehouseReadyDto[];
+  nextCursor: string | null;
+}
+export interface GetWarehouseReadyInput {
+  id: string;
 }
 export interface GetWarehouseOrderInput {
   id: string;
@@ -2020,6 +2060,8 @@ export interface ApiContract {
   };
   'serialWarehouse.setLinks': { input: SetWarehouseOrderLinksInput; output: WarehouseOrderDto };
   'serialWarehouse.getOrder': { input: GetWarehouseOrderInput; output: WarehouseOrderDto };
+  'serialWarehouse.readyList': { input: ListWarehouseReadyInput; output: WarehouseReadyPageDto };
+  'serialWarehouse.ready': { input: GetWarehouseReadyInput; output: WarehouseReadyDto };
   'serialProofs.upload': { input: UploadSerialProofInput; output: SerialProofPhotoDto };
   'serialProofs.get': { input: GetSerialProofInput; output: SerialProofContentDto };
   'serialProofs.remove': { input: RemoveSerialProofInput; output: { id: string } };

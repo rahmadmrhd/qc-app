@@ -1316,12 +1316,33 @@
     "status": 200
   },
   {
+    "id": "serialWarehouse.ready",
+    "verb": "GET",
+    "path": "/serial-warehouse/ready/{id}",
+    "status": 200
+  },
+  {
+    "id": "serialWarehouse.readyList",
+    "verb": "GET",
+    "path": "/serial-warehouse/ready",
+    "query": {
+      "buIds": "list",
+      "cursor": "string",
+      "from": "string",
+      "limit": "number",
+      "status": "string",
+      "to": "string"
+    },
+    "status": 200
+  },
+  {
     "id": "serialWarehouse.serials",
     "verb": "GET",
     "path": "/serial-warehouse/serials",
     "query": {
       "buIds": "list",
       "cursor": "string",
+      "forMode": "string",
       "hideRecordedBuId": "string",
       "itemId": "string",
       "limit": "number",

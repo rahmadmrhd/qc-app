@@ -118,7 +118,7 @@ function AuditPage() {
           >
             <FilterChip
               label="Aksi"
-              display={multiFilterDisplay(actions.map(auditActionLabel))}
+              display={multiFilterDisplay(actions.map((entry) => auditActionLabel(entry)))}
               onClear={() =>
                 void navigate({
                   search: (prev) => ({ ...prev, actions: undefined, action: undefined }),
@@ -176,7 +176,8 @@ function AuditPage() {
             <>
               <SheetHeader>
                 <SheetTitle>
-                  {auditActionLabel(selected.action)}: {selected.target}
+                  {auditActionLabel(selected.action, { target: selected.target })}:{' '}
+                  {selected.target}
                 </SheetTitle>
                 <SheetDescription>
                   {selected.actor} · {formatAuditTime(selected.ts)}

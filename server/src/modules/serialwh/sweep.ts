@@ -2,7 +2,7 @@ import { CAS_FAIL_SQL, isGuardFailure } from '@server/core/cas';
 import type { Env } from '@server/core/env';
 import { nowIso, nowOf } from '@server/core/env';
 import { WAREHOUSE_LIMITS } from '@shared/serial-warehouse';
-import { WAREHOUSE_AUDIT, warehouseAuditStmt } from './audit';
+import { orderAuditTarget, readyAuditTarget, WAREHOUSE_AUDIT, warehouseAuditStmt } from './audit';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 /** Pengeluaran dibatalkan per tik penjadwal (sisanya menyusul pada tik berikutnya). */
@@ -18,20 +18,26 @@ const SWEEP_BATCH = 100;
 export async function sweepStaleDispatches(env: Env): Promise<number> {
   const cutoff = new Date(nowOf(env) - WAREHOUSE_LIMITS.staleDays * DAY_MS).toISOString();
   const stale = await env.DB.prepare(
-    "SELECT d.id, d.order_id, d.serial_total, d.chunks_received, d.chunk_count, o.number FROM warehouse_dispatches d JOIN warehouse_orders o ON o.id = d.order_id WHERE d.status = 'pending' AND d.created_at < ? ORDER BY d.created_at LIMIT ?",
+    "SELECT d.id, d.order_id, d.kind, d.dispatched_on, d.serial_total, d.chunks_received, d.chunk_count, o.number FROM warehouse_dispatches d LEFT JOIN warehouse_orders o ON o.id = d.order_id WHERE d.status = 'pending' AND d.created_at < ? ORDER BY d.created_at LIMIT ?",
   )
     .bind(cutoff, SWEEP_BATCH)
     .all<{
       id: string;
       order_id: string;
+      kind: string;
+      dispatched_on: string;
       serial_total: number | string;
       chunks_received: number | string;
       chunk_count: number | string;
-      number: string;
+      number: string | null;
     }>();
   let cancelled = 0;
   for (const row of stale.results) {
     const now = nowIso(env);
+    const target =
+      row.kind.trim() === 'ready'
+        ? readyAuditTarget(row.id.trim(), row.dispatched_on)
+        : orderAuditTarget(row.order_id.trim(), row.number ?? '');
     try {
       await env.DB.batch([
         env.DB.prepare(
@@ -41,8 +47,8 @@ export async function sweepStaleDispatches(env: Env): Promise<number> {
         warehouseAuditStmt(env.DB, {
           action: WAREHOUSE_AUDIT.dispatchCancel,
           actor: 'system',
-          orderId: row.order_id.trim(),
-          orderNumber: row.number,
+          targetId: target.targetId,
+          target: target.label,
           ts: now,
           after: {
             dispatchId: row.id.trim(),

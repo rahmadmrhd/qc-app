@@ -4,6 +4,7 @@ import { act, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { ApiError } from '@/lib/api/api-error';
+import { pickSelect } from '@/test/link-field';
 import { longPress } from '@/test/long-press';
 import { mockMatchMedia } from '@/test/match-media';
 import { renderInRouter } from '@/test/render-in-router';
@@ -72,8 +73,9 @@ function api(id: string, input: Record<string, unknown>) {
       const done = body.chunkIndex + 1 === chunkCount;
       return Promise.resolve({
         dispatchId: 'd1',
-        orderId: 'o1',
-        orderNumber: body.header.orderNumber,
+        ...(body.header.mode === 'ready'
+          ? {}
+          : { orderId: 'o1', orderNumber: body.header.orderNumber }),
         status: done ? 'done' : 'pending',
         chunksReceived: body.chunkIndex + 1,
         chunkCount,
@@ -646,4 +648,67 @@ test('serial recorded tanpa rujukan terbaca tetap berlencana Tercatat WH; rujuka
   const row2 = screen.getByText('REC2').closest('tr') as HTMLElement;
   expect(row2).toHaveTextContent('Tercatat WH');
   expect(row2).toHaveTextContent(/Pernah keluar di BU lain \(BU Z, /);
+});
+
+function seedOneNewRow() {
+  seedDraft({
+    itemId: 'item1',
+    rows: [
+      makeNewRow({
+        serial: 'RDY1',
+        itemId: 'item1',
+        buId: 'bu1',
+        locationId: 'loc1',
+        testDate: '2026-11-20',
+      }),
+    ],
+  });
+}
+
+test('Catat ready: header tanpa SO, customer, dan task; hasil membuka detail ready', async () => {
+  seedOneNewRow();
+  const { router } = await renderPage();
+  await userEvent.click(await screen.findByRole('button', { name: /Salin ke clipboard \(1\)/ }));
+  await pickSelect(screen, 'Tujuan', 'Catat ready');
+  await userEvent.click(screen.getByRole('button', { name: 'Simpan & salin' }));
+  await waitFor(() => expect(submitCalls).toHaveLength(1));
+  const header = submitCalls[0]?.header;
+  expect(header).toMatchObject({
+    mode: 'ready',
+    orderNumber: '',
+    customerName: '',
+    handoverIds: [],
+    buId: 'bu1',
+  });
+  expect(header).not.toHaveProperty('orderId');
+  expect(await screen.findByRole('textbox', { name: 'Daftar Serial Number' })).toHaveValue('RDY1');
+  await userEvent.click(screen.getByRole('button', { name: 'Buka riwayat' }));
+  await waitFor(() =>
+    expect(router.state.location.pathname).toBe('/serial/gudang/riwayat/ready/d1'),
+  );
+});
+
+test('Keluar ke SO tetap mengirim header SO tanpa mode dan hasilnya membuka detail SO', async () => {
+  seedOneNewRow();
+  const { router } = await renderPage();
+  await userEvent.click(await screen.findByRole('button', { name: /Salin ke clipboard \(1\)/ }));
+  await userEvent.type(await screen.findByLabelText('No SO'), 'SO-1');
+  await userEvent.type(await screen.findByLabelText('Customer'), 'PT Maju');
+  await userEvent.click(screen.getByRole('button', { name: 'Simpan & salin' }));
+  await waitFor(() => expect(submitCalls).toHaveLength(1));
+  expect(submitCalls[0]?.header).not.toHaveProperty('mode');
+  await userEvent.click(await screen.findByRole('button', { name: 'Buka riwayat' }));
+  await waitFor(() => expect(router.state.location.pathname).toBe('/serial/gudang/riwayat/o1'));
+});
+
+test('tujuan Catat ready mengubah arti filter Sembunyikan yang sudah tercatat (forMode)', async () => {
+  seedOneNewRow();
+  await renderPage();
+  const serialsCalls = () =>
+    apiMock.mock.calls.filter((call) => call[0] === 'serialWarehouse.serials');
+  await waitFor(() => expect(serialsCalls().length).toBeGreaterThan(0));
+  expect(serialsCalls().at(-1)?.[1]).not.toHaveProperty('forMode');
+  await userEvent.click(await screen.findByRole('button', { name: /Salin ke clipboard \(1\)/ }));
+  await pickSelect(screen, 'Tujuan', 'Catat ready');
+  await waitFor(() => expect(serialsCalls().at(-1)?.[1]).toMatchObject({ forMode: 'ready' }));
 });

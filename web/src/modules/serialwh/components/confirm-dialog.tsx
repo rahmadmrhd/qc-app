@@ -13,6 +13,7 @@ import { isIsoDate } from '@shared/serials';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
 import { LinkField, type LinkOption } from '@/components/link-field';
+import { Select } from '@/components/select';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -37,7 +38,11 @@ import { HandoverLinkPicker } from './handover-link-picker';
 import { findMatchingOrder, OrderNumberCombobox } from './order-number-combobox';
 import { WarningBanners } from './warning-banners';
 
+export type WarehousePurpose = 'order' | 'ready';
+
 export interface ConfirmValues {
+  /** `ready` = catat ready tanpa SO: `orderNumber`/`customerName` kosong dan `handoverIds` kosong. */
+  mode: WarehousePurpose;
   dispatchedOn: string;
   orderNumber: string;
   /** Id SO bila memilih SO yang sudah ada. */
@@ -60,6 +65,9 @@ export interface ConfirmDialogProps {
   /** Konteks task asal (`?handover`). */
   handoverContext?: WarehouseHandoverContextDto | undefined;
   originHandoverId?: string | undefined;
+  /** Tujuan pengeluaran; dipegang halaman karena ikut menentukan arti filter "Sembunyikan yang sudah tercatat". */
+  purpose: WarehousePurpose;
+  onPurposeChange: (purpose: WarehousePurpose) => void;
   /** Mengeluarkan baris dari pilihan (serial yang sudah ada di SO ini). */
   onRemoveRows: (serialIds: readonly string[]) => void;
   /** Dipanggil SINKRON dari klik "Simpan & salin" (gestur untuk clipboard). */
@@ -67,6 +75,11 @@ export interface ConfirmDialogProps {
 }
 
 const CHUNK = WAREHOUSE_LIMITS.lookupMax;
+
+const PURPOSE_OPTIONS = [
+  { value: 'order', label: 'Keluar ke SO' },
+  { value: 'ready', label: 'Catat ready' },
+];
 
 /** Dialog konfirmasi kirim (spek 5.5). State direset tiap dibuka (isi hanya dipasang saat terbuka). */
 export function ConfirmDialog(props: ConfirmDialogProps) {
@@ -88,9 +101,12 @@ function ConfirmBody({
   options,
   handoverContext,
   originHandoverId,
+  purpose,
+  onPurposeChange,
   onRemoveRows,
   onConfirm,
 }: ConfirmDialogProps) {
+  const isReady = purpose === 'ready';
   const today = todayWib();
   const [dispatchedOn, setDispatchedOn] = useState(today);
   const [orderNumber, setOrderNumber] = useState('');
@@ -109,13 +125,14 @@ function ConfirmBody({
       ...(typed !== '' ? { query: typed } : {}),
       ...(pickedBuId !== '' ? { buId: pickedBuId } : {}),
     }),
+    enabled: !isReady,
   });
   const orders = useMemo(
     () => orderQuery.data?.pages.flatMap((page) => page.items) ?? [],
     [orderQuery.data],
   );
   // SO tertaut task asal disarankan lebih dulu; juga dipakai untuk mencocokkan.
-  const matched = findMatchingOrder(orderNumber, orders);
+  const matched = isReady ? null : findMatchingOrder(orderNumber, orders);
   const suggestions = useMemo(() => {
     const linked = handoverContext?.orders ?? [];
     const ids = new Set(linked.map((order) => order.id));
@@ -179,15 +196,16 @@ function ConfirmBody({
   const needsItemBu = rows.some((row) => row.kind === 'new');
   const orderProblem = orderNumberProblem(typed);
   const errors = {
-    order:
-      orderProblem === 'empty'
+    order: isReady
+      ? undefined
+      : orderProblem === 'empty'
         ? 'No SO wajib diisi'
         : orderProblem === 'too_long'
           ? `No SO maksimal ${WAREHOUSE_LIMITS.orderNumberMax} karakter`
           : orderProblem === 'control_chars'
             ? 'No SO memuat karakter yang tidak boleh'
             : undefined,
-    customer: effectiveCustomer.trim() === '' ? 'Customer wajib diisi' : undefined,
+    customer: isReady || effectiveCustomer.trim() !== '' ? undefined : 'Customer wajib diisi',
     bu:
       buId === ''
         ? 'BU wajib dipilih'
@@ -196,7 +214,7 @@ function ConfirmBody({
           : undefined,
     date:
       !isIsoDate(dispatchedOn) || dispatchedOn > today
-        ? 'Tanggal keluar tidak boleh setelah hari ini'
+        ? `${isReady ? 'Tanggal catat' : 'Tanggal keluar'} tidak boleh setelah hari ini`
         : undefined,
     note: [...note].length > WAREHOUSE_LIMITS.noteMax ? 'Catatan terlalu panjang' : undefined,
   };
@@ -213,7 +231,20 @@ function ConfirmBody({
   function submit() {
     setTouched(true);
     if (blocked) return;
+    if (isReady) {
+      onConfirm({
+        mode: 'ready',
+        dispatchedOn,
+        orderNumber: '',
+        buId,
+        customerName: '',
+        note: note.trim(),
+        handoverIds: [],
+      });
+      return;
+    }
     onConfirm({
+      mode: 'order',
       dispatchedOn,
       orderNumber: typed,
       ...(matched ? { orderId: matched.id } : {}),
@@ -247,9 +278,22 @@ function ConfirmBody({
           submit();
         }}
       >
+        <Select
+          id="wh-purpose"
+          label="Tujuan"
+          options={PURPOSE_OPTIONS}
+          value={purpose}
+          onValueChange={(next) => onPurposeChange(next as WarehousePurpose)}
+        />
+        {isReady ? (
+          <p className="text-xs text-muted-foreground">
+            Hanya mencatat serial untuk target barang ready, tanpa No SO, customer, dan tautan task.
+          </p>
+        ) : null}
+
         <div className="space-y-1.5">
           <Label htmlFor="wh-dispatched-on" required>
-            Tanggal keluar
+            {isReady ? 'Tanggal catat' : 'Tanggal keluar'}
           </Label>
           <Input
             id="wh-dispatched-on"
@@ -266,32 +310,36 @@ function ConfirmBody({
           ) : null}
         </div>
 
-        {(handoverContext?.orders.length ?? 0) > 0 && typed === '' ? (
-          <div className="flex flex-wrap items-center gap-1.5 text-xs">
-            <span className="text-muted-foreground">SO tertaut task ini:</span>
-            {handoverContext?.orders.map((order) => (
-              <Button
-                key={order.id}
-                type="button"
-                size="sm"
-                variant="outline"
-                color="primary"
-                onClick={() => setOrderNumber(order.number)}
-              >
-                {order.number}
-              </Button>
-            ))}
-          </div>
-        ) : null}
+        {isReady ? null : (
+          <>
+            {(handoverContext?.orders.length ?? 0) > 0 && typed === '' ? (
+              <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                <span className="text-muted-foreground">SO tertaut task ini:</span>
+                {handoverContext?.orders.map((order) => (
+                  <Button
+                    key={order.id}
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    color="primary"
+                    onClick={() => setOrderNumber(order.number)}
+                  >
+                    {order.number}
+                  </Button>
+                ))}
+              </div>
+            ) : null}
 
-        <OrderNumberCombobox
-          id="wh-order-number"
-          value={orderNumber}
-          onChange={setOrderNumber}
-          orders={suggestions}
-          matched={matched}
-          error={touched ? errors.order : undefined}
-        />
+            <OrderNumberCombobox
+              id="wh-order-number"
+              value={orderNumber}
+              onChange={setOrderNumber}
+              orders={suggestions}
+              matched={matched}
+              error={touched ? errors.order : undefined}
+            />
+          </>
+        )}
 
         <div className="space-y-1.5">
           <LinkField
@@ -315,48 +363,54 @@ function ConfirmBody({
           ) : null}
         </div>
 
-        {matched ? (
-          <div className="space-y-1.5">
-            <Label htmlFor="wh-customer-locked" required>
-              Customer
-            </Label>
-            <Input id="wh-customer-locked" value={matched.customerName} readOnly disabled />
-          </div>
-        ) : (
-          <div className="space-y-1.5">
-            <CustomerCombobox
-              id="wh-customer"
-              value={customerName}
-              onChange={setCustomerName}
-              customers={options?.customers ?? []}
-              inactiveNames={options?.inactiveCustomerNames ?? []}
-              savedAs="pengeluaran"
-            />
-            {touched && errors.customer ? (
-              <p role="alert" className="text-xs text-destructive-text">
-                {errors.customer}
-              </p>
-            ) : null}
-          </div>
-        )}
+        {isReady ? null : (
+          <>
+            {matched ? (
+              <div className="space-y-1.5">
+                <Label htmlFor="wh-customer-locked" required>
+                  Customer
+                </Label>
+                <Input id="wh-customer-locked" value={matched.customerName} readOnly disabled />
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                <CustomerCombobox
+                  id="wh-customer"
+                  value={customerName}
+                  onChange={setCustomerName}
+                  customers={options?.customers ?? []}
+                  inactiveNames={options?.inactiveCustomerNames ?? []}
+                  savedAs="pengeluaran"
+                />
+                {touched && errors.customer ? (
+                  <p role="alert" className="text-xs text-destructive-text">
+                    {errors.customer}
+                  </p>
+                ) : null}
+              </div>
+            )}
 
-        <div className="space-y-2">
-          <Label>Tautan Serah Terima</Label>
-          <HandoverLinkPicker
-            {...(customerId ? { customerId } : {})}
-            {...(effectiveCustomer.trim() !== '' ? { customerName: effectiveCustomer.trim() } : {})}
-            {...(matched ? { orderId: matched.id } : {})}
-            {...(item ? { itemId: item.id } : {})}
-            value={handoverIds}
-            onChange={setHandoverIds}
-            {...(originHandoverId ? { lockedIds: [originHandoverId] } : {})}
-          />
-          {originalLinked && originHandoverId && handoverContext ? (
-            <p className="text-xs text-muted-foreground">
-              SO ini akan ditautkan ke task {handoverContext.handover.number}.
-            </p>
-          ) : null}
-        </div>
+            <div className="space-y-2">
+              <Label>Tautan Serah Terima</Label>
+              <HandoverLinkPicker
+                {...(customerId ? { customerId } : {})}
+                {...(effectiveCustomer.trim() !== ''
+                  ? { customerName: effectiveCustomer.trim() }
+                  : {})}
+                {...(matched ? { orderId: matched.id } : {})}
+                {...(item ? { itemId: item.id } : {})}
+                value={handoverIds}
+                onChange={setHandoverIds}
+                {...(originHandoverId ? { lockedIds: [originHandoverId] } : {})}
+              />
+              {originalLinked && originHandoverId && handoverContext ? (
+                <p className="text-xs text-muted-foreground">
+                  SO ini akan ditautkan ke task {handoverContext.handover.number}.
+                </p>
+              ) : null}
+            </div>
+          </>
+        )}
 
         <div className="space-y-1.5">
           <Label htmlFor="wh-note">Catatan</Label>
@@ -377,9 +431,15 @@ function ConfirmBody({
             </AlertDescription>
           </Alert>
         ) : null}
-        <WarningBanners counts={counts} />
+        {isReady ? (
+          <p className="text-xs text-muted-foreground">
+            Serial yang sudah Tercatat WH akan dilewati (tidak dicatat dua kali).
+          </p>
+        ) : (
+          <WarningBanners counts={counts} />
+        )}
 
-        {conflictIds.length > 0 ? (
+        {!isReady && conflictIds.length > 0 ? (
           <Alert color="destructive">
             <AlertDescription className="space-y-2">
               <span className="block">
@@ -397,7 +457,7 @@ function ConfirmBody({
             </AlertDescription>
           </Alert>
         ) : null}
-        {checking ? (
+        {!isReady && checking ? (
           <p className="text-xs text-muted-foreground" role="status">
             Memeriksa serial yang sudah ada di SO…
           </p>

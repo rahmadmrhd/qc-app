@@ -276,3 +276,12 @@ test('kejadian recorded dari Keluar Gudang berjudul Dicatat Gudang · SO <no>', 
   );
   expect(screen.getByText('Dicatat Gudang · SO SO-9')).toBeInTheDocument();
 });
+
+test('kejadian recorded dari Keluar Gudang mode ready berjudul Dicatat Gudang · Ready', () => {
+  renderWithClient(
+    <Timeline
+      events={[event(1, { type: 'recorded', data: { source: 'warehouse', mode: 'ready' } })]}
+    />,
+  );
+  expect(screen.getByText('Dicatat Gudang · Ready')).toBeInTheDocument();
+});

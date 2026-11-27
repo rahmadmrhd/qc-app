@@ -52,6 +52,10 @@ export interface DispatchRow {
   dispatched_on: string;
   note: string;
   mode: string;
+  /** `order` atau `ready` (migrasi 0041). */
+  kind: string;
+  /** BU pencatatan; terisi hanya pada `ready` (pada `order` BU ada di catatan SO). */
+  bu_id: string;
   status: string;
   header_hash: string;
   chunk_size: number | string;
@@ -66,7 +70,7 @@ export interface DispatchRow {
 }
 
 const DISPATCH_COLUMNS =
-  'd.id, d.order_id, d.client_id, d.item_id, d.dispatched_on, d.note, d.mode, d.status, d.header_hash, d.chunk_size, d.chunk_count, d.chunks_received, d.serial_total, d.created_count, d.created_at, d.created_by, d.completed_at, d.cancelled_at';
+  'd.id, d.order_id, d.client_id, d.item_id, d.dispatched_on, d.note, d.mode, d.kind, d.bu_id, d.status, d.header_hash, d.chunk_size, d.chunk_count, d.chunks_received, d.serial_total, d.created_count, d.created_at, d.created_by, d.completed_at, d.cancelled_at';
 
 export const loadDispatchRowByClientId = (
   db: Preparer,
@@ -162,6 +166,15 @@ export async function loadDispatchRefs(
   const map = new Map<string, WarehouseDispatchRefDto[]>();
   const recorded = new Set<string>();
   if (serialIds.length === 0) return { refs: map, recorded };
+  // `recorded` = pengeluaran selesai mode APA PUN (juga ready, yang tak punya SO dan tak masuk `refs`).
+  const recordedRows = await db
+    .prepare(
+      `SELECT DISTINCT wds.serial_id FROM warehouse_dispatch_serials wds JOIN warehouse_dispatches d ON d.id = wds.dispatch_id WHERE d.status = 'done' AND wds.serial_id IN (${placeholders(serialIds.length)})`,
+    )
+    .bind(...serialIds)
+    .all<{ serial_id: string }>();
+  for (const row of recordedRows.results) recorded.add(row.serial_id.trim());
+  // `refs` hanya pengeluaran mode SO (join ke `warehouse_orders` menyingkirkan `ready`, yang ber-`order_id` kosong).
   const rows = await db
     .prepare(
       `SELECT wds.serial_id, o.id AS order_id, o.number, o.bu_id, bu.code AS bu_code, d.dispatched_on FROM warehouse_dispatch_serials wds JOIN warehouse_dispatches d ON d.id = wds.dispatch_id JOIN warehouse_orders o ON o.id = wds.order_id JOIN business_units bu ON bu.id = o.bu_id WHERE d.status = 'done' AND wds.serial_id IN (${placeholders(serialIds.length)}) ORDER BY d.dispatched_on DESC, d.created_at DESC`,
@@ -179,7 +192,6 @@ export async function loadDispatchRefs(
   const hiddenCount = new Map<string, number>();
   for (const row of rows.results) {
     const serialId = row.serial_id.trim();
-    recorded.add(serialId);
     const isReadable = readableBuIds.has(row.bu_id.trim());
     const counter = isReadable ? readableCount : hiddenCount;
     const used = counter.get(serialId) ?? 0;
@@ -202,7 +214,22 @@ export async function loadDispatchRefs(
   return { refs: map, recorded };
 }
 
-/** Serial-serial ini yang sudah ada pada SO itu (pengeluaran `pending` atau selesai). */
+/** Serial-serial ini yang sudah tercatat selesai pada pengeluaran mode apa pun (pencegah mencatat ready ganda). */
+export async function serialsRecordedDone(
+  db: Preparer,
+  serialIds: readonly string[],
+): Promise<Set<string>> {
+  if (serialIds.length === 0) return new Set();
+  const rows = await db
+    .prepare(
+      `SELECT DISTINCT w.serial_id FROM warehouse_dispatch_serials w JOIN warehouse_dispatches d ON d.id = w.dispatch_id WHERE d.status = 'done' AND w.serial_id IN (${placeholders(serialIds.length)})`,
+    )
+    .bind(...serialIds)
+    .all<{ serial_id: string }>();
+  return new Set(rows.results.map((row) => row.serial_id.trim()));
+}
+
+/** Serial-serial ini yang sudah ada pada SO itu (pengeluaran `pending` atau selesai). `orderId` kosong = catatan ready. */
 export async function serialsInOrder(
   db: Preparer,
   orderId: string,

@@ -2,6 +2,7 @@ import type { Env } from '@server/core/env';
 import { appError } from '@server/core/errors';
 import type { UserContext } from '@server/modules/access/context';
 import { escapeLike } from '@server/modules/serial/repo';
+import { whRecordedSql } from '@server/modules/serial/wh-flags';
 import type {
   ListWarehouseSerialsInput,
   WarehouseLookupInput,
@@ -126,10 +127,15 @@ export async function warehouseSerials(
   }
   // Hanya BU yang terbaca pemanggil yang boleh dijadikan penyaring (selain itu diabaikan: tanpa oracle lintas BU).
   if (input.hideRecordedBuId !== undefined && readable.includes(input.hideRecordedBuId)) {
-    where.push(
-      "NOT EXISTS (SELECT 1 FROM warehouse_dispatch_serials hw JOIN warehouse_dispatches hd ON hd.id = hw.dispatch_id JOIN warehouse_orders ho ON ho.id = hw.order_id WHERE hw.serial_id = s.id AND hd.status = 'done' AND ho.bu_id = ?)",
-    );
-    binds.push(input.hideRecordedBuId);
+    if (input.forMode === 'ready') {
+      // Mode ready: catatan WH selesai mana pun (SO atau ready) membuat serial itu dilewati saat kirim, jadi disembunyikan.
+      where.push(`NOT ${whRecordedSql('s')}`);
+    } else {
+      where.push(
+        "NOT EXISTS (SELECT 1 FROM warehouse_dispatch_serials hw JOIN warehouse_dispatches hd ON hd.id = hw.dispatch_id JOIN warehouse_orders ho ON ho.id = hw.order_id WHERE hw.serial_id = s.id AND hd.status = 'done' AND ho.bu_id = ?)",
+      );
+      binds.push(input.hideRecordedBuId);
+    }
   }
   if (input.cursor !== undefined) {
     const match = /^(.+)~(.+)$/.exec(input.cursor);

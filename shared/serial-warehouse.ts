@@ -21,6 +21,8 @@ export const WAREHOUSE_LIMITS = {
 
 export type WarehouseDispatchStatus = 'pending' | 'done' | 'cancelled';
 export type WarehouseDispatchMode = 'clipboard';
+/** Tujuan pencatatan WH: `order` = keluar ke satu SO (bawaan), `ready` = hanya mencapai target barang ready (tanpa SO). */
+export type WarehouseSubmitMode = 'order' | 'ready';
 
 /** Nilai `data.source` pada kejadian `recorded` serial yang dibuat dari Keluar Gudang. */
 export const WAREHOUSE_SOURCE = 'warehouse';
@@ -60,6 +62,9 @@ export function chunkRowsOf(total: number, chunkSize: number, index: number): nu
 export function clipboardText(serials: readonly string[]): string {
   return serials.join('\n');
 }
+
+/** Pesan kejadian serial yang dibuat dari Keluar Gudang mode ready. */
+export const WAREHOUSE_READY_NOTE = 'Dicatat Gudang · Ready';
 
 /** Pesan kejadian serial yang dibuat dari Keluar Gudang. */
 export function warehouseRecordedNote(orderNumber: string): string {

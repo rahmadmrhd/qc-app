@@ -65,6 +65,10 @@ export function auditTargetLink(
       return canReadWarehouse(me)
         ? { to: '/serial/gudang/riwayat/$orderId', params: { orderId: id } }
         : undefined;
+    case 'warehouseReady':
+      return canReadWarehouse(me)
+        ? { to: '/serial/gudang/riwayat/ready/$readyId', params: { readyId: id } }
+        : undefined;
     case 'handover':
       return canAnywhere(me, 'handover', 'view') || canAnywhere(me, 'qc', 'edit')
         ? { to: '/handover/$handoverId', params: { handoverId: id } }

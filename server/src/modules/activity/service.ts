@@ -13,6 +13,7 @@ import { assertItemReadable } from '@server/modules/item/service';
 import { readablePostel } from '@server/modules/postel/service';
 import { readableQrDesign, readableQrPreset } from '@server/modules/qrcode/service';
 import { loadReadableOrder } from '@server/modules/serialwh/orders';
+import { loadReadableReady } from '@server/modules/serialwh/ready';
 import { assertStickerReadable, assertStickerTypeReadable } from '@server/modules/sticker/service';
 import { type ActivityKind, auditTargetKind } from '@shared/audit';
 import type { ActivityEntryDto, ActivityPageDto, ListActivityInput } from '@shared/contract';
@@ -110,6 +111,10 @@ const GATES: Record<ActivityKind, Gate> = {
   warehouseOrder: async (env, user, id) => {
     await loadReadableOrder(env, user, id);
   },
+  // Pencatatan ready (tanpa SO): gerbang yang sama dengan `serialWarehouse.ready` (BU pencatatan ber-`serialwh: view`).
+  warehouseReady: async (env, user, id) => {
+    await loadReadableReady(env, user, id);
+  },
   // Tautan dashboard: baris diriwayatkan sama dengan rute `dashboardShares.get` (milik sendiri bagi `edit`, semua bagi
   // `manage`/super admin; selain itu `NOT_FOUND`).
   dashboardShare: async (env, user, id) => {
@@ -162,6 +167,18 @@ function toEntry(row: ActivityRow): ActivityEntryDto {
 }
 
 /**
+ * Entri `action` milik log `kind`: jenis dari peta aksi, kecuali pembatalan penyapu Keluar Gudang
+ * (`serialwh.dispatch_cancel`, berawalan jenis `warehouseOrder`) yang pada pencatatan ready bertarget id pengeluaran
+ * sehingga ikut log `warehouseReady` (id target berbeda dari id SO: kedua log tak pernah bercampur).
+ */
+function kindMatches(action: string, kind: ActivityKind): boolean {
+  return (
+    auditTargetKind(action) === kind ||
+    (kind === 'warehouseReady' && action === 'serialwh.dispatch_cancel')
+  );
+}
+
+/**
  * Riwayat aktivitas satu record, terbaru dahulu, berkursor `(ts, id)` lewat indeks `audit_log_target_id_ts`. Hanya
  * entri berjenis `kind` yang ikut (`auditTargetKind(action) === kind`); entri tanpa `target_id` (sebelum 2026-11-20)
  * tidak punya riwayat. DTO tidak memuat nilai sebelum/sesudah.
@@ -190,7 +207,7 @@ export async function listActivity(
       .bind(...binds, limit + 1)
       .all<ActivityRow>();
     for (const row of result.results) {
-      if (auditTargetKind(row.action) === input.kind) matched.push(row);
+      if (kindMatches(row.action, input.kind)) matched.push(row);
     }
     const last = result.results[result.results.length - 1];
     if (matched.length > limit || result.results.length < limit + 1 || !last) break;
