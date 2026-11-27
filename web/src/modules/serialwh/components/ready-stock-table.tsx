@@ -13,6 +13,8 @@ export interface ReadyRow {
   remaining: number;
   recordedOn: string;
   processing: boolean;
+  /** Label status/posisi bila bukan good di qc (tak dapat dikeluarkan); kosong bila boleh. */
+  problem: string;
   /** Nada selang-seling per kardus. */
   tone: 'a' | 'b';
   firstOfBox: boolean;
@@ -48,13 +50,15 @@ export function ReadyStockTable({
   ...rest
 }: ReadyStockTableProps) {
   const boxState = (boxId: string): boolean | 'indeterminate' => {
-    const selectable = rows.filter((row) => row.boxId === boxId && !row.processing);
+    const selectable = rows.filter(
+      (row) => row.boxId === boxId && !row.processing && row.problem === '',
+    );
     const chosen = selectable.filter((row) => selection.selected.has(row.id)).length;
     if (chosen === 0) return false;
     return chosen === selectable.length ? true : 'indeterminate';
   };
   const boxSelectable = (boxId: string) =>
-    rows.some((row) => row.boxId === boxId && !row.processing);
+    rows.some((row) => row.boxId === boxId && !row.processing && row.problem === '');
 
   const columns: DataColumn<ReadyRow>[] = [
     {
@@ -92,6 +96,11 @@ export function ReadyStockTable({
       cell: (row) => (
         <span className="flex flex-wrap items-center gap-2">
           <span className="font-mono">{row.serial}</span>
+          {row.problem !== '' ? (
+            <Badge variant="soft" color="destructive">
+              {row.problem}
+            </Badge>
+          ) : null}
           {row.processing ? (
             <Badge variant="soft" color="warning">
               Sedang diproses
@@ -117,7 +126,7 @@ export function ReadyStockTable({
       label={label}
       selectLabel={(row) => row.serial}
       selection={selection}
-      rowSelectable={(row) => !row.processing}
+      rowSelectable={(row) => !row.processing && row.problem === ''}
       rowTone={(row) => row.tone}
       fit="content"
       {...rest}

@@ -1,4 +1,5 @@
 import { assignBoxes } from '@shared/serial-warehouse';
+import { CUSTODY_LABEL, STATUS_LABEL } from '@/modules/serial/lib/labels';
 
 /** Bilangan bulat positif dari isian teks, atau `null` bila kosong, bukan bilangan bulat, atau <= 0. */
 export function parsePositiveInt(text: string): number | null {
@@ -35,4 +36,11 @@ export function capRows<T>(rows: readonly T[], max: number): { rows: T[]; trunca
   return rows.length > max
     ? { rows: rows.slice(0, max), truncated: true }
     : { rows: [...rows], truncated: false };
+}
+
+/** Tanda serial yang tak dapat dikeluarkan karena bukan `good` di `qc` (label status/posisi serial); `''` bila boleh. */
+export function readyProblemLabel(status: string, custody: string): string {
+  if (status !== 'good') return (STATUS_LABEL as Record<string, string>)[status] ?? status;
+  if (custody !== 'qc') return (CUSTODY_LABEL as Record<string, string>)[custody] ?? custody;
+  return '';
 }

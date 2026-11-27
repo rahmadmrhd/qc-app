@@ -1,4 +1,5 @@
 import type { WarehouseSerialDto } from '@shared/contract';
+import { WAREHOUSE_BOX_LIMITS } from '@shared/serial-warehouse';
 import { makeExistingRow } from './draft';
 import {
   EMPTY_FILTERS,
@@ -8,7 +9,7 @@ import {
 } from './draft-store';
 
 /** Baris draf form Catat Serial WH paling banyak (draf 5.000 baris masih jauh di bawah kuota penyimpanan). */
-export const HAND_OFF_ROWS_MAX = 5000;
+export const HAND_OFF_ROWS_MAX = WAREHOUSE_BOX_LIMITS.pickMax;
 
 export interface HandOffRow {
   serialId: string;

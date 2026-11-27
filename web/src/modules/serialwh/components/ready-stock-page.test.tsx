@@ -34,7 +34,16 @@ let pickedIds: string[] = [];
 let failList = false;
 let writeText: ReturnType<typeof vi.fn>;
 
-const serial = (id: string, boxId: string, boxNumber: number, processing = false) => ({
+const serial = (
+  id: string,
+  boxId: string,
+  boxNumber: number,
+  processing = false,
+  status = 'good',
+  custody = 'qc',
+) => ({
+  status,
+  custody,
   id,
   serial: `SN-${id}`,
   boxId,
@@ -70,7 +79,11 @@ function fixture(): ReadyStockBoxDto[] {
       buId: 'bu1',
       buCode: 'A',
       buName: 'BU 1',
-      serials: [serial('s4', 'bx2', 2), serial('s5', 'bx2', 2), serial('s6', 'bx2', 2)],
+      serials: [
+        serial('s4', 'bx2', 2),
+        serial('s5', 'bx2', 2, false, 'reported'),
+        serial('s6', 'bx2', 2),
+      ],
     },
     {
       id: 'bx3',
@@ -308,4 +321,23 @@ test('"Pilih N unit" melebihi batas: pesan memuat batasnya dan rute tidak dipang
   await userEvent.click(screen.getByRole('button', { name: 'Pilih sesuai urutan' }));
   expect(await screen.findByText(/Paling banyak 5000 unit/)).toBeInTheDocument();
   expect(listCalls().some((call) => (call[1] as { pickCount?: number }).pickCount)).toBe(false);
+});
+
+test('serial bukan good+qc bertanda status, tidak dapat dicentang, dan tidak ikut kotak centang kardus', async () => {
+  await renderPage();
+  await screen.findByText('SN-s1');
+  expect(within(rowOf('SN-s5')).getByText('Dilaporkan')).toBeInTheDocument();
+  expect(screen.queryByRole('checkbox', { name: 'Pilih SN-s5' })).not.toBeInTheDocument();
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih kardus 2' }));
+  expect(await screen.findByText('2 dipilih')).toBeInTheDocument();
+  expect(screen.getByRole('checkbox', { name: 'Pilih SN-s4' })).toBeChecked();
+  expect(screen.getByRole('checkbox', { name: 'Pilih SN-s6' })).toBeChecked();
+});
+
+test('salin semua terfilter tetap menyertakan serial bermasalah', async () => {
+  await renderPage();
+  await screen.findByText('SN-s1');
+  await userEvent.click(screen.getByRole('button', { name: /Salin ke clipboard/ }));
+  await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
+  expect(writeText.mock.calls[0]?.[0]).toContain('2	SN-s5');
 });

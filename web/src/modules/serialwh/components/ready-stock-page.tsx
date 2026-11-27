@@ -1,6 +1,10 @@
 import { formatBuLabel } from '@shared/business-units';
 import type { ReadyStockBoxDto, WarehouseSerialDto } from '@shared/contract';
-import { readyStockClipboard, WAREHOUSE_LIMITS } from '@shared/serial-warehouse';
+import {
+  readyStockClipboard,
+  WAREHOUSE_BOX_LIMITS,
+  WAREHOUSE_LIMITS,
+} from '@shared/serial-warehouse';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { useCallback, useMemo, useState } from 'react';
 import { toast } from 'sonner';
@@ -24,7 +28,7 @@ import { buIdsWithLevelOf, canUseWarehouse } from '@/modules/auth/permissions';
 import { useMe } from '@/modules/auth/use-me';
 import { copyLines } from '../lib/clipboard';
 import { HAND_OFF_ROWS_MAX, type HandOffRow, handOffToDispatch } from '../lib/hand-off';
-import { capRows } from '../lib/ready-box';
+import { capRows, readyProblemLabel } from '../lib/ready-box';
 import { type ReadySearchParams, toReadyStockInput } from '../lib/ready-stock-filter';
 import { lookupWarehouseSerials, readyStockQueryOptions } from '../queries';
 import { type ReadyRow, ReadyStockTable } from './ready-stock-table';
@@ -51,6 +55,7 @@ function flatten(boxes: readonly ReadyStockBoxDto[], startTone: 'a' | 'b'): Read
         remaining: box.remaining,
         recordedOn: serial.recordedOn,
         processing: serial.processing,
+        problem: readyProblemLabel(serial.status, serial.custody),
         tone,
         firstOfBox: index === 0,
         itemLabel: box.itemLabel,
@@ -122,7 +127,7 @@ export function ReadyStockPage({ search, onSearchChange }: ReadyStockPageProps) 
   const master = useRowSelection(filterKey);
   usePruneSelection(
     master,
-    allRows.filter((row) => !row.processing).map((row) => row.id),
+    allRows.filter((row) => !row.processing && row.problem === '').map((row) => row.id),
     !list.isPending,
   );
   const fullSelection = sectionSelection(master, fullRows);
@@ -130,7 +135,9 @@ export function ReadyStockPage({ search, onSearchChange }: ReadyStockPageProps) 
   const toggleBox = useCallback(
     (boxId: string, on: boolean) => {
       master.setAll(
-        allRows.filter((row) => row.boxId === boxId && !row.processing).map((row) => row.id),
+        allRows
+          .filter((row) => row.boxId === boxId && !row.processing && row.problem === '')
+          .map((row) => row.id),
         on,
       );
     },
@@ -150,8 +157,8 @@ export function ReadyStockPage({ search, onSearchChange }: ReadyStockPageProps) 
       setPickError('Isi jumlah unit lebih dari 0');
       return;
     }
-    if (count > HAND_OFF_ROWS_MAX) {
-      setPickError(`Paling banyak ${HAND_OFF_ROWS_MAX} unit sekali pilih`);
+    if (count > WAREHOUSE_BOX_LIMITS.pickMax) {
+      setPickError(`Paling banyak ${WAREHOUSE_BOX_LIMITS.pickMax} unit sekali pilih`);
       return;
     }
     setPickError('');
