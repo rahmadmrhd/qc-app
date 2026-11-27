@@ -94,7 +94,7 @@ describe('collectLegacyIds / replaceLegacyIds (murni)', () => {
       'failedAt, field, filename, firmware, firstAt, footer, from, guideName, inactiveCustomerNames, itemLabel, label, picked, recordedOn, ' +
       'lastActorName, lastDispatchedOn, lastEventAt, leftAt, link, locationLabel, locationName, logoUpdatedAt, manualBookName, message, mime, model, models, name, ' +
       'nextCursor, note, number, numbers, occurredOn, openCaseNumber, openedOn, orderNumber, postelNumber, preview, publicKey, publishedAt, ' +
-      'bcc, cc, query, quote, reason, recipients, reinjectedAt, reporter, result, search, serial, serials, shipmentNote, skipped, skippedTotal, source, ' +
+      'bcc, cc, custody, status, query, quote, reason, recipients, reinjectedAt, reporter, result, search, serial, serials, shipmentNote, skipped, skippedTotal, source, ' +
       'stickerLabel, subtitle, summary, tables, target, targetName, testDate, text, thumbMime, ticket, title, to, today, ' +
       'transitFromLocationName, transitOn, transitToLocationName, ts, typeName, unitLocationLabel, updatedAt, updatedBy, uploadedBy, url, version'
     ).split(', '),
