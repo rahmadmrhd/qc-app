@@ -373,7 +373,7 @@ describe('penugasan BU user', () => {
     const ctx = await contextOf('ani@gmail.com');
     expect(ctx.permissions.item).toBe('edit');
     expect(ctx.businessUnits).toEqual({
-      'bu-um': { item: 'edit', serial: 'none', serialservice: 'none' },
+      'bu-um': { item: 'edit', serial: 'none', serialservice: 'none', serialwh: 'none' },
     });
   });
 

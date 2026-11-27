@@ -45,17 +45,17 @@ export async function seedSerialWorld(env: Env): Promise<void> {
   await seedRole(env, {
     id: 'r-svc',
     name: 'Servis view',
-    permissions: { serialservice: 'view', countrylock: 'none' },
+    permissions: { serialservice: 'view', serialwh: 'none', countrylock: 'none' },
   });
   await seedRole(env, {
     id: 'r-svc-edit',
     name: 'Servis edit',
-    permissions: { serialservice: 'edit', countrylock: 'none' },
+    permissions: { serialservice: 'edit', serialwh: 'none', countrylock: 'none' },
   });
   await seedRole(env, {
     id: 'r-both-mod',
     name: 'Serial dan servis edit',
-    permissions: { serial: 'edit', serialservice: 'edit', countrylock: 'none' },
+    permissions: { serial: 'edit', serialservice: 'edit', serialwh: 'none', countrylock: 'none' },
   });
   await seedUser(env, {
     id: 'u-svc-edit',

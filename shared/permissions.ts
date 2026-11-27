@@ -9,6 +9,7 @@ export const MODULES = [
   'stickerstock',
   'serial',
   'serialservice',
+  'serialwh',
   'countrylock',
   'dashboard',
 ] as const;
@@ -25,6 +26,7 @@ export const MODULE_LABELS: Record<ModuleKey, string> = {
   stickerstock: 'Stok Stiker',
   serial: 'Serial Number',
   serialservice: 'Servis Serial Number',
+  serialwh: 'Gudang Serial Number',
   countrylock: 'Country Lock',
   dashboard: 'Dashboard',
 };
@@ -54,6 +56,7 @@ export const MODULE_LEVELS: Record<ModuleKey, readonly Level[]> = {
   stickerstock: ['none', 'view', 'edit', 'manage'],
   serial: ['none', 'view', 'edit', 'manage'],
   serialservice: ['none', 'view', 'edit'],
+  serialwh: ['none', 'view', 'edit'],
   countrylock: ['none', 'view'],
   dashboard: ['none', 'view', 'edit', 'manage'],
 };
@@ -114,6 +117,10 @@ export const MODULE_LEVEL_HINTS: Partial<Record<ModuleKey, Partial<Record<Level,
   serialservice: {
     view: 'Melihat serial number dan riwayat servisnya pada BU penugasan.',
     edit: 'Melihat serta menangani servis serial number.',
+  },
+  serialwh: {
+    view: 'Melihat Riwayat Keluar Gudang (catatan SO) pada BU penugasan dan menyalin ulang daftar Serial Number.',
+    edit: 'Melihat serta mencatat Keluar Gudang: memilih atau membuat Serial Number untuk sebuah SO dan menautkan task Serah Terima.',
   },
   countrylock: {
     view: 'Melihat menu Country Lock dan membukanya di aplikasi desktop dari peramban (dengan akun yang sama). Halaman Country Lock di aplikasi desktop tetap dapat dibuka tanpa login.',

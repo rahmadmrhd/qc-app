@@ -32,10 +32,12 @@ import type {
 } from './dashboard-share';
 import type { GuideProgressDto } from './guides';
 import type { HandoverStatus } from './handover';
+import type { ItemDetection } from './item-detect';
 import type { NotificationDto } from './notifications';
 import type { PartialPermissionMap, PermissionMap } from './permissions';
 import type { PostelCondition, PostelRole } from './postel';
 import type { QrExportStatus, QrLayout, QrLinkSource, QrNamePlacement, QrStyle } from './qrcode';
+import type { WarehouseDispatchMode, WarehouseDispatchStatus } from './serial-warehouse';
 import type {
   SerialCustody,
   SerialEventType,
@@ -1466,6 +1468,305 @@ export interface PostelFileContentDto {
   filename: string;
 }
 
+// --- Keluar Gudang (grup serialWarehouse) ---
+export interface WarehouseItemOptionDto {
+  id: string;
+  label: string;
+  brandName: string;
+  model: string;
+  /** BU item yang termasuk BU ber-`serialwh: edit` pemanggil. */
+  buIds: string[];
+  proofRequired: boolean;
+  proofMin: number;
+}
+export interface ListWarehouseItemOptionsInput {
+  query?: string;
+  buId?: string;
+  ids?: string[];
+  cursor?: string;
+  limit?: number;
+}
+export interface WarehouseItemOptionsPageDto {
+  items: WarehouseItemOptionDto[];
+  nextCursor: string | null;
+}
+export interface WarehouseOptionsDto {
+  /** Lokasi aktif hidup. */
+  locations: { id: string; name: string }[];
+  /** Customer aktif hidup. */
+  customers: { id: string; name: string }[];
+  inactiveCustomerNames: string[];
+}
+/** Pengeluaran SELESAI yang memuat serial ini. */
+export interface WarehouseDispatchRefDto {
+  /** Hanya bila BU SO terbaca pemanggil (`serialwh: view`); lintas BU tak terbaca = tak ada. */
+  orderId?: string;
+  /** Hanya bila BU SO terbaca pemanggil. */
+  orderNumber?: string;
+  /** Hanya bila BU SO terbaca pemanggil (BU tak terbaca tak pernah sama dengan BU pengguna). */
+  buId?: string;
+  buCode: string;
+  dispatchedOn: string;
+}
+/** Pengungkapan minimal lintas BU: tanpa catatan, riwayat, pelaku, atau foto. */
+export interface WarehouseSerialDto {
+  id: string;
+  serial: string;
+  itemId: string;
+  itemLabel: string;
+  buId: string;
+  buCode: string;
+  buName?: string;
+  locationId: string;
+  locationName: string;
+  testDate: string;
+  status: SerialStatus;
+  custody: SerialCustody;
+  whCreated: boolean;
+  needsProof: boolean;
+  /** Ada pengeluaran SELESAI serial ini di BU MANA PUN (dihitung server; sumber lencana "Tercatat WH"). */
+  recorded: boolean;
+  /** Maks. 20 terbaru untuk BU terbaca (lengkap) + maks. 20 untuk BU tak terbaca (hanya `buCode` dan `dispatchedOn`). */
+  dispatches: WarehouseDispatchRefDto[];
+  /** Hanya bila input `orderId` dikirim: serial sudah ada di SO itu (pengeluaran pending atau selesai). */
+  inOrder?: boolean;
+}
+export interface ListWarehouseSerialsInput {
+  itemId: string;
+  buIds?: string[];
+  locationId?: string;
+  testDate?: string;
+  query?: string;
+  hideRecordedBuId?: string;
+  cursor?: string;
+  limit?: number;
+}
+export interface WarehouseSerialsPageDto {
+  items: WarehouseSerialDto[];
+  nextCursor: string | null;
+}
+/** Gabungan `serials` + `ids` maks. 200. */
+export interface WarehouseLookupInput {
+  serials?: string[];
+  ids?: string[];
+  orderId?: string;
+}
+export interface WarehouseLookupOutput {
+  found: WarehouseSerialDto[];
+}
+export interface WarehouseOrderOptionDto {
+  id: string;
+  number: string;
+  buId: string;
+  buCode: string;
+  buName?: string;
+  customerId: string;
+  customerName: string;
+  lastDispatchedOn: string;
+}
+export interface ListWarehouseOrderOptionsInput {
+  query?: string;
+  buId?: string;
+  ids?: string[];
+  cursor?: string;
+  limit?: number;
+}
+export interface WarehouseOrderOptionsPageDto {
+  items: WarehouseOrderOptionDto[];
+  nextCursor: string | null;
+}
+export interface WarehouseSubmitHeader {
+  dispatchedOn: string;
+  orderId?: string;
+  orderNumber: string;
+  buId: string;
+  customerName: string;
+  itemId: string;
+  note: string;
+  handoverIds: string[];
+  total: number;
+  chunkSize: number;
+}
+export type WarehouseSubmitRow =
+  | { kind: 'existing'; serialId: string; serial: string }
+  | { kind: 'new'; clientId: string; serial: string; locationId: string; testDate: string };
+export interface WarehouseSubmitInput {
+  clientId: string;
+  chunkIndex: number;
+  header: WarehouseSubmitHeader;
+  rows: WarehouseSubmitRow[];
+}
+/** Baris yang dilewati pada pengeluaran (alasan generik per kategori; tanpa data lintas BU). */
+export interface WarehouseSkippedRowDto {
+  serial: string;
+  reason: string;
+}
+export interface WarehouseSubmitOutput {
+  dispatchId: string;
+  orderId: string;
+  orderNumber: string;
+  status: WarehouseDispatchStatus;
+  chunksReceived: number;
+  chunkCount: number;
+  /** Serial baru pada potongan ini (0 pada kiriman ulang). */
+  created: number;
+  /** Baris potongan ini yang dilewati (kiriman ulang potongan yang sama mengembalikan daftar yang sama). */
+  skipped: WarehouseSkippedRowDto[];
+  /** Hanya bila `status` = `done`: SN yang BERHASIL masuk, urut `seq`, untuk clipboard. */
+  serials?: string[];
+  /** Hanya bila `status` = `done`: gabungan baris dilewati dari semua potongan pengeluaran. */
+  skippedTotal?: WarehouseSkippedRowDto[];
+}
+export interface WarehouseOrderSummaryDto {
+  id: string;
+  number: string;
+  buId: string;
+  buCode: string;
+  buName?: string;
+  customerId: string;
+  customerName: string;
+  dispatchCount: number;
+  serialCount: number;
+  lastDispatchedOn: string;
+  hasPending: boolean;
+  handoverCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+export interface ListWarehouseOrdersInput {
+  query?: string;
+  customerIds?: string[];
+  buIds?: string[];
+  from?: string;
+  to?: string;
+  status?: 'pending' | 'done';
+  cursor?: string;
+  limit?: number;
+}
+export interface WarehouseOrdersPageDto {
+  items: WarehouseOrderSummaryDto[];
+  nextCursor: string | null;
+}
+export interface WarehouseDispatchDto {
+  id: string;
+  itemId: string;
+  itemLabel: string;
+  dispatchedOn: string;
+  note: string;
+  mode: WarehouseDispatchMode;
+  status: WarehouseDispatchStatus;
+  serialTotal: number;
+  chunkCount: number;
+  chunksReceived: number;
+  createdCount: number;
+  createdBy: string;
+  createdAt: string;
+  completedAt: string;
+  cancelledAt: string;
+}
+export interface WarehouseLinkedHandoverDto {
+  id: string;
+  number: string;
+  status: HandoverStatus;
+  customerName: string;
+  createdAt: string;
+  /** `false` = hanya nomor, tanpa tautan. */
+  readable: boolean;
+}
+export interface WarehouseOrderDto extends WarehouseOrderSummaryDto {
+  createdBy: string;
+  dispatches: WarehouseDispatchDto[];
+  handovers: WarehouseLinkedHandoverDto[];
+  /** `serialwh: edit` pada BU SO. */
+  canEdit: boolean;
+}
+export interface GetWarehouseOrderInput {
+  id: string;
+}
+export interface ListWarehouseDispatchSerialsInput {
+  id: string;
+  cursor?: string;
+  limit?: number;
+}
+export interface WarehouseDispatchSerialDto {
+  seq: number;
+  serialId: string;
+  serial: string;
+  createdNew: boolean;
+  deleted: boolean;
+}
+export interface WarehouseDispatchSerialsPageDto {
+  items: WarehouseDispatchSerialDto[];
+  nextCursor: string | null;
+}
+export interface WarehouseCopyTextInput {
+  id: string;
+}
+export interface WarehouseCopyTextOutput {
+  text: string;
+  count: number;
+}
+export interface ListWarehouseHandoverCandidatesInput {
+  customerId?: string;
+  customerName?: string;
+  query?: string;
+  includeFinished?: boolean;
+  orderId?: string;
+  itemId?: string;
+  cursor?: string;
+  limit?: number;
+}
+export interface WarehouseHandoverCandidateDto {
+  id: string;
+  number: string;
+  createdAt: string;
+  preview: string;
+  status: HandoverStatus;
+  linked: boolean;
+  mentionsItem: boolean;
+}
+export interface WarehouseHandoverCandidatesDto {
+  /** Tertaut ke `orderId` (terbaca), selalu di depan. */
+  linked: WarehouseHandoverCandidateDto[];
+  items: WarehouseHandoverCandidateDto[];
+  nextCursor: string | null;
+}
+export interface SetWarehouseOrderLinksInput {
+  id: string;
+  expectedUpdatedAt: string;
+  handoverIds: string[];
+}
+export interface ItemDetectionDto extends ItemDetection {
+  label: string;
+}
+export interface WarehouseHandoverContextInput {
+  handoverId: string;
+}
+export interface WarehouseHandoverContextDto {
+  handover: {
+    id: string;
+    number: string;
+    customerId: string;
+    customerName: string;
+    status: HandoverStatus;
+  };
+  /** SO tertaut task ini pada BU ber-`serialwh: edit`. */
+  orders: WarehouseOrderOptionDto[];
+  /** Item hidup aktif pada BU ber-`serialwh: edit`. */
+  detected: ItemDetectionDto[];
+}
+/** Katalog nama Item untuk saran editor (5.15). */
+export interface ItemNameOptionDto {
+  id: string;
+  brandName: string;
+  model: string;
+}
+/** Maks. 5000; `truncated` bila lebih. */
+export interface ItemNameOptionsDto {
+  items: ItemNameOptionDto[];
+  truncated: boolean;
+}
+
 export interface ApiContract {
   'auth.me': { input: null; output: MeDto };
   'access.users.list': { input: ListUsersInput | null; output: UserDto[] };
@@ -1647,6 +1948,7 @@ export interface ApiContract {
   'postelSettings.get': { input: null; output: PostelSettingsDto };
   'postelSettings.save': { input: SavePostelSettingsInput; output: PostelSettingsDto };
   'postels.itemOptions': { input: ListPostelItemOptionsInput; output: PostelItemOptionsPageDto };
+  'items.nameOptions': { input: null; output: ItemNameOptionsDto };
   'serials.itemOptions': { input: ListSerialItemOptionsInput; output: SerialItemOptionsPageDto };
   'serials.creatorOptions': {
     input: ListSerialCreatorOptionsInput;
@@ -1684,6 +1986,40 @@ export interface ApiContract {
   'serialCases.list': { input: SerialCaseListInput; output: SerialCaseListOutput };
   /** Detail satu laporan; serial induk tak terbaca/terhapus atau id tak ada = `NOT_FOUND` seragam. */
   'serialCases.get': { input: GetSerialCaseInput; output: SerialCaseDetailDto };
+  'serialWarehouse.itemOptions': {
+    input: ListWarehouseItemOptionsInput;
+    output: WarehouseItemOptionsPageDto;
+  };
+  'serialWarehouse.options': { input: null; output: WarehouseOptionsDto };
+  'serialWarehouse.serials': {
+    input: ListWarehouseSerialsInput;
+    output: WarehouseSerialsPageDto;
+  };
+  'serialWarehouse.lookup': { input: WarehouseLookupInput; output: WarehouseLookupOutput };
+  'serialWarehouse.orderOptions': {
+    input: ListWarehouseOrderOptionsInput;
+    output: WarehouseOrderOptionsPageDto;
+  };
+  'serialWarehouse.handoverCandidates': {
+    input: ListWarehouseHandoverCandidatesInput;
+    output: WarehouseHandoverCandidatesDto;
+  };
+  'serialWarehouse.handoverContext': {
+    input: WarehouseHandoverContextInput;
+    output: WarehouseHandoverContextDto;
+  };
+  'serialWarehouse.submit': { input: WarehouseSubmitInput; output: WarehouseSubmitOutput };
+  'serialWarehouse.dispatchSerials': {
+    input: ListWarehouseDispatchSerialsInput;
+    output: WarehouseDispatchSerialsPageDto;
+  };
+  'serialWarehouse.copyText': { input: WarehouseCopyTextInput; output: WarehouseCopyTextOutput };
+  'serialWarehouse.listOrders': {
+    input: ListWarehouseOrdersInput;
+    output: WarehouseOrdersPageDto;
+  };
+  'serialWarehouse.setLinks': { input: SetWarehouseOrderLinksInput; output: WarehouseOrderDto };
+  'serialWarehouse.getOrder': { input: GetWarehouseOrderInput; output: WarehouseOrderDto };
   'serialProofs.upload': { input: UploadSerialProofInput; output: SerialProofPhotoDto };
   'serialProofs.get': { input: GetSerialProofInput; output: SerialProofContentDto };
   'serialProofs.remove': { input: RemoveSerialProofInput; output: { id: string } };
@@ -2015,6 +2351,12 @@ export interface SerialSummaryDto {
    * riwayatnya, dihitung server). Isyarat tampilan; server tetap berwenang.
    */
   canManage?: boolean;
+  /** Hanya pada daftar: serial ini dibuat dari Keluar Gudang (WH). */
+  whCreated?: boolean;
+  /** Hanya pada daftar: serial ini sudah masuk pengeluaran Keluar Gudang yang SELESAI ("Tercatat WH"). */
+  whRecorded?: boolean;
+  /** Hanya pada daftar: dibuat dari Keluar Gudang, Item wajib foto, dan foto bukti belum cukup ("Butuh foto"). */
+  needsProof?: boolean;
 }
 /** Laporan rusak (`serial_cases`): satu episode kegagalan. */
 export interface SerialCaseDto {
@@ -2125,6 +2467,10 @@ export interface SerialListInput {
    * dari `status` (status alur serial) agar kontrak lama tak berubah arti.
    */
   deleted?: boolean;
+  /** `yes` = hanya serial yang sudah tercatat di pengeluaran Keluar Gudang selesai, `no` = yang belum. */
+  whRecorded?: 'yes' | 'no';
+  /** `true` = hanya serial "Butuh foto". */
+  needsProof?: boolean;
   cursor?: string;
   limit?: number;
 }

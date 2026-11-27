@@ -54,7 +54,7 @@ beforeEach(async () => {
   await seedRole(env, {
     id: 'r-svc',
     name: 'Servis view',
-    permissions: { serialservice: 'view', countrylock: 'none' },
+    permissions: { serialservice: 'view', serialwh: 'none', countrylock: 'none' },
   });
   await seedUser(env, {
     id: 'u-svc',

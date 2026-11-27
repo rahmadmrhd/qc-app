@@ -7,6 +7,7 @@ import { HANDOVER_LIMITS } from '@shared/handover';
 import { ITEM_LIMITS } from '@shared/items';
 import { POSTEL_LIMITS } from '@shared/postel';
 import { DEFAULT_QR_LAYOUT, DEFAULT_QR_STYLE, QR_LIMITS } from '@shared/qrcode';
+import { WAREHOUSE_LIMITS } from '@shared/serial-warehouse';
 import { SERIAL_LIMITS, SERIAL_PROOF_LIMITS } from '@shared/serials';
 import { GUIDE_LIMITS, INSTRUCTION_LIMITS, STICKER_LIMITS } from '@shared/stickers';
 import { MAX_JSON_BODY_BYTES, MAX_REQUEST_BODY_BYTES } from './body';
@@ -319,6 +320,38 @@ const WORST: Inputs = {
   },
   'serials.lookupMany': {
     serials: longList(SERIAL_LIMITS.batchRows, () => 'S'.repeat(SERIAL_LIMITS.serialMax)),
+  },
+  'serialWarehouse.lookup': {
+    serials: longList(WAREHOUSE_LIMITS.lookupMax, () => 'S'.repeat(SERIAL_LIMITS.serialMax)),
+    ids: longList(WAREHOUSE_LIMITS.lookupMax, (index) => `${'i'.repeat(90)}-${index}`),
+    orderId: UUID,
+  },
+  'serialWarehouse.submit': {
+    clientId: UUID,
+    chunkIndex: 0,
+    header: {
+      dispatchedOn: '2026-11-26',
+      orderNumber: text(WAREHOUSE_LIMITS.orderNumberMax),
+      buId: UUID,
+      customerName: text(255),
+      itemId: UUID,
+      note: '\u{1F600}'.repeat(WAREHOUSE_LIMITS.noteMax),
+      handoverIds: longList(WAREHOUSE_LIMITS.handoverLinksMax, (index) => `${UUID}-${index}`),
+      total: WAREHOUSE_LIMITS.chunkMax,
+      chunkSize: WAREHOUSE_LIMITS.chunkMax,
+    },
+    rows: longList(WAREHOUSE_LIMITS.chunkMax, (index) => ({
+      kind: 'new' as const,
+      clientId: UUID,
+      serial: 'S'.repeat(SERIAL_LIMITS.serialMax),
+      locationId: `${UUID}-${index}`,
+      testDate: '2026-11-26',
+    })),
+  },
+  'serialWarehouse.setLinks': {
+    id: UUID,
+    expectedUpdatedAt: STAMP,
+    handoverIds: longList(WAREHOUSE_LIMITS.handoverLinksMax, (index) => `${UUID}-${index}`),
   },
   'serials.reportNew': {
     serial: 'S'.repeat(SERIAL_LIMITS.serialMax),

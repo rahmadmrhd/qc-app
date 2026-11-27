@@ -14,6 +14,7 @@ import type {
 import type { HandoverStatus } from '@shared/handover';
 import {
   customerKey,
+  customerNameProblem,
   HANDOVER_BATCH_MAX,
   HANDOVER_LIMITS,
   hasHandoverControlChars,
@@ -142,13 +143,8 @@ function readBatchTask(
   if (typeof noteRaw !== 'string') return { error: 'Catatan harus berupa teks' };
   const customerName = customerRaw.trim();
   const note = noteRaw.trim();
-  if (customerName.length > HANDOVER_LIMITS.customerName) {
-    return { error: `Nama customer maksimal ${HANDOVER_LIMITS.customerName} karakter` };
-  }
-  if (customerName !== '' && customerKey(customerName) === '') {
-    return { error: 'Nama customer harus memuat huruf atau angka' };
-  }
-  if (hasHandoverControlChars(customerName)) return { error: HANDOVER_CONTROL_CHARS_MESSAGE };
+  const customerProblem = customerNameProblem(customerName);
+  if (customerProblem !== null) return { error: customerProblem };
   const noteError = handoverNoteError(note);
   if (noteError !== null) return { error: noteError };
   const clientId = readClientId(source.clientId);

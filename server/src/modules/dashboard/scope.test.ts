@@ -8,7 +8,13 @@ import type { PartialPermissionMap } from '@shared/permissions';
 import { emptyPermissions } from '@shared/permissions';
 import { allowedWidgetIds, resolveScope, widgetAllowed } from './scope';
 
-const noBu = { item: 'none', serial: 'none', serialservice: 'none', countrylock: 'none' } as const;
+const noBu = {
+  item: 'none',
+  serial: 'none',
+  serialservice: 'none',
+  serialwh: 'none',
+  countrylock: 'none',
+} as const;
 const noLoc: LocationPermissionMap = {
   handover: 'none',
   qc: 'none',
@@ -64,7 +70,7 @@ describe('izin widget', () => {
   });
 
   test('serialservice: view pada satu BU membuka grup serial dan laporan', () => {
-    const ctx = user({ businessUnits: { X: { serialservice: 'view' } } });
+    const ctx = user({ businessUnits: { X: { serialservice: 'view', serialwh: 'none' } } });
     expect(groupsOf(allowedWidgetIds(ctx))).toEqual(['report', 'serial']);
   });
 
@@ -102,7 +108,7 @@ describe('resolveScope: hak dan irisan filter', () => {
       C: { stickerstock: 'view' },
       D: { stock: 'view' },
     },
-    businessUnits: { X: { serial: 'view' }, Y: { serialservice: 'view' } },
+    businessUnits: { X: { serial: 'view' }, Y: { serialservice: 'view', serialwh: 'none' } },
   });
 
   test('tanpa filter: semua yang boleh dibaca', () => {

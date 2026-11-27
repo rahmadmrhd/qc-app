@@ -12,6 +12,7 @@ import { assertHandoverReadable } from '@server/modules/handover/service';
 import { assertItemReadable } from '@server/modules/item/service';
 import { readablePostel } from '@server/modules/postel/service';
 import { readableQrDesign, readableQrPreset } from '@server/modules/qrcode/service';
+import { loadReadableOrder } from '@server/modules/serialwh/orders';
 import { assertStickerReadable, assertStickerTypeReadable } from '@server/modules/sticker/service';
 import { type ActivityKind, auditTargetKind } from '@shared/audit';
 import type { ActivityEntryDto, ActivityPageDto, ListActivityInput } from '@shared/contract';
@@ -104,6 +105,10 @@ const GATES: Record<ActivityKind, Gate> = {
   },
   handover: async (env, user, id) => {
     await assertHandoverReadable(env, id, user);
+  },
+  // Catatan SO Keluar Gudang: gerbang yang sama dengan `serialWarehouse.getOrder` (BU SO ber-`serialwh: view`).
+  warehouseOrder: async (env, user, id) => {
+    await loadReadableOrder(env, user, id);
   },
   // Tautan dashboard: baris diriwayatkan sama dengan rute `dashboardShares.get` (milik sendiri bagi `edit`, semua bagi
   // `manage`/super admin; selain itu `NOT_FOUND`).

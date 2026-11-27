@@ -3,6 +3,7 @@ import type { DbStatement, Preparer } from '@server/core/db';
 import { deletedWhere, liveWhere } from '@server/core/soft-delete';
 import type { UserContext } from '@server/modules/access/context';
 import { canWriteBu, writableBuIds } from './access';
+import { needsProofSql, whRecordedSql } from './wh-flags';
 
 export interface NewSerial {
   id: string;
@@ -211,6 +212,12 @@ export interface SerialRow {
   has_proof: number | string;
   /** Jumlah foto bukti QC `failed` pada serial ini. */
   proof_problem: number | string;
+  /** 1 bila serial dibuat dari Keluar Gudang. */
+  wh_created: number | string;
+  /** 1 bila serial sudah tercatat di pengeluaran Keluar Gudang yang selesai. */
+  wh_recorded?: number | string;
+  /** 1 bila "Butuh foto" (lihat `needsProofSql`). Hanya diisi kueri daftar (`SERIAL_LIST_COLUMNS`). */
+  needs_proof?: number | string;
   created_at: string;
   created_by: string;
   updated_at: string;
@@ -220,8 +227,10 @@ export interface SerialRow {
   deleted_by: string;
 }
 
-const SERIAL_COLUMNS =
-  "s.id, s.client_id, s.bu_id, bu.code AS bu_code, bu.name AS bu_name, s.serial, s.item_id, b.name AS brand_name, i.model, s.test_date, s.sample, s.note, s.location_id, l.name AS location_name, s.recorded_location_id, s.status, s.custody, s.open_case_id, s.transit_from_location_id, s.transit_to_location_id, s.transit_on, lf.name AS transit_from_name, lt.name AS transit_to_name, c.number AS open_case_number, EXISTS(SELECT 1 FROM serial_proof_photos pp WHERE pp.serial_id = s.id) AS has_proof, (SELECT COUNT(*) FROM serial_proof_photos pf WHERE pf.serial_id = s.id AND pf.state = 'failed') AS proof_problem, s.created_at, s.created_by, s.updated_at, s.updated_by, s.deleted_at, s.deleted_by";
+const SERIAL_COLUMNS = `s.id, s.client_id, s.bu_id, bu.code AS bu_code, bu.name AS bu_name, s.serial, s.item_id, b.name AS brand_name, i.model, s.test_date, s.sample, s.note, s.location_id, l.name AS location_name, s.recorded_location_id, s.status, s.custody, s.open_case_id, s.transit_from_location_id, s.transit_to_location_id, s.transit_on, lf.name AS transit_from_name, lt.name AS transit_to_name, c.number AS open_case_number, EXISTS(SELECT 1 FROM serial_proof_photos pp WHERE pp.serial_id = s.id) AS has_proof, (SELECT COUNT(*) FROM serial_proof_photos pf WHERE pf.serial_id = s.id AND pf.state = 'failed') AS proof_problem, s.wh_created, s.created_at, s.created_by, s.updated_at, s.updated_by, s.deleted_at, s.deleted_by`;
+
+/** Kolom khusus daftar: penanda Keluar Gudang (subkueri berat) tidak ikut pembacaan tunggal/aksi. */
+const SERIAL_LIST_COLUMNS = `${SERIAL_COLUMNS}, ${whRecordedSql('s')} AS wh_recorded, ${needsProofSql('s')} AS needs_proof`;
 
 const SERIAL_FROM =
   'FROM serials s JOIN business_units bu ON bu.id = s.bu_id LEFT JOIN items i ON i.id = s.item_id LEFT JOIN brands b ON b.id = i.brand_id LEFT JOIN locations l ON l.id = s.location_id LEFT JOIN locations lf ON lf.id = s.transit_from_location_id LEFT JOIN locations lt ON lt.id = s.transit_to_location_id LEFT JOIN serial_cases c ON c.id = s.open_case_id';
@@ -382,6 +391,10 @@ export interface SerialListFilter {
    * hidup. Pemanggil memastikan hak (`FORBIDDEN` bila tanpa BU ber-`manage`).
    */
   deleted?: { sql: string; binds: readonly string[] };
+  /** Keluar Gudang: `yes` = hanya yang sudah tercatat di pengeluaran selesai, `no` = yang belum. */
+  whRecorded?: 'yes' | 'no';
+  /** `true` = hanya "Butuh foto". */
+  needsProof?: boolean;
   cursor?: { createdAt: string; id: string };
   limit: number;
 }
@@ -450,6 +463,10 @@ export async function listSerialRows(db: Preparer, filter: SerialListFilter): Pr
     common.push(filter.deleted.sql);
     commonBinds.push(...filter.deleted.binds);
   }
+  if (filter.whRecorded !== undefined) {
+    common.push(filter.whRecorded === 'yes' ? whRecordedSql('s') : `NOT ${whRecordedSql('s')}`);
+  }
+  if (filter.needsProof === true) common.push(needsProofSql('s'));
   if (filter.cursor) {
     common.push('(s.created_at < ? OR (s.created_at = ? AND s.id < ?))');
     commonBinds.push(filter.cursor.createdAt, filter.cursor.createdAt, filter.cursor.id);
@@ -509,8 +526,8 @@ export async function listSerialRows(db: Preparer, filter: SerialListFilter): Pr
         // Dua literal (bukan satu dengan penyaring dirakit) agar penyaring keadaan terlihat tes penjaga soft delete.
         sql:
           filter.deleted === undefined
-            ? `SELECT ${SERIAL_COLUMNS} ${SERIAL_FROM} WHERE ${liveWhere('s')}${rest} ORDER BY s.created_at DESC, s.id DESC LIMIT ?`
-            : `SELECT ${SERIAL_COLUMNS} ${SERIAL_FROM} WHERE ${deletedWhere('s')}${rest} ORDER BY s.created_at DESC, s.id DESC LIMIT ?`,
+            ? `SELECT ${SERIAL_LIST_COLUMNS} ${SERIAL_FROM} WHERE ${liveWhere('s')}${rest} ORDER BY s.created_at DESC, s.id DESC LIMIT ?`
+            : `SELECT ${SERIAL_LIST_COLUMNS} ${SERIAL_FROM} WHERE ${deletedWhere('s')}${rest} ORDER BY s.created_at DESC, s.id DESC LIMIT ?`,
         binds: [...readablePart.binds, ...buPart.binds, ...commonBinds, limit],
       });
     }

@@ -346,6 +346,14 @@ export function validateSerialList(raw: unknown): SerialListInput {
   if (deleted !== undefined && deleted !== null && typeof deleted !== 'boolean') {
     reader.fail('deleted', 'Harus berupa true atau false');
   }
+  const whRecorded = reader.str('whRecorded', { max: 3 });
+  if (whRecorded !== '' && whRecorded !== 'yes' && whRecorded !== 'no') {
+    reader.fail('whRecorded', 'Nilai tidak valid');
+  }
+  const needsProof = reader.raw('needsProof');
+  if (needsProof !== undefined && needsProof !== null && typeof needsProof !== 'boolean') {
+    reader.fail('needsProof', 'Harus berupa true atau false');
+  }
   const serialsRaw = reader.raw('serials');
   let serials = '';
   if (serialsRaw !== undefined && serialsRaw !== null) {
@@ -392,6 +400,8 @@ export function validateSerialList(raw: unknown): SerialListInput {
     ...(createdBy !== '' ? { createdBy } : {}),
     ...(createdBys ? { createdBys } : {}),
     ...(deleted === true ? { deleted: true } : {}),
+    ...(whRecorded === 'yes' || whRecorded === 'no' ? { whRecorded } : {}),
+    ...(needsProof === true ? { needsProof: true } : {}),
     ...(cursor !== '' ? { cursor } : {}),
     ...(typeof limit === 'number' ? { limit } : {}),
   };

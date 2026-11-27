@@ -20,7 +20,8 @@ export type AuditTargetKind =
   | 'dashboardShare'
   | 'dashboardReport'
   | 'serial'
-  | 'handover';
+  | 'handover'
+  | 'warehouseOrder';
 
 /**
  * Jenis entitas yang riwayatnya dibaca lewat `activity.list` (panel aktivitas View). Serial TIDAK termasuk: riwayatnya
@@ -42,6 +43,7 @@ export const ACTIVITY_KINDS: readonly ActivityKind[] = [
   'location',
   'businessUnit',
   'handover',
+  'warehouseOrder',
   'dashboardShare',
   'dashboardReport',
 ];
@@ -61,6 +63,8 @@ const PREFIX_KINDS: Readonly<Record<string, AuditTargetKind>> = {
   businessunit: 'businessUnit',
   serial: 'serial',
   handover: 'handover',
+  // Keluar Gudang: semua aksi `serialwh.*` bertarget id catatan SO (panel aktivitas detail SO di Riwayat).
+  serialwh: 'warehouseOrder',
 };
 
 /**

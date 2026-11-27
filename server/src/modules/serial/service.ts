@@ -3,7 +3,6 @@ import { DbError, type DbStatement } from '@server/core/db';
 import type { Env } from '@server/core/env';
 import { nowIso, nowOf } from '@server/core/env';
 import { appError, isAppError, staleError } from '@server/core/errors';
-import { statementsFor } from '@server/core/events';
 import { deletedWhere, liveWhere } from '@server/core/soft-delete';
 import type { UserContext } from '@server/modules/access/context';
 import { mapDuplicateError } from '@server/modules/access/repo';
@@ -67,6 +66,7 @@ import {
 import { applicableStickersOf } from './applicable';
 import { involvedBuIdsMany } from './bu-history';
 import { loadCases, type SerialCaseRow } from './case-repo';
+import { newSerialStatements } from './new-serial';
 import { canManageProof } from './proof/access';
 import { loadStampItemInfo, planProofAttach } from './proof/attach';
 import { listFailedProofsBySerial, listProofsByEvents } from './proof/repo';
@@ -76,10 +76,7 @@ import {
   activeItemWritableForBu,
   activeLocationName,
   findSerialByClientId,
-  insertEventStmt,
   insertNextEventStmt,
-  insertSerialStickerStmt,
-  insertSerialStmt,
   isReplayOfRow,
   itemLabelOf,
   listSerialRows,
@@ -468,7 +465,6 @@ export async function createSerialOnce(
   const now = nowIso(env);
   const serialId = newId();
   const eventId = newId();
-  const picks = stickerPicks.map((pick) => ({ stickerId: pick.stickerId, qty: pick.qty }));
   const actorEmail = user.email;
   // Foto bukti QC (opsional): divalidasi SEBELUM menulis apa pun; foto bermasalah = baris `invalid` tanpa entri tersimpan.
   // Klaim dan job cap ikut batch yang sama dengan kejadian, jadi tak ada celah komit tanpa job.
@@ -496,64 +492,30 @@ export async function createSerialOnce(
     throw error;
   }
   // Menyusun SELURUH batch satu baris (baris `saveBatch` selalu `good`; yang bermasalah lewat Lapor Rusak).
-  const buildStatements = async (): Promise<DbStatement[]> => {
-    const actor = {
-      actorId: user.userId ?? '',
-      actorName: user.name,
-      actorTeam: 'qc' as const,
-    };
-    return [
-      insertSerialStmt(env.DB, {
-        id: serialId,
-        clientId: row.clientId,
-        buId: row.buId,
-        serial: row.serial,
-        itemId: row.itemId,
-        testDate: row.testDate,
-        sample: row.sample,
-        note: row.note,
-        locationId: row.locationId,
-        status: 'good',
-        openCaseId: '',
-        now,
-        actorEmail,
-      }),
-      ...stickerPicks.map((pick) =>
-        insertSerialStickerStmt(env.DB, serialId, pick.stickerId, pick.qty),
+  const buildStatements = async (): Promise<DbStatement[]> => [
+    ...(await newSerialStatements(env, {
+      serialId,
+      eventId,
+      clientId: row.clientId,
+      buId: row.buId,
+      serial: row.serial,
+      itemId: row.itemId,
+      testDate: row.testDate,
+      locationId: row.locationId,
+      locationName,
+      note: row.note,
+      sample: row.sample,
+      actor: { id: user.userId ?? '', name: user.name, email: actorEmail },
+      stickerPicks,
+      stickerNames: new Map(
+        picked.map(({ pick, sticker }) => [pick.stickerId, sticker?.name ?? '']),
       ),
-      insertEventStmt(env.DB, {
-        id: eventId,
-        serialId,
-        caseId: '',
-        seq: 1,
-        type: 'recorded',
-        occurredOn: today,
-        now,
-        ...actor,
-        message: '',
-        changes: [],
-        data: {
-          stickers: picked.map(({ pick, sticker }) => ({
-            stickerId: pick.stickerId,
-            name: sticker?.name ?? '',
-            qty: pick.qty,
-          })),
-          locationId: row.locationId,
-          locationName,
-          ...(row.source === undefined ? {} : { source: row.source }),
-        },
-      }),
-      ...(await statementsFor(env, 'serial.recorded', {
-        serialId,
-        eventId,
-        locationId: row.locationId,
-        picks,
-        actor: actorEmail,
-        now,
-      })),
-      ...proofStatements,
-    ];
-  };
+      eventData: row.source === undefined ? {} : { source: row.source },
+      occurredOn: today,
+      now,
+    })),
+    ...proofStatements,
+  ];
   try {
     await env.DB.batch(await buildStatements());
     return {
@@ -868,6 +830,8 @@ export async function listSerials(
   if (readsAllBus(user, buIds)) filter.allBus = true;
   else if (buIds.length <= SERIAL_PER_BU_ARMS_MAX) filter.perBuArms = true;
   if (restorable !== null) filter.deleted = restorable;
+  if (input.whRecorded !== undefined) filter.whRecorded = input.whRecorded;
+  if (input.needsProof === true) filter.needsProof = true;
   const query = normalizeSerial(input.query ?? '');
   if (query !== '') {
     const stripped = query.replace(/[:.-]/g, '');
@@ -915,6 +879,10 @@ export async function listSerials(
   return {
     items: page.map((row) => ({
       ...toSummary(row),
+      // Penanda Keluar Gudang hanya pada daftar (kontrak `SerialSummaryDto`).
+      whCreated: Number(row.wh_created) === 1,
+      whRecorded: Number(row.wh_recorded) === 1,
+      needsProof: Number(row.needs_proof) === 1,
       canManage:
         mayManage && canManageSerial(user, involved.get(row.id.trim()) ?? [row.bu_id.trim()]),
     })),

@@ -699,6 +699,12 @@
     "status": 200
   },
   {
+    "id": "items.nameOptions",
+    "verb": "GET",
+    "path": "/items/name-options",
+    "status": 200
+  },
+  {
     "id": "items.remove",
     "verb": "DELETE",
     "path": "/items/{id}",
@@ -1211,6 +1217,135 @@
     "ifMatch": "expectedUpdatedAt"
   },
   {
+    "id": "serialWarehouse.copyText",
+    "verb": "GET",
+    "path": "/serial-warehouse/dispatches/{id}/text",
+    "status": 200
+  },
+  {
+    "id": "serialWarehouse.dispatchSerials",
+    "verb": "GET",
+    "path": "/serial-warehouse/dispatches/{id}/serials",
+    "query": {
+      "cursor": "string",
+      "limit": "number"
+    },
+    "status": 200
+  },
+  {
+    "id": "serialWarehouse.getOrder",
+    "verb": "GET",
+    "path": "/serial-warehouse/orders/{id}",
+    "status": 200,
+    "etag": "updatedAt"
+  },
+  {
+    "id": "serialWarehouse.handoverCandidates",
+    "verb": "GET",
+    "path": "/serial-warehouse/handover-candidates",
+    "query": {
+      "cursor": "string",
+      "customerId": "string",
+      "customerName": "string",
+      "includeFinished": "boolean",
+      "itemId": "string",
+      "limit": "number",
+      "orderId": "string",
+      "query": "string"
+    },
+    "status": 200
+  },
+  {
+    "id": "serialWarehouse.handoverContext",
+    "verb": "GET",
+    "path": "/serial-warehouse/handover-context/{handoverId}",
+    "status": 200
+  },
+  {
+    "id": "serialWarehouse.itemOptions",
+    "verb": "GET",
+    "path": "/serial-warehouse/item-options",
+    "query": {
+      "buId": "string",
+      "cursor": "string",
+      "ids": "list",
+      "limit": "number",
+      "query": "string"
+    },
+    "status": 200
+  },
+  {
+    "id": "serialWarehouse.listOrders",
+    "verb": "GET",
+    "path": "/serial-warehouse/orders",
+    "query": {
+      "buIds": "list",
+      "cursor": "string",
+      "customerIds": "list",
+      "from": "string",
+      "limit": "number",
+      "query": "string",
+      "status": "string",
+      "to": "string"
+    },
+    "status": 200
+  },
+  {
+    "id": "serialWarehouse.lookup",
+    "verb": "POST",
+    "path": "/serial-warehouse/lookup",
+    "status": 200
+  },
+  {
+    "id": "serialWarehouse.options",
+    "verb": "GET",
+    "path": "/serial-warehouse/options",
+    "status": 200
+  },
+  {
+    "id": "serialWarehouse.orderOptions",
+    "verb": "GET",
+    "path": "/serial-warehouse/order-options",
+    "query": {
+      "buId": "string",
+      "cursor": "string",
+      "ids": "list",
+      "limit": "number",
+      "query": "string"
+    },
+    "status": 200
+  },
+  {
+    "id": "serialWarehouse.serials",
+    "verb": "GET",
+    "path": "/serial-warehouse/serials",
+    "query": {
+      "buIds": "list",
+      "cursor": "string",
+      "hideRecordedBuId": "string",
+      "itemId": "string",
+      "limit": "number",
+      "locationId": "string",
+      "query": "string",
+      "testDate": "string"
+    },
+    "status": 200
+  },
+  {
+    "id": "serialWarehouse.setLinks",
+    "verb": "PUT",
+    "path": "/serial-warehouse/orders/{id}/handovers",
+    "status": 200,
+    "etag": "updatedAt",
+    "ifMatch": "expectedUpdatedAt"
+  },
+  {
+    "id": "serialWarehouse.submit",
+    "verb": "POST",
+    "path": "/serial-warehouse/dispatches",
+    "status": 200
+  },
+  {
     "id": "serials.act",
     "verb": "POST",
     "path": "/serials/{id}/act",
@@ -1291,11 +1426,13 @@
       "limit": "number",
       "locationId": "string",
       "locationIds": "list",
+      "needsProof": "boolean",
       "query": "string",
       "serials": "string",
       "status": "string",
       "statuses": "list",
-      "to": "string"
+      "to": "string",
+      "whRecorded": "string"
     },
     "status": 200
   },

@@ -83,7 +83,7 @@ describe('GET /api/v1/me', () => {
         code: 'AA',
         name: 'Alfa',
         status: 'inactive',
-        permissions: { item: 'edit', serial: 'none', serialservice: 'none' },
+        permissions: { item: 'edit', serial: 'none', serialservice: 'none', serialwh: 'none' },
         deleted: false,
       },
       {
@@ -91,7 +91,7 @@ describe('GET /api/v1/me', () => {
         code: 'ZZ',
         name: 'Zed',
         status: 'active',
-        permissions: { item: 'view', serial: 'none', serialservice: 'none' },
+        permissions: { item: 'view', serial: 'none', serialservice: 'none', serialwh: 'none' },
         deleted: false,
       },
     ]);
@@ -164,6 +164,7 @@ describe('GET /api/v1/me', () => {
           item: 'manage',
           serial: 'manage',
           serialservice: 'edit',
+          serialwh: 'none',
         },
         deleted: false,
       },

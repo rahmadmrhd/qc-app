@@ -44,6 +44,28 @@ export const SOFT_DELETE_PENDING: Record<string, readonly string[]> = {
  * `"<berkas>#<kunci pemindai>"`, nilai = alasan.
  */
 export const SOFT_DELETE_EXEMPT: Record<string, string> = {
+  'server/src/modules/serialwh/options.ts#brands@1#4f1cc96e':
+    'Penampil rujukan: opsi Item menampilkan nama merk walau merk terhapus (LEFT JOIN dari item hidup aktif); tak ada keputusan hak atau aturan.',
+  'server/src/modules/serialwh/options.ts#item_business_units@1#a82e00c6':
+    'Anak dari item yang SUDAH tersaring (daftar id berasal dari kueri item hidup di atasnya); hanya mengambil BU tertaut item untuk label opsi.',
+  'server/src/modules/serialwh/options.ts#business_units@1#3282e0ba':
+    'Pemilih SO: BU pemilik SO tampil dengan kode/namanya walau BU terhapus (BU terhapus tetap memberi hak, spek soft delete butir 9); SO dibatasi `bu_id` hak pemanggil.',
+  'server/src/modules/serialwh/orders.ts#business_units@1#80737b55':
+    'Ringkasan SO menampilkan kode/nama BU pemilik walau BU terhapus (BU terhapus tetap memberi hak); SO dibatasi `bu_id` hak pemanggil.',
+  'server/src/modules/serialwh/orders.ts#items@1#8c9bf38b':
+    'Penampil rujukan: Riwayat pengeluaran menampilkan nama Item walau Item terhapus (LEFT JOIN); catatan historis, bukan keputusan hak.',
+  'server/src/modules/serialwh/orders.ts#brands@1#8c9bf38b':
+    'Penampil rujukan: nama merk Item pada Riwayat pengeluaran tetap tampil walau merk terhapus.',
+  'server/src/modules/serialwh/repo.ts#business_units@1#223dac03':
+    'Penampil rujukan: DTO serial menampilkan kode/nama BU walau BU terhapus; serial sudah tersaring liveWhere pada s.',
+  'server/src/modules/serialwh/repo.ts#items@1#223dac03':
+    'Penampil rujukan: serial menampilkan nama Item walau Item terhapus (LEFT JOIN); serial sudah tersaring liveWhere pada s.',
+  'server/src/modules/serialwh/repo.ts#brands@1#223dac03':
+    'Penampil rujukan: nama merk Item pada DTO serial tetap tampil walau merk terhapus.',
+  'server/src/modules/serialwh/repo.ts#locations@1#223dac03':
+    'Penampil rujukan: DTO serial menampilkan nama lokasi walau lokasi terhapus (seperti daftar Serial).',
+  'server/src/modules/serialwh/repo.ts#business_units@2#c84dcbb3':
+    'Penampil rujukan: referensi pengeluaran selesai menampilkan kode BU pemilik SO walau BU terhapus.',
   'server/src/modules/dashboard/widgets/serial.ts#items@1#cfe93ce1':
     'Filter brand grup Serial: subkueri mencocokkan brand pada item serial APA PUN statusnya (item terhapus tetap memiliki brand serialnya; sama dengan widget Item teratas); hanya membaca brand item untuk menyaring, tak ada keputusan hak.',
   'server/src/modules/dashboard/widgets/serial.ts#items@3#a49297fc':
@@ -404,29 +426,29 @@ export const SOFT_DELETE_EXEMPT: Record<string, string> = {
     'Anak serial (kejadian, laporan, foto, stiker) dimuat atau ditulis menurut id serial atau laporan yang sudah lolos pemeriksaan hidup dan hak di pemanggil (`loadReadableSerialRow`, `loadSerialRow`, token laporan publik yang memeriksa serial hidup); tidak ada daftar lintas serial yang tak tersaring.',
   'server/src/modules/serial/repo.ts#serial_events@1#daa6e6f2':
     'Anak serial (kejadian, laporan, foto, stiker) dimuat atau ditulis menurut id serial atau laporan yang sudah lolos pemeriksaan hidup dan hak di pemanggil (`loadReadableSerialRow`, `loadSerialRow`, token laporan publik yang memeriksa serial hidup); tidak ada daftar lintas serial yang tak tersaring.',
-  'server/src/modules/serial/repo.ts#business_units@5#554034b2':
+  'server/src/modules/serial/repo.ts#business_units@5#d6f99ed5':
     'Penampil rujukan atau pembaca kode BU menurut id yang sudah divalidasi hidup oleh jalur tulis (`activeItemWritableForBu`, `liveWhere` pada BU target); BU terhapus tetap memberi nama dan hak (soft delete 9).',
-  'server/src/modules/serial/repo.ts#items@5#554034b2':
+  'server/src/modules/serial/repo.ts#items@5#d6f99ed5':
     'Penampil rujukan: serial menampilkan nama item (LEFT JOIN) walau item terhapus; item terhapus tak dihitung/dipilih di jalur tulis (jalur tulis lain: `activeItemWritableForBu` (serial/repo.ts) menyaring hidup). Penanda "Terhapus" pada tampilan serial = fase 4d.',
-  'server/src/modules/serial/repo.ts#brands@4#554034b2':
+  'server/src/modules/serial/repo.ts#brands@4#d6f99ed5':
     'Nama merk untuk tampilan/rujukan: merk terhapus tetap memberi nama pada item yang memakainya (keputusan T1, rujukan tersimpan tetap sah).',
-  'server/src/modules/serial/repo.ts#locations@12#554034b2':
+  'server/src/modules/serial/repo.ts#locations@12#d6f99ed5':
     'Penampil rujukan: nama lokasi tampil walau lokasi terhapus (lokasi terhapus dibaca nonaktif, soft delete); jalur tulis memeriksa lokasi hidup (`activeLocationName` memakai `liveWhere`).',
-  'server/src/modules/serial/repo.ts#locations@13#554034b2':
+  'server/src/modules/serial/repo.ts#locations@13#d6f99ed5':
     'Penampil rujukan: nama lokasi tampil walau lokasi terhapus (lokasi terhapus dibaca nonaktif, soft delete); jalur tulis memeriksa lokasi hidup (`activeLocationName` memakai `liveWhere`).',
-  'server/src/modules/serial/repo.ts#locations@14#554034b2':
+  'server/src/modules/serial/repo.ts#locations@14#d6f99ed5':
     'Penampil rujukan: nama lokasi tampil walau lokasi terhapus (lokasi terhapus dibaca nonaktif, soft delete); jalur tulis memeriksa lokasi hidup (`activeLocationName` memakai `liveWhere`).',
-  'server/src/modules/serial/repo.ts#business_units@6#dfe33d79':
+  'server/src/modules/serial/repo.ts#business_units@6#60a4e77c':
     'Penampil rujukan atau pembaca kode BU menurut id yang sudah divalidasi hidup oleh jalur tulis (`activeItemWritableForBu`, `liveWhere` pada BU target); BU terhapus tetap memberi nama dan hak (soft delete 9).',
-  'server/src/modules/serial/repo.ts#items@6#dfe33d79':
+  'server/src/modules/serial/repo.ts#items@6#60a4e77c':
     'Penampil rujukan: serial menampilkan nama item (LEFT JOIN) walau item terhapus; item terhapus tak dihitung/dipilih di jalur tulis (jalur tulis lain: `activeItemWritableForBu` (serial/repo.ts) menyaring hidup). Penanda "Terhapus" pada tampilan serial = fase 4d.',
-  'server/src/modules/serial/repo.ts#brands@5#dfe33d79':
+  'server/src/modules/serial/repo.ts#brands@5#60a4e77c':
     'Nama merk untuk tampilan/rujukan: merk terhapus tetap memberi nama pada item yang memakainya (keputusan T1, rujukan tersimpan tetap sah).',
-  'server/src/modules/serial/repo.ts#locations@15#dfe33d79':
+  'server/src/modules/serial/repo.ts#locations@15#60a4e77c':
     'Penampil rujukan: nama lokasi tampil walau lokasi terhapus (lokasi terhapus dibaca nonaktif, soft delete); jalur tulis memeriksa lokasi hidup (`activeLocationName` memakai `liveWhere`).',
-  'server/src/modules/serial/repo.ts#locations@16#dfe33d79':
+  'server/src/modules/serial/repo.ts#locations@16#60a4e77c':
     'Penampil rujukan: nama lokasi tampil walau lokasi terhapus (lokasi terhapus dibaca nonaktif, soft delete); jalur tulis memeriksa lokasi hidup (`activeLocationName` memakai `liveWhere`).',
-  'server/src/modules/serial/repo.ts#locations@17#dfe33d79':
+  'server/src/modules/serial/repo.ts#locations@17#60a4e77c':
     'Penampil rujukan: nama lokasi tampil walau lokasi terhapus (lokasi terhapus dibaca nonaktif, soft delete); jalur tulis memeriksa lokasi hidup (`activeLocationName` memakai `liveWhere`).',
   'server/src/modules/serial/repo.ts#serial_events@2#3b3831f0':
     'Anak serial (kejadian, laporan, foto, stiker) dimuat atau ditulis menurut id serial atau laporan yang sudah lolos pemeriksaan hidup dan hak di pemanggil (`loadReadableSerialRow`, `loadSerialRow`, token laporan publik yang memeriksa serial hidup); tidak ada daftar lintas serial yang tak tersaring.',

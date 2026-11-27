@@ -19,6 +19,7 @@ import {
   sweepOrphanProofFiles,
   sweepProofDrafts,
 } from '@server/modules/serial/proof/sweep';
+import { sweepStaleDispatches } from '@server/modules/serialwh/sweep';
 import { checkLowStockDigest } from '@server/modules/sticker/digest';
 
 /** Selang polling runner (milidetik). */
@@ -167,6 +168,7 @@ async function schedulerTick(env: Env): Promise<void> {
     sweepOrphanProofFiles,
     sweepExpiredShares,
     sweepReportShares,
+    sweepStaleDispatches,
   ]) {
     try {
       await step(env);
