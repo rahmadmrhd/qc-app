@@ -43,6 +43,7 @@ import {
   dropEmptyBoxesStatement,
   readyHeldInOtherPending,
   readyInOtherBu,
+  readyInPendingReady,
   releaseStatements,
 } from './boxes';
 import { addOrderLinksStmts, assertLinkableHandovers } from './handover-links';
@@ -448,7 +449,16 @@ async function submitOnce(
       plans.filter((plan) => !plan.createdNew).map((plan) => plan.serialId),
       buId,
     );
+    // Serial yang masih di pencatatan ready PENDING belum sah sebagai stok: dilewati seperti aturan pending lain.
+    const inPendingReady = await readyInPendingReady(
+      env,
+      plans.filter((plan) => !plan.createdNew).map((plan) => plan.serialId),
+    );
     plans = plans.filter((plan) => {
+      if (inPendingReady.has(plan.serialId)) {
+        skip(plan.serial, SKIP_REASONS.alreadyRecorded);
+        return false;
+      }
       if (otherBu.has(plan.serialId)) {
         skip(plan.serial, SKIP_REASONS.notFound);
         return false;
@@ -654,7 +664,7 @@ async function submitOnce(
       statements.push(
         env.DB.prepare(
           // Ready: juga gagal bila serial itu kini tercatat pada pengeluaran selesai atau pending mana pun (balapan).
-          `UPDATE serials SET id = CASE WHEN status = 'good' AND custody = 'qc' AND deleted_at = '' AND item_id = ?${ready ? " AND NOT EXISTS (SELECT 1 FROM warehouse_dispatch_serials rg JOIN warehouse_dispatches rd ON rd.id = rg.dispatch_id WHERE rg.serial_id = serials.id AND rd.status IN ('done', 'pending'))" : " AND NOT EXISTS (SELECT 1 FROM warehouse_ready_serials rr JOIN warehouse_dispatch_serials wd ON wd.serial_id = rr.serial_id JOIN warehouse_dispatches pd ON pd.id = wd.dispatch_id WHERE rr.serial_id = serials.id AND rr.released_dispatch_id = '' AND pd.kind = 'order' AND pd.status = 'pending' AND pd.id <> ?) AND NOT EXISTS (SELECT 1 FROM warehouse_ready_serials rx JOIN warehouse_ready_boxes rb ON rb.id = rx.box_id WHERE rx.serial_id = serials.id AND rx.released_dispatch_id = '' AND rb.bu_id <> ?)"} THEN id ELSE ${CAS_FAIL_SQL} END WHERE id = ?`,
+          `UPDATE serials SET id = CASE WHEN status = 'good' AND custody = 'qc' AND deleted_at = '' AND item_id = ?${ready ? " AND NOT EXISTS (SELECT 1 FROM warehouse_dispatch_serials rg JOIN warehouse_dispatches rd ON rd.id = rg.dispatch_id WHERE rg.serial_id = serials.id AND rd.status IN ('done', 'pending'))" : " AND NOT EXISTS (SELECT 1 FROM warehouse_ready_serials rr JOIN warehouse_ready_boxes rc ON rc.id = rr.box_id AND rc.closed_key = '' JOIN warehouse_dispatch_serials wd ON wd.serial_id = rr.serial_id JOIN warehouse_dispatches pd ON pd.id = wd.dispatch_id WHERE rr.serial_id = serials.id AND rr.released_dispatch_id = '' AND pd.kind = 'order' AND pd.status = 'pending' AND pd.id <> ?) AND NOT EXISTS (SELECT 1 FROM warehouse_ready_serials rx JOIN warehouse_ready_boxes rb ON rb.id = rx.box_id WHERE rx.serial_id = serials.id AND rx.released_dispatch_id = '' AND rb.closed_key = '' AND rb.bu_id <> ?) AND NOT EXISTS (SELECT 1 FROM warehouse_dispatch_serials wp JOIN warehouse_dispatches rp ON rp.id = wp.dispatch_id WHERE wp.serial_id = serials.id AND rp.kind = 'ready' AND rp.status = 'pending')"} THEN id ELSE ${CAS_FAIL_SQL} END WHERE id = ?`,
         ).bind(
           ...(ready
             ? [header.itemId, plan.serialId]

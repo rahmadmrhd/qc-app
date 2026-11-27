@@ -273,15 +273,30 @@ describe('catat ready dengan kardus', () => {
     ]);
   });
 
-  test('dua pencatatan serentak dengan rentang berimpit: tepat satu yang lolos', async () => {
-    const [a, b] = await Promise.all([
-      readyChunk(crypto.randomUUID(), 0, 25, 25, serialsOf('P', 25), { boxStart: 60 }),
-      readyChunk(crypto.randomUUID(), 0, 15, 15, serialsOf('Q', 15), { boxStart: 61 }),
-    ]);
-    expect([a.ok, b.ok].filter(Boolean)).toHaveLength(1);
-    const loser = a.ok ? b : a;
-    expect(loser.error?.code).toBe('VALIDATION');
-    expect(loser.error?.fields?.boxStart).toBe('Nomor kardus sudah dipakai');
+  // Sengaja berurutan, bukan Promise.all: dua sisip indeks unik serentak dapat berakhir deadlock (bukan penolakan bersih),
+  // jadi yang dibuktikan di sini adalah keputusan penolakan setelah rentang pertama terpesan.
+  test('rentang yang berimpit dengan pesanan pengeluaran pending ditolak di potongan pertama', async () => {
+    const first = await readyChunk(crypto.randomUUID(), 0, 25, 10, serialsOf('P', 10), {
+      boxStart: 60,
+    });
+    expect(first.ok).toBe(true);
+    const clash = await readyChunk(crypto.randomUUID(), 0, 15, 15, serialsOf('Q', 15), {
+      boxStart: 61,
+    });
+    expect(clash.ok).toBe(false);
+    expect(clash.error?.code).toBe('VALIDATION');
+    expect(clash.error?.fields?.boxStart).toBe('Nomor kardus sudah dipakai');
+  });
+
+  test('rentang kardus yang melewati nomor tertinggi ditolak pada boxStart', async () => {
+    // total 2 dengan kardus 1 pcs memesan 999999 dan 1000000: melampaui batas (jalur tambahan memakai pemeriksaan yang sama).
+    const out = await readyChunk(crypto.randomUUID(), 0, 2, 200, serialsOf('Z', 2), {
+      boxStart: 999999,
+      boxSize: 1,
+    });
+    expect(out.ok).toBe(false);
+    expect(out.error?.code).toBe('VALIDATION');
+    expect(out.error?.fields?.boxStart).toBeDefined();
   });
 
   test('serial dilewati: kardus pesanan yang tetap kosong dihapus saat selesai', async () => {

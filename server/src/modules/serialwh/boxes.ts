@@ -105,6 +105,12 @@ export async function boxStatements(
   if (left > 0) {
     const top = boxes[boxes.length - 1]?.number ?? header.boxStart - 1;
     const extra = assignBoxes({ startNumber: top + 1, size: header.boxSize, count: left });
+    const last = extra[extra.length - 1];
+    if (last && last.number > WAREHOUSE_BOX_LIMITS.numberMax) {
+      throw appError('VALIDATION', 'Nomor kardus melebihi batas', {
+        boxStart: 'Nomor kardus melebihi batas',
+      });
+    }
     await assertFree(extra.map((part) => part.number));
     for (const part of extra) {
       const id = newId();
@@ -133,6 +139,17 @@ export function dropEmptyBoxesStatement(env: Env, dispatchId: string): DbStateme
   ).bind(dispatchId, dispatchId);
 }
 
+/** Serial (dari `serialIds`) yang masih ada di pencatatan ready PENDING (belum selesai, belum sah sebagai stok). */
+export async function readyInPendingReady(env: Env, serialIds: string[]): Promise<Set<string>> {
+  if (serialIds.length === 0) return new Set();
+  const rows = await env.DB.prepare(
+    `SELECT DISTINCT wd.serial_id FROM warehouse_dispatch_serials wd JOIN warehouse_dispatches rp ON rp.id = wd.dispatch_id WHERE rp.kind = 'ready' AND rp.status = 'pending' AND wd.serial_id IN (${placeholders(serialIds.length)})`,
+  )
+    .bind(...serialIds)
+    .all<{ serial_id: string }>();
+  return new Set(rows.results.map((row) => row.serial_id.trim()));
+}
+
 /** Serial (dari `serialIds`) yang ada di stok ready BU LAIN daripada `buId` (belum dilepas). */
 export async function readyInOtherBu(
   env: Env,
@@ -141,7 +158,7 @@ export async function readyInOtherBu(
 ): Promise<Set<string>> {
   if (serialIds.length === 0) return new Set();
   const rows = await env.DB.prepare(
-    `SELECT DISTINCT rr.serial_id FROM warehouse_ready_serials rr JOIN warehouse_ready_boxes rb ON rb.id = rr.box_id WHERE rr.released_dispatch_id = '' AND rb.bu_id <> ? AND rr.serial_id IN (${placeholders(serialIds.length)})`,
+    `SELECT DISTINCT rr.serial_id FROM warehouse_ready_serials rr JOIN warehouse_ready_boxes rb ON rb.id = rr.box_id WHERE rr.released_dispatch_id = '' AND rb.closed_key = '' AND rb.bu_id <> ? AND rr.serial_id IN (${placeholders(serialIds.length)})`,
   )
     .bind(buId, ...serialIds)
     .all<{ serial_id: string }>();
@@ -168,7 +185,7 @@ export async function readyHeldInOtherPending(
 ): Promise<Set<string>> {
   if (serialIds.length === 0) return new Set();
   const rows = await env.DB.prepare(
-    `SELECT DISTINCT rr.serial_id FROM warehouse_ready_serials rr JOIN warehouse_dispatch_serials wd ON wd.serial_id = rr.serial_id JOIN warehouse_dispatches pd ON pd.id = wd.dispatch_id WHERE rr.released_dispatch_id = '' AND pd.kind = 'order' AND pd.status = 'pending' AND pd.id <> ? AND rr.serial_id IN (${placeholders(serialIds.length)})`,
+    `SELECT DISTINCT rr.serial_id FROM warehouse_ready_serials rr JOIN warehouse_ready_boxes rb ON rb.id = rr.box_id AND rb.closed_key = '' JOIN warehouse_dispatch_serials wd ON wd.serial_id = rr.serial_id JOIN warehouse_dispatches pd ON pd.id = wd.dispatch_id WHERE rr.released_dispatch_id = '' AND pd.kind = 'order' AND pd.status = 'pending' AND pd.id <> ? AND rr.serial_id IN (${placeholders(serialIds.length)})`,
   )
     .bind(exceptDispatchId, ...serialIds)
     .all<{ serial_id: string }>();
@@ -183,10 +200,10 @@ export async function readyHeldInOtherPending(
 export function releaseStatements(env: Env, dispatchId: string): DbStatement[] {
   return [
     env.DB.prepare(
-      "UPDATE warehouse_ready_serials SET released_dispatch_id = ? WHERE released_dispatch_id = '' AND serial_id IN (SELECT serial_id FROM warehouse_dispatch_serials WHERE dispatch_id = ?) AND EXISTS (SELECT 1 FROM warehouse_dispatches WHERE id = ? AND status = 'done' AND kind = 'order')",
+      "UPDATE warehouse_ready_serials SET released_dispatch_id = ? WHERE released_dispatch_id = '' AND dispatch_id IN (SELECT id FROM warehouse_dispatches WHERE status = 'done') AND serial_id IN (SELECT serial_id FROM warehouse_dispatch_serials WHERE dispatch_id = ?) AND EXISTS (SELECT 1 FROM warehouse_dispatches WHERE id = ? AND status = 'done' AND kind = 'order')",
     ).bind(dispatchId, dispatchId, dispatchId),
     env.DB.prepare(
-      "UPDATE warehouse_ready_boxes SET closed_key = id WHERE closed_key = '' AND id IN (SELECT box_id FROM warehouse_ready_serials WHERE released_dispatch_id = ?) AND NOT EXISTS (SELECT 1 FROM warehouse_ready_serials r WHERE r.box_id = warehouse_ready_boxes.id AND r.released_dispatch_id = '')",
+      "UPDATE warehouse_ready_boxes SET closed_key = id WHERE closed_key = '' AND dispatch_id IN (SELECT id FROM warehouse_dispatches WHERE status = 'done') AND id IN (SELECT box_id FROM warehouse_ready_serials WHERE released_dispatch_id = ?) AND NOT EXISTS (SELECT 1 FROM warehouse_ready_serials r WHERE r.box_id = warehouse_ready_boxes.id AND r.released_dispatch_id = '')",
     ).bind(dispatchId),
   ];
 }

@@ -2,6 +2,12 @@ import { beforeEach, describe, expect, setDefaultTimeout, test } from 'bun:test'
 import { restCall } from '@server-test/rest-call';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import { seedWarehouseWorld, submitDispatch, WH_USERS } from '@server-test/warehouse-fixtures';
+import {
+  closeDeadBoxes,
+  readyHeldInOtherPending,
+  readyInOtherBu,
+  releaseStatements,
+} from './boxes';
 import { sweepStaleDispatches } from './sweep';
 
 setDefaultTimeout(120_000);
@@ -59,10 +65,11 @@ function orderChunk(
   total: number,
   chunkSize: number,
   clientId: string = crypto.randomUUID(),
+  chunkIndex = 0,
 ) {
   return restCall(env, WH_USERS.edit, 'serialWarehouse.submit', {
     clientId,
-    chunkIndex: 0,
+    chunkIndex,
     header: {
       dispatchedOn: '2026-11-12',
       orderNumber,
@@ -188,18 +195,140 @@ describe('pelepasan stok ready', () => {
     expect(free.ok).toBe(true);
   });
 
-  test('serial ready yang sudah ada di Penjualan pending lain dilewati; setelah itu selesai, hanya satu yang melepas', async () => {
+  test('serial ready di Penjualan pending lain dilewati; setelah Penjualan pertama benar-benar selesai hanya ia yang melepas', async () => {
     const stock = await seedReady();
-    const pick = stock.slice(0, 1);
-    const a = await orderChunk('SO-P1', pick, 2, 1);
+    const clientA = crypto.randomUUID();
+    const a = await orderChunk('SO-P1', stock.slice(0, 1), 2, 1, clientA, 0);
     expect(a.data?.status).toBe('pending');
-    const b = await orderChunk('SO-P2', pick, 1, 200);
+    const b = await orderChunk('SO-P2', stock.slice(0, 1), 1, 200);
     expect(b.ok).toBe(true);
     const skipped = (b.data?.skipped ?? []) as { reason: string }[];
     expect(skipped.map((r) => r.reason)).toEqual([
       'Sudah ada di pengeluaran lain yang belum selesai',
     ]);
     expect(await releasedCount()).toBe(0);
+    // Potongan terakhir Penjualan pertama: selesai dan melepas kedua serialnya.
+    const done = await orderChunk('SO-P1', stock.slice(1, 2), 2, 1, clientA, 1);
+    expect(done.ok).toBe(true);
+    expect(done.data?.status).toBe('done');
+    expect(await releasedCount()).toBe(2);
+    const rows = await env.DB.prepare(
+      "SELECT DISTINCT released_dispatch_id AS d FROM warehouse_ready_serials WHERE released_dispatch_id <> ''",
+    ).all<{ d: string }>();
+    expect(rows.results).toHaveLength(1);
+  });
+
+  async function pendingReadySerial(): Promise<{ id: string; serial: string }> {
+    const out = (await restCall(env, WH_USERS.edit, 'serialWarehouse.submit', {
+      clientId: crypto.randomUUID(),
+      chunkIndex: 0,
+      header: {
+        mode: 'ready',
+        dispatchedOn: '2026-11-12',
+        orderNumber: '',
+        buId: 'bu-a',
+        customerName: '',
+        itemId: 'i-a1',
+        note: '',
+        handoverIds: [],
+        total: 4,
+        chunkSize: 2,
+        boxStart: 50,
+        boxSize: 3,
+      },
+      rows: ['P001', 'P002'].map((serial) => ({
+        kind: 'new' as const,
+        clientId: crypto.randomUUID(),
+        serial,
+        locationId: 'loc-sby',
+        testDate: '2026-11-12',
+      })),
+    })) as Out;
+    expect(out.data?.status).toBe('pending');
+    const row = await env.DB.prepare("SELECT id FROM serials WHERE serial = 'P001'").first<{
+      id: string;
+    }>();
+    return { id: row?.id.trim() ?? '', serial: 'P001' };
+  }
+
+  test('Penjualan melewati serial yang masih di pencatatan ready pending (pra-cek)', async () => {
+    await seedReady();
+    const target = await pendingReadySerial();
+    const out = await orderChunk('SO-PR', [target], 1, 200);
+    expect(out.ok).toBe(true);
+    const skipped = (out.data?.skipped ?? []) as { reason: string }[];
+    expect(skipped.map((r) => r.reason)).toEqual(['Sudah tercatat WH']);
+    expect(await releasedCount()).toBe(0);
+  });
+
+  test('penjaga CAS di batch menolak serial pencatatan ready pending walau pra-cek terlewat', async () => {
+    await seedReady();
+    const target = await pendingReadySerial();
+    const db = env.DB as unknown as { prepare: (sql: string) => unknown };
+    const original = db.prepare.bind(env.DB);
+    // Mensimulasikan balapan: pra-cek "ready pending" tidak melihat apa pun, jadi hanya CAS di batch yang tersisa.
+    db.prepare = (sql: string) =>
+      original(
+        sql.startsWith('SELECT DISTINCT wd.serial_id') && sql.includes("rp.kind = 'ready'")
+          ? sql.replace("WHERE rp.kind = 'ready'", "WHERE 1 = 0 AND rp.kind = 'ready'")
+          : sql,
+      );
+    let out: Out;
+    try {
+      out = await orderChunk('SO-CAS', [target], 1, 200);
+    } finally {
+      db.prepare = original;
+    }
+    expect(out.ok).toBe(false);
+    const rows = await env.DB.prepare(
+      "SELECT COUNT(*) AS n FROM warehouse_dispatch_serials w JOIN warehouse_dispatches d ON d.id = w.dispatch_id WHERE d.kind = 'order' AND w.serial_id = ?",
+    )
+      .bind(target.id)
+      .first<{ n: number | string }>();
+    expect(Number(rows?.n)).toBe(0);
+    expect(await releasedCount()).toBe(0);
+  });
+
+  test('pelepasan hanya untuk stok dari pencatatan ready yang selesai', async () => {
+    const stock = await seedReady();
+    const out = await orderChunk('SO-REL', stock.slice(0, 1), 1, 200);
+    expect(out.ok).toBe(true);
+    const order = await env.DB.prepare(
+      "SELECT id FROM warehouse_dispatches WHERE kind = 'order'",
+    ).first<{ id: string }>();
+    const orderId = order?.id.trim() ?? '';
+    // Kembalikan ke keadaan sebelum rilis dan jadikan pencatatan ready itu pending: pelepasan tidak boleh menyentuhnya.
+    await env.DB.prepare("UPDATE warehouse_ready_serials SET released_dispatch_id = ''").run();
+    await env.DB.prepare("UPDATE warehouse_ready_boxes SET closed_key = ''").run();
+    await env.DB.prepare(
+      "UPDATE warehouse_dispatches SET status = 'pending' WHERE kind = 'ready'",
+    ).run();
+    await env.DB.batch(releaseStatements(env, orderId));
+    expect(await releasedCount()).toBe(0);
+    expect((await boxRows()).every(([, closed]) => closed === false)).toBe(true);
+    await env.DB.prepare(
+      "UPDATE warehouse_dispatches SET status = 'done' WHERE kind = 'ready'",
+    ).run();
+    await env.DB.batch(releaseStatements(env, orderId));
+    expect(await releasedCount()).toBe(1);
+  });
+
+  test('serial yang dipulihkan setelah kardusnya ditutup tidak dihitung sebagai stok ready', async () => {
+    const stock = await seedReady();
+    const last = stock.slice(6, 8); // kardus 3 berisi R007, R008
+    const pending = await orderChunk('SO-RS', last.slice(0, 1), 2, 1);
+    expect(pending.data?.status).toBe('pending');
+    await env.DB.prepare(
+      "UPDATE serials SET deleted_at = 'x' WHERE serial IN ('R007', 'R008')",
+    ).run();
+    await closeDeadBoxes(env, 'bu-a', 'i-a1');
+    expect((await boxRows())[2]).toEqual([3, true]);
+    await env.DB.prepare(
+      "UPDATE serials SET deleted_at = '' WHERE serial IN ('R007', 'R008')",
+    ).run();
+    const ids = last.map((row) => row.id);
+    expect((await readyHeldInOtherPending(env, ids, 'lain')).size).toBe(0);
+    expect((await readyInOtherBu(env, ids, 'bu-b')).size).toBe(0);
   });
 
   test('Penjualan di BU lain melewati serial stok ready BU ini sebagai tidak ditemukan', async () => {
