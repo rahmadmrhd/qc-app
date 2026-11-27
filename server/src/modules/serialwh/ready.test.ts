@@ -190,6 +190,128 @@ describe('Catat ready: simpan', () => {
     expect(again.data?.skipped).toEqual([{ serial: 'LATER-1', reason: 'Sudah ada di SO ini' }]);
   });
 
+  test('lanjutan ready tetap jalan walau BU dihapus di tengah kiriman; pencatatan baru ke BU terhapus ditolak', async () => {
+    await seedSerial(env, { id: 'bd1', serial: 'BD-OLD' });
+    const clientId = crypto.randomUUID();
+    const header = readyHeader(2, { chunkSize: 1 });
+    const one = await call(E, 'serialWarehouse.submit', {
+      clientId,
+      chunkIndex: 0,
+      header,
+      rows: [fresh('BD-1')],
+    });
+    expect(one.data.status).toBe('pending');
+    await env.DB.prepare(
+      "UPDATE business_units SET deleted_at = '2026-11-12T01:00:00.000Z' WHERE id = 'bu-a'",
+    ).run();
+    const two = await call(E, 'serialWarehouse.submit', {
+      clientId,
+      chunkIndex: 1,
+      header,
+      rows: [{ kind: 'existing', serialId: 'bd1', serial: 'BD-OLD' }],
+    });
+    expect(two.ok).toBe(true);
+    expect(two.data.status).toBe('done');
+    expect(two.data.serials).toEqual(['BD-1', 'BD-OLD']);
+    const fresh2 = await submitReady(E, [fresh('BD-2')]);
+    expect(fresh2.ok).toBe(false);
+    expect(fresh2.error.code).toBe('NOT_FOUND');
+  });
+
+  test('lanjutan ready berisi serial BARU setelah BU dihapus tetap ditolak (sama dengan mode SO)', async () => {
+    const clientId = crypto.randomUUID();
+    const header = readyHeader(2, { chunkSize: 1 });
+    const one = await call(E, 'serialWarehouse.submit', {
+      clientId,
+      chunkIndex: 0,
+      header,
+      rows: [fresh('BN-1')],
+    });
+    expect(one.data.status).toBe('pending');
+    await env.DB.prepare(
+      "UPDATE business_units SET deleted_at = '2026-11-12T01:00:00.000Z' WHERE id = 'bu-a'",
+    ).run();
+    const two = await call(E, 'serialWarehouse.submit', {
+      clientId,
+      chunkIndex: 1,
+      header,
+      rows: [fresh('BN-2')],
+    });
+    expect(two.ok).toBe(false);
+    expect(two.error.message).toBe('BU tidak aktif');
+  });
+
+  test('serial di pengeluaran SO yang masih pending tidak boleh dicatat ready; setelah SO selesai tak ada ganda', async () => {
+    await seedSerial(env, { id: 'pp1', serial: 'PEND-SO' });
+    await seedSerial(env, { id: 'pp2', serial: 'PEND-FREE' });
+    const clientId = crypto.randomUUID();
+    const soHeader = {
+      dispatchedOn: '2026-11-12',
+      orderNumber: 'SO-PEND',
+      buId: 'bu-a',
+      customerName: 'PT Maju',
+      itemId: 'i-a1',
+      note: '',
+      handoverIds: [] as string[],
+      total: 2,
+      chunkSize: 1,
+    };
+    const pend = await call(E, 'serialWarehouse.submit', {
+      clientId,
+      chunkIndex: 0,
+      header: soHeader,
+      rows: [{ kind: 'existing', serialId: 'pp1', serial: 'PEND-SO' }],
+    });
+    expect(pend.data.status).toBe('pending');
+    const out = await submitReady(E, [
+      { kind: 'existing', serialId: 'pp1', serial: 'PEND-SO' },
+      { kind: 'existing', serialId: 'pp2', serial: 'PEND-FREE' },
+    ]);
+    expect(out.ok).toBe(true);
+    expect(out.data.serials).toEqual(['PEND-FREE']);
+    expect(out.data.skipped).toEqual([{ serial: 'PEND-SO', reason: 'Sudah tercatat WH' }]);
+    // SO diselesaikan: serial itu hanya tercatat satu kali (di SO).
+    const done = await call(E, 'serialWarehouse.submit', {
+      clientId,
+      chunkIndex: 1,
+      header: soHeader,
+      rows: [{ kind: 'existing', serialId: 'pp2', serial: 'PEND-FREE' }],
+    });
+    expect(done.ok).toBe(true);
+    expect(done.data.status).toBe('done');
+    expect(
+      await count("SELECT COUNT(*) AS n FROM warehouse_dispatch_serials WHERE serial_id = 'pp1'"),
+    ).toBe(1);
+  });
+
+  test('pengeluaran SO pending yang dibatalkan penyapu tidak lagi menahan ready', async () => {
+    await seedSerial(env, { id: 'sw1', serial: 'SWEEP-SO' });
+    await call(E, 'serialWarehouse.submit', {
+      clientId: crypto.randomUUID(),
+      chunkIndex: 0,
+      header: {
+        dispatchedOn: '2026-11-12',
+        orderNumber: 'SO-SWEEP',
+        buId: 'bu-a',
+        customerName: 'PT Maju',
+        itemId: 'i-a1',
+        note: '',
+        handoverIds: [],
+        total: 2,
+        chunkSize: 1,
+      },
+      rows: [{ kind: 'existing', serialId: 'sw1', serial: 'SWEEP-SO' }],
+    });
+    const row = { kind: 'existing', serialId: 'sw1', serial: 'SWEEP-SO' };
+    const blocked = await submitReady(E, [row]);
+    expect(blocked.data.skipped).toHaveLength(1);
+    env.clock.set(Date.parse('2026-11-20T03:00:00.000Z'));
+    expect(await sweepStaleDispatches(env)).toBe(1);
+    const freed = await submitReady(E, [row]);
+    expect(freed.ok).toBe(true);
+    expect(freed.data.serials).toEqual(['SWEEP-SO']);
+  });
+
   test('serial sudah ada yang tidak Lolos di QC atau beda tipe dilewati seperti mode SO', async () => {
     await seedSerial(env, { id: 'b1', serial: 'BAD-R1', status: 'reported' });
     await seedSerial(env, { id: 'b2', serial: 'BAD-R2', itemId: 'i-a2' });

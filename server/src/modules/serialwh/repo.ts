@@ -229,7 +229,22 @@ export async function serialsRecordedDone(
   return new Set(rows.results.map((row) => row.serial_id.trim()));
 }
 
-/** Serial-serial ini yang sudah ada pada SO itu (pengeluaran `pending` atau selesai). `orderId` kosong = catatan ready. */
+/** Serial-serial ini yang masih ada pada pengeluaran `pending` mode apa pun (SO atau ready), belum selesai. */
+export async function serialsInPendingDispatches(
+  db: Preparer,
+  serialIds: readonly string[],
+): Promise<Set<string>> {
+  if (serialIds.length === 0) return new Set();
+  const rows = await db
+    .prepare(
+      `SELECT DISTINCT w.serial_id FROM warehouse_dispatch_serials w JOIN warehouse_dispatches d ON d.id = w.dispatch_id WHERE d.status = 'pending' AND w.serial_id IN (${placeholders(serialIds.length)})`,
+    )
+    .bind(...serialIds)
+    .all<{ serial_id: string }>();
+  return new Set(rows.results.map((row) => row.serial_id.trim()));
+}
+
+/** Serial-serial ini yang sudah ada pada SO itu (pengeluaran `pending` atau selesai). */
 export async function serialsInOrder(
   db: Preparer,
   orderId: string,

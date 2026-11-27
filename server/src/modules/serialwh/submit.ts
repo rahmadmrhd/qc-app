@@ -48,6 +48,7 @@ import {
   type OrderRow,
   placeholders,
   serialsInOrder,
+  serialsInPendingDispatches,
   serialsRecordedDone,
 } from './repo';
 
@@ -261,7 +262,9 @@ async function submitOnce(
   // SO lama: BU dan customer dari SO. SO baru: BU dari header (harus BU hidup ber-`serialwh: edit`).
   const buId = order ? order.bu_id.trim() : header.buId;
   if (ready) {
-    if (!whLiveBuIds(user, 'edit').includes(buId)) {
+    // Pencatatan BARU wajib BU hidup; lanjutan (pengeluaran sudah ada) tetap jalan walau BU dihapus di tengah kiriman
+    // (hak edit pada BU pencatatan sudah diperiksa di atas), seperti SO yang sudah ada pada mode SO.
+    if (!existing && !whLiveBuIds(user, 'edit').includes(buId)) {
       throw appError('NOT_FOUND', 'BU tidak ditemukan');
     }
   } else if (order) {
@@ -402,12 +405,12 @@ async function submitOnce(
   }
 
   if (ready && plans.length > 0) {
-    // Ready: serial yang sudah tercatat WH (selesai, mode apa pun) atau sedang dalam pencatatan ready lain dilewati;
-    // mencatat ready dua kali menggandakan hitungan target.
+    // Ready: serial yang sudah tercatat WH (selesai, mode apa pun) atau masih ada di pengeluaran pending mana pun
+    // (SO atau ready) dilewati; mencatat ready dua kali menggandakan hitungan target.
     const ids = plans.filter((plan) => !plan.createdNew).map((plan) => plan.serialId);
     const [done, pending] = await Promise.all([
       serialsRecordedDone(env.DB, ids),
-      serialsInOrder(env.DB, '', ids),
+      serialsInPendingDispatches(env.DB, ids),
     ]);
     plans = plans.filter((plan) => {
       if (plan.createdNew || (!done.has(plan.serialId) && !pending.has(plan.serialId))) return true;
@@ -594,8 +597,8 @@ async function submitOnce(
       // Serial yang sudah ada harus masih Lolos di QC pada tipe yang sama saat batch berjalan (selain itu seluruh batch batal).
       statements.push(
         env.DB.prepare(
-          // Ready: juga gagal bila serial itu kini sudah tercatat WH selesai (balapan dengan pencatat lain).
-          `UPDATE serials SET id = CASE WHEN status = 'good' AND custody = 'qc' AND deleted_at = '' AND item_id = ?${ready ? " AND NOT EXISTS (SELECT 1 FROM warehouse_dispatch_serials rg JOIN warehouse_dispatches rd ON rd.id = rg.dispatch_id WHERE rg.serial_id = serials.id AND rd.status = 'done')" : ''} THEN id ELSE ${CAS_FAIL_SQL} END WHERE id = ?`,
+          // Ready: juga gagal bila serial itu kini tercatat pada pengeluaran selesai atau pending mana pun (balapan).
+          `UPDATE serials SET id = CASE WHEN status = 'good' AND custody = 'qc' AND deleted_at = '' AND item_id = ?${ready ? " AND NOT EXISTS (SELECT 1 FROM warehouse_dispatch_serials rg JOIN warehouse_dispatches rd ON rd.id = rg.dispatch_id WHERE rg.serial_id = serials.id AND rd.status IN ('done', 'pending'))" : ''} THEN id ELSE ${CAS_FAIL_SQL} END WHERE id = ?`,
         ).bind(header.itemId, plan.serialId),
       );
     }
