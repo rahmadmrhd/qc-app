@@ -21,12 +21,13 @@ const roles = new Map<string, PartialPermissionMap>([
 
 describe('konstanta', () => {
   test('modul ber-BU: item, serial, serialservice; kunci Semua BU = bintang', () => {
-    expect([...BU_MODULES]).toEqual(['item', 'serial', 'serialservice']);
+    expect([...BU_MODULES]).toEqual(['item', 'serial', 'serialservice', 'serialwh']);
     expect(ALL_BU_KEY).toBe('*');
     expect(fullBuPermissions()).toEqual({
       item: 'manage',
       serial: 'manage',
       serialservice: 'edit',
+      serialwh: 'edit',
     });
   });
 });
@@ -83,14 +84,14 @@ describe('resolveBuAccess', () => {
       ['A', 'B'],
     );
     expect(result).toEqual({
-      A: { item: 'edit', serial: 'none', serialservice: 'none' },
-      B: { item: 'view', serial: 'none', serialservice: 'none' },
+      A: { item: 'edit', serial: 'none', serialservice: 'none', serialwh: 'none' },
+      B: { item: 'view', serial: 'none', serialservice: 'none', serialwh: 'none' },
     });
   });
 
   test('penugasan hanya untuk satu BU tidak memberi hak di BU lain', () => {
     expect(resolveBuAccess([{ buId: 'A', roleIds: ['manage'] }], roles, ['A', 'B'])).toEqual({
-      A: { item: 'manage', serial: 'none', serialservice: 'none' },
+      A: { item: 'manage', serial: 'none', serialservice: 'none', serialwh: 'none' },
     });
   });
 
@@ -108,12 +109,16 @@ describe('resolveBuAccess', () => {
       roles,
       ['A', 'B', 'C'],
     );
-    expect(result).toEqual({ C: { item: 'view', serial: 'none', serialservice: 'none' } });
+    expect(result).toEqual({
+      C: { item: 'view', serial: 'none', serialservice: 'none', serialwh: 'none' },
+    });
   });
 
   test('hanya modul ber-BU yang dibaca: role access/handover tidak memberi apa pun di BU', () => {
     const result = resolveBuAccess([{ buId: null, roleIds: ['handover', 'access'] }], roles, ['A']);
-    expect(result).toEqual({ A: { item: 'view', serial: 'none', serialservice: 'none' } });
+    expect(result).toEqual({
+      A: { item: 'view', serial: 'none', serialservice: 'none', serialwh: 'none' },
+    });
   });
 });
 
@@ -139,9 +144,27 @@ describe('globalBuLevel', () => {
 
 describe('buIdsWithLevel dan canActOnAllBus', () => {
   const byBu = {
-    A: { item: 'manage', serial: 'none', serialservice: 'none', countrylock: 'none' },
-    B: { item: 'view', serial: 'none', serialservice: 'none', countrylock: 'none' },
-    C: { item: 'edit', serial: 'none', serialservice: 'none', countrylock: 'none' },
+    A: {
+      item: 'manage',
+      serial: 'none',
+      serialservice: 'none',
+      serialwh: 'none',
+      countrylock: 'none',
+    },
+    B: {
+      item: 'view',
+      serial: 'none',
+      serialservice: 'none',
+      serialwh: 'none',
+      countrylock: 'none',
+    },
+    C: {
+      item: 'edit',
+      serial: 'none',
+      serialservice: 'none',
+      serialwh: 'none',
+      countrylock: 'none',
+    },
   } as const;
 
   test('buIdsWithLevel menyaring BU menurut level minimum', () => {

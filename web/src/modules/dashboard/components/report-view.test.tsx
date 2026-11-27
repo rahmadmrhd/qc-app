@@ -87,7 +87,7 @@ beforeEach(() => {
         code: 'B1',
         name: 'BU Satu',
         status: 'active',
-        permissions: { item: 'none', serial: 'view', serialservice: 'none' },
+        permissions: { item: 'none', serial: 'view', serialservice: 'none', serialwh: 'none' },
       },
     ],
   });

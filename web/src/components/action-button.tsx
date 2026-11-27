@@ -10,6 +10,7 @@ import {
   History,
   LoaderCircle,
   type LucideIcon,
+  PackageCheck,
   PackageMinus,
   PackagePlus,
   Pause,
@@ -63,6 +64,7 @@ export type ActionKind =
   | 'history'
   | 'reportDamage'
   | 'stickers'
+  | 'warehouse'
   | 'pause'
   | 'resume'
   | 'sendTest';
@@ -260,6 +262,14 @@ export const ACTIONS: Record<ActionKind, ActionSpec> = {
   stickers: {
     icon: Sticker,
     label: 'Tempel stiker',
+    color: 'primary',
+    variant: 'outline',
+    compactVariant: 'ghost',
+  },
+  // Keluar Gudang: membuka form pengeluaran Serial Number dari detail task Serah Terima.
+  warehouse: {
+    icon: PackageCheck,
+    label: 'Keluar Gudang',
     color: 'primary',
     variant: 'outline',
     compactVariant: 'ghost',

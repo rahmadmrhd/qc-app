@@ -41,9 +41,14 @@ export function whatsappPasteExtension(options: WhatsappPasteOptions = {}) {
               const markdown = whatsappToNoteMarkdown(text);
               if (markdown === '') return false;
               event.preventDefault();
+              // Transaksi ini bukan paste bawaan ProseMirror: tandai agar saran Item (5.15) tahu ini tempelan.
               return editor
                 .chain()
                 .focus()
+                .command(({ tr }) => {
+                  tr.setMeta('uiEvent', 'paste');
+                  return true;
+                })
                 .insertContent(markdown, { contentType: 'markdown' })
                 .run();
             },

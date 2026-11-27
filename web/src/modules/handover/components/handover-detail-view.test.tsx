@@ -272,3 +272,22 @@ test('panel kanan memuat log aktivitas task (kind handover)', async () => {
     limit: 10,
   });
 });
+
+test('aksi Keluar Gudang hanya bila onWarehouse diberikan (serialwh edit), lewat menu Aksi lainnya', async () => {
+  setup();
+  expect(await moreActionNames()).not.toContain('Keluar Gudang');
+  document.body.innerHTML = '';
+  const onWarehouse = vi.fn();
+  setup({ onWarehouse });
+  expect(screen.queryByRole('button', { name: 'Keluar Gudang' })).not.toBeInTheDocument();
+  await clickMoreAction('Keluar Gudang');
+  expect(onWarehouse).toHaveBeenCalledTimes(1);
+});
+
+test('aksi Keluar Gudang tidak tampil untuk task terhapus', async () => {
+  setup(
+    { onWarehouse: vi.fn() },
+    makeHandover({ deleted: { deletedAt: '2026-11-20T01:00:00.000Z', deletedBy: 'x@x.com' } }),
+  );
+  if (!hasNoMoreActions()) expect(await moreActionNames()).not.toContain('Keluar Gudang');
+});

@@ -151,7 +151,14 @@ function toCursorPage(rows: readonly AuditRow[], limit: number): AuditCursorPage
   const last = page[page.length - 1];
   return {
     entries: page.map((row): AuditEntryDto => {
-      const kind = row.target_id === '' ? undefined : auditTargetKind(row.action);
+      // Pembatalan penyapu Keluar Gudang berawalan `serialwh` (jenis SO), tetapi pada pencatatan ready bertarget id
+      // pengeluaran (label `Ready <tanggal>`, label SO `SO <nomor>`): tautannya ke detail ready, bukan detail SO.
+      const kind =
+        row.target_id === ''
+          ? undefined
+          : row.action === 'serialwh.dispatch_cancel' && row.target.startsWith('Ready ')
+            ? ('warehouseReady' as const)
+            : auditTargetKind(row.action);
       return {
         id: String(row.id),
         ts: row.ts,

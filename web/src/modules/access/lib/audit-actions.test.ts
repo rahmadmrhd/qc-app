@@ -97,3 +97,24 @@ test('aksi audit postel.* berlabel Indonesia', () => {
   expect(auditActionLabel('postel.delete')).toBe('Postel dihapus');
   expect(auditActionLabel('postel.settings')).toBe('Konfigurasi Postel diubah');
 });
+
+test('label aksi Keluar Gudang', () => {
+  expect(auditActionLabel('serialwh.dispatch_create')).toBe('Keluar Gudang dicatat');
+  expect(auditActionLabel('serialwh.dispatch_done')).toBe('Keluar Gudang selesai');
+  expect(auditActionLabel('serialwh.dispatch_cancel')).toBe('Keluar Gudang dibatalkan otomatis');
+});
+
+test('pembatalan otomatis berlabel ready di log ready dan Log Audit bertarget Ready', () => {
+  expect(auditActionLabel('serialwh.dispatch_cancel', { kind: 'warehouseReady' })).toBe(
+    'Ready Gudang dibatalkan otomatis',
+  );
+  expect(auditActionLabel('serialwh.dispatch_cancel', { target: 'Ready 2026-11-20' })).toBe(
+    'Ready Gudang dibatalkan otomatis',
+  );
+  expect(auditActionLabel('serialwh.dispatch_cancel', { kind: 'warehouseOrder' })).toBe(
+    'Keluar Gudang dibatalkan otomatis',
+  );
+  expect(auditActionLabel('serialwh.dispatch_cancel', { target: 'SO SO-1' })).toBe(
+    'Keluar Gudang dibatalkan otomatis',
+  );
+});

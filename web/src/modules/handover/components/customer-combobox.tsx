@@ -14,6 +14,8 @@ export interface CustomerComboboxProps {
   onBlur?: () => void;
   /** Mode ubah: customer task saat ini (mungkin nonaktif, jadi tidak ada di daftar saran). */
   currentName?: string;
+  /** Kata benda yang disimpan dan membuat customer baru; bawaan "task" (Serah Terima). */
+  savedAs?: string;
 }
 
 /**
@@ -28,6 +30,7 @@ export function CustomerCombobox({
   inactiveNames = [],
   onBlur,
   currentName,
+  savedAs = 'task',
 }: CustomerComboboxProps) {
   const [open, setOpen] = useState(false);
   // Timer penutup daftar dibatalkan saat komponen dilepas agar tak memperbarui state yang sudah tidak ada.
@@ -142,7 +145,7 @@ export function CustomerCombobox({
       ) : null}
       {key !== '' && !exact && !isCurrent && !inactive ? (
         <p className="text-xs text-muted-foreground">
-          Customer baru "{value.trim()}" akan dibuat saat task disimpan.
+          Customer baru "{value.trim()}" akan dibuat saat {savedAs} disimpan.
         </p>
       ) : null}
       {similar.length > 0 ? (

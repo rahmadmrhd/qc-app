@@ -127,6 +127,7 @@ beforeEach(() => {
       stickerstock: 'none',
       serial: 'view',
       serialservice: 'none',
+      serialwh: 'none',
       countrylock: 'none',
       dashboard: 'none',
     },
@@ -440,6 +441,7 @@ test('pembaca serialservice: view juga tidak memanggil serials.locationOptions',
       ...me.permissions,
       serial: 'none',
       serialservice: 'view',
+      serialwh: 'none',
       countrylock: 'none',
       dashboard: 'none',
     },
@@ -506,6 +508,7 @@ test('filter item berfungsi bagi pembaca (serial: view): item dimuat dari serial
       ...me.permissions,
       serial: 'none',
       serialservice: 'view',
+      serialwh: 'none',
       countrylock: 'none',
       dashboard: 'none',
     },
@@ -526,7 +529,7 @@ function withBus(
     code: id.toUpperCase(),
     name: `Unit ${id}`,
     status: 'active' as const,
-    permissions: { item: 'none' as const, serial, serialservice },
+    permissions: { item: 'none' as const, serial, serialservice, serialwh: 'none' as const },
   }));
 }
 
@@ -776,7 +779,7 @@ function manageMe(level: 'edit' | 'manage' = 'manage'): MeDto {
         code: 'BU1',
         name: 'Satu',
         status: 'active',
-        permissions: { item: 'none', serial: level, serialservice: 'none' },
+        permissions: { item: 'none', serial: level, serialservice: 'none', serialwh: 'none' },
       },
     ],
   };
@@ -1351,4 +1354,36 @@ test('ponsel: bar aksi massal satu baris memuat Tempel stiker; lebih dari 10 kom
   // Sepuluh kelompok: aktif.
   await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih GRUP10' }));
   expect(within(bar).getByRole('button', { name: 'Tempel stiker' })).toBeEnabled();
+});
+
+test('badge Tercatat WH dan Butuh foto tampil sesuai DTO', async () => {
+  apiMock.mockImplementation((id: string) => {
+    if (id === 'serials.list') {
+      return Promise.resolve({
+        items: [
+          row({ id: 's1', serial: 'GUDANG1', whRecorded: true, needsProof: true }),
+          row({ id: 's2', serial: 'BIASA2' }),
+        ],
+        nextCursor: null,
+      });
+    }
+    return Promise.resolve({ locations: [] });
+  });
+  await renderPage();
+  const wh = (await screen.findByRole('link', { name: 'GUDANG1' })).closest('tr') as HTMLElement;
+  const plain = screen.getByRole('link', { name: 'BIASA2' }).closest('tr') as HTMLElement;
+  expect(within(wh).getByText('Tercatat WH')).toBeInTheDocument();
+  expect(within(wh).getByText('Butuh foto')).toBeInTheDocument();
+  expect(within(plain).queryByText('Tercatat WH')).not.toBeInTheDocument();
+  expect(within(plain).queryByText('Butuh foto')).not.toBeInTheDocument();
+});
+
+test('param whRecorded dan needsProof dari URL diteruskan ke serials.list', async () => {
+  await renderPage({ whRecorded: 'no', needsProof: true });
+  await screen.findByText('ABC123');
+  await waitFor(() =>
+    expect(lastListInput()).toMatchObject({ whRecorded: 'no', needsProof: true }),
+  );
+  expect(screen.getByRole('button', { name: /^Gudang: Belum tercatat WH/ })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /^Butuh foto: Butuh foto/ })).toBeInTheDocument();
 });

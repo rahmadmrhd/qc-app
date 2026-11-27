@@ -33,6 +33,7 @@ const me = vi.hoisted(() => ({
       stickerstock: 'none',
       serial: 'none',
       serialservice: 'none',
+      serialwh: 'none',
       countrylock: 'none',
     },
     businessUnits: [],

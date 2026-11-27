@@ -378,7 +378,14 @@ describe('activity.list: tiap kind memakai gerbang baca model-nya', () => {
   });
 
   test('semua kind selain item tercakup tabel uji', () => {
-    const covered = new Set<ActivityKind>(['item', ...records.map((record) => record.kind)]);
+    // `warehouseOrder` dan `warehouseReady` diuji di serialwh/orders.test.ts dan serialwh/ready.test.ts (gerbangnya =
+    // BU ber-`serialwh: view`, bukan izin modul).
+    const covered = new Set<ActivityKind>([
+      'item',
+      'warehouseOrder',
+      'warehouseReady',
+      ...records.map((record) => record.kind),
+    ]);
     expect([...covered].sort()).toEqual([...ACTIVITY_KINDS].sort());
   });
 

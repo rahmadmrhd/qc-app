@@ -33,6 +33,11 @@ const HOUR = 60 * MIN;
  * data yatim yang menunjuk ke baris yang sudah dihapus); `seed.test.ts` membandingkannya dengan skema.
  */
 export const RESET_TABLES = [
+  'warehouse_dispatch_serials',
+  'warehouse_dispatch_chunks',
+  'warehouse_dispatches',
+  'warehouse_order_handovers',
+  'warehouse_orders',
   'item_sticker_marks',
   'item_sticker_photos',
   'sticker_guide_images',

@@ -1,6 +1,6 @@
 import type { AuditEntryDto, MeDto } from '@shared/contract';
 import type { LinkProps } from '@tanstack/react-router';
-import { canAnywhere } from '@/modules/auth/permissions';
+import { canAnywhere, canReadWarehouse } from '@/modules/auth/permissions';
 
 export interface AuditLink {
   to: LinkProps['to'];
@@ -11,6 +11,7 @@ export interface AuditLink {
  * Tujuan tautan sebuah entri Log Audit ke entitasnya (keputusan pemilik 2026-11-20, redesain butir 20). Izinnya
  * MENCERMINKAN `beforeLoad` rute tujuan, supaya tautan tak pernah membawa pengguna ke halaman "Dilarang":
  * - item, merk, customer: `item: view`; postel: `sticker: view`; pengguna/role/lokasi/BU: `access: view`;
+ * - catatan SO Keluar Gudang: `serialwh: view` pada minimal satu BU;
  * - serial: `serial` atau `serialservice: view`; serah terima: `handover: view` atau `qc: edit` (di salah satu lokasi);
  * - desain QR: `qrcode: edit`; preset QR: `qrcode: manage` (keduanya hanya punya halaman ubah, tak ada View).
  * Stiker dan jenis stiker tak punya halaman lihat, dan entri tanpa `targetRef` (lama, atau aksi tanpa entitas) tak
@@ -59,6 +60,14 @@ export function auditTargetLink(
     case 'serial':
       return canAnywhere(me, 'serial', 'view') || canAnywhere(me, 'serialservice', 'view')
         ? { to: '/serial/$serialId', params: { serialId: id } }
+        : undefined;
+    case 'warehouseOrder':
+      return canReadWarehouse(me)
+        ? { to: '/serial/gudang/riwayat/$orderId', params: { orderId: id } }
+        : undefined;
+    case 'warehouseReady':
+      return canReadWarehouse(me)
+        ? { to: '/serial/gudang/riwayat/ready/$readyId', params: { readyId: id } }
         : undefined;
     case 'handover':
       return canAnywhere(me, 'handover', 'view') || canAnywhere(me, 'qc', 'edit')

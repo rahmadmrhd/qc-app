@@ -8,6 +8,11 @@ export interface RowSelection {
   remove: (ids: readonly string[]) => void;
   clear: () => void;
   count: number;
+  /**
+   * Jumlah yang menentukan MODE PILIH kartu ponsel (bawaan `count`). Daftar yang "terpilihnya" adalah isi draf
+   * (selalu ada) mengisinya sendiri agar mode pilih tidak menyala dan menjebak tombol kembali.
+   */
+  modeCount?: number;
 }
 
 /**

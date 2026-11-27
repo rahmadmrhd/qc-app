@@ -217,7 +217,7 @@ function meWithBus(...bus: [string, 'edit' | 'view', 'edit' | 'view'][]) {
       code: id.toUpperCase(),
       name: id,
       status: 'active' as const,
-      permissions: { item, serial, serialservice: 'none' as const },
+      permissions: { item, serial, serialservice: 'none' as const, serialwh: 'none' as const },
     })),
   });
 }

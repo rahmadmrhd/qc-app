@@ -9,7 +9,7 @@ import { useStackNavigation } from '@/hooks/use-stack-navigation';
 import { ApiError } from '@/lib/api/api-error';
 import { describeError } from '@/lib/api/describe-error';
 import { customerLinkAccess } from '@/lib/link-access';
-import { canAt, requireAnyPermission } from '@/modules/auth/permissions';
+import { canAt, canUseWarehouse, requireAnyPermission } from '@/modules/auth/permissions';
 import { useMe } from '@/modules/auth/use-me';
 import {
   HandoverDetailView,
@@ -187,6 +187,11 @@ function HandoverDetailPage() {
           replace: true,
         })
       }
+      {...(canUseWarehouse(me)
+        ? {
+            onWarehouse: () => stack.push({ to: '/serial/gudang', search: { handover: task.id } }),
+          }
+        : {})}
       onEdit={() =>
         stack.push({
           to: '/handover/$handoverId/edit',

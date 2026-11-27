@@ -17,6 +17,7 @@ const SERIAL_EDIT: GuidePermission = { module: 'serial', level: 'edit' };
  */
 const SERIAL_LIST_EXCEPT = [
   '/serial/$serialId',
+  '/serial/gudang',
   '/serial/new',
   '/serial/report',
   '/serial/reports',

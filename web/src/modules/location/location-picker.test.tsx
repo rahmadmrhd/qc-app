@@ -44,6 +44,7 @@ beforeEach(() => {
       stickerstock: 'none',
       serial: 'none',
       serialservice: 'none',
+      serialwh: 'none',
       countrylock: 'none',
       dashboard: 'none',
     },

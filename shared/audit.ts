@@ -20,7 +20,9 @@ export type AuditTargetKind =
   | 'dashboardShare'
   | 'dashboardReport'
   | 'serial'
-  | 'handover';
+  | 'handover'
+  | 'warehouseOrder'
+  | 'warehouseReady';
 
 /**
  * Jenis entitas yang riwayatnya dibaca lewat `activity.list` (panel aktivitas View). Serial TIDAK termasuk: riwayatnya
@@ -42,6 +44,8 @@ export const ACTIVITY_KINDS: readonly ActivityKind[] = [
   'location',
   'businessUnit',
   'handover',
+  'warehouseOrder',
+  'warehouseReady',
   'dashboardShare',
   'dashboardReport',
 ];
@@ -61,6 +65,8 @@ const PREFIX_KINDS: Readonly<Record<string, AuditTargetKind>> = {
   businessunit: 'businessUnit',
   serial: 'serial',
   handover: 'handover',
+  // Keluar Gudang: semua aksi `serialwh.*` bertarget id catatan SO (panel aktivitas detail SO di Riwayat).
+  serialwh: 'warehouseOrder',
 };
 
 /**
@@ -68,6 +74,10 @@ const PREFIX_KINDS: Readonly<Record<string, AuditTargetKind>> = {
  * memuat aksi tautan dan laporan terjadwal, jadi dipetakan per aksi, bukan per awalan).
  */
 const ACTION_KINDS: Readonly<Record<string, AuditTargetKind>> = {
+  // Keluar Gudang mode ready: bertarget id PENGELUARAN (bukan SO). `serialwh.dispatch_cancel` ikut awalan `warehouseOrder`
+  // dan diterima log ready lewat `activity.list` (id target berbeda, jadi tak bercampur).
+  'serialwh.ready_create': 'warehouseReady',
+  'serialwh.ready_done': 'warehouseReady',
   'dashboard.share_create': 'dashboardShare',
   'dashboard.share_update': 'dashboardShare',
   'dashboard.share_revoke': 'dashboardShare',

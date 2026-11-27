@@ -39,6 +39,7 @@ import { activeLocationLabel } from '@/modules/location/active-location-label';
 import { useOptionalActiveLocations } from '@/modules/location/active-locations-context';
 import { LocationSheet } from '@/modules/location/components/location-sheet';
 import { PushSettingsDialog } from '@/modules/push/components/push-settings-dialog';
+import { isWarehouseSubmitting } from '@/modules/serialwh/lib/active-submission';
 import { useTheme } from '@/modules/theme/theme-provider';
 import { OutboxList } from './outbox-chip';
 
@@ -247,7 +248,7 @@ export function UserMenu() {
           onPush={() => setPushOpen(true)}
           onLogout={() => {
             const count = countAllOutboxEntries();
-            if (count > 0) setLogoutOpen(true);
+            if (count > 0 || isWarehouseSubmitting()) setLogoutOpen(true);
             else logout();
           }}
         />
@@ -300,7 +301,7 @@ export function UserMenu() {
               onSelect={() => {
                 // Keluar membuang antrean centang di perangkat (semua pemilik): peringatkan dulu bila ada isinya.
                 const count = countAllOutboxEntries();
-                if (count > 0) setLogoutOpen(true);
+                if (count > 0 || isWarehouseSubmitting()) setLogoutOpen(true);
                 else logout();
               }}
             >

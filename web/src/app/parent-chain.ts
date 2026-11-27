@@ -72,6 +72,15 @@ export function parentChainFor(path: string, patterns: readonly string[]): strin
       chain.push(prefix);
     }
   }
+  // Detail pencatatan ready: induknya tab Ready Riwayat Gudang, bukan tab bawaan Keluar ke SO.
+  if (path.startsWith('/serial/gudang/riwayat/ready/')) {
+    // `/riwayat/ready` sendiri bukan halaman (cocok dengan `$orderId`), jadi dibuang dari rantai.
+    return chain
+      .filter((entry) => entry !== '/serial/gudang/riwayat/ready')
+      .map((entry) =>
+        entry === '/serial/gudang/riwayat' ? '/serial/gudang/riwayat?tab=ready' : entry,
+      );
+  }
   return chain;
 }
 

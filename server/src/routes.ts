@@ -18,6 +18,7 @@ import { notificationRoutes } from '@server/modules/notification/routes';
 import { postelRoutes } from '@server/modules/postel/routes';
 import { qrcodeRoutes } from '@server/modules/qrcode/routes';
 import { serialRoutes } from '@server/modules/serial/routes';
+import { serialwhRoutes } from '@server/modules/serialwh/routes';
 import { stickerRoutes } from '@server/modules/sticker/routes';
 import type { ApiId } from '@shared/contract';
 
@@ -178,6 +179,7 @@ export const ALL_API_IDS: Record<ApiId, true> = {
   'serials.stickerOptions': true,
   'serials.locationOptions': true,
   'serials.serviceLocations': true,
+  'items.nameOptions': true,
   'serials.lookup': true,
   'serials.lookupMany': true,
   'serials.reportNew': true,
@@ -199,6 +201,21 @@ export const ALL_API_IDS: Record<ApiId, true> = {
   'serialServiceSettings.save': true,
   'serialCases.list': true,
   'serialCases.get': true,
+  'serialWarehouse.itemOptions': true,
+  'serialWarehouse.options': true,
+  'serialWarehouse.serials': true,
+  'serialWarehouse.lookup': true,
+  'serialWarehouse.orderOptions': true,
+  'serialWarehouse.handoverCandidates': true,
+  'serialWarehouse.handoverContext': true,
+  'serialWarehouse.submit': true,
+  'serialWarehouse.dispatchSerials': true,
+  'serialWarehouse.copyText': true,
+  'serialWarehouse.listOrders': true,
+  'serialWarehouse.setLinks': true,
+  'serialWarehouse.getOrder': true,
+  'serialWarehouse.readyList': true,
+  'serialWarehouse.ready': true,
   'serialProofs.upload': true,
   'serialProofs.get': true,
   'serialProofs.remove': true,
@@ -264,6 +281,7 @@ function realRoutes(): RouteTable {
     ...guideRoutes(),
     ...pushRoutes(),
     ...serialRoutes(),
+    ...serialwhRoutes(),
     ...jobsRoutes(),
     ...stickerRoutes(),
   };

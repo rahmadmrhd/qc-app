@@ -88,13 +88,13 @@ describe('collectLegacyIds / replaceLegacyIds (murni)', () => {
   const NON_ID_CONTRACT_KEYS = new Set(
     (
       'action, actions, activeExpiresOn, activeNumber, actor, actorName, after, alias, aliases, at, auth, author, before, ' +
-      'body, brand, buCode, buCodes, buLabel, buName, by, caption, capturedAt, changedFields, changelog, checksum, closedBy, ' +
+      'body, brand, brandName, buCode, buCodes, buLabel, buName, by, caption, cancelledAt, capturedAt, changedFields, changelog, checksum, closedBy, ' +
       'closedByTeam, closedOn, code, completedAt, completedBy, createdAt, createdBy, createdBys, cursor, customerName, description, ' +
-      'detail, documentName, email, endpoint, error, etag, expectedUpdatedAt, expiresAt, expiresOn, exportedAt, exportedBy, ' +
+      'detail, dispatchedOn, documentName, email, endpoint, error, etag, expectedUpdatedAt, expiresAt, expiresOn, exportedAt, exportedBy, ' +
       'failedAt, field, filename, firmware, firstAt, footer, from, guideName, inactiveCustomerNames, itemLabel, label, ' +
-      'lastActorName, lastEventAt, leftAt, link, locationLabel, locationName, logoUpdatedAt, manualBookName, message, mime, model, models, name, ' +
-      'nextCursor, note, number, numbers, occurredOn, openCaseNumber, openedOn, postelNumber, publicKey, publishedAt, ' +
-      'bcc, cc, query, quote, reason, recipients, reinjectedAt, reporter, result, search, serial, serials, shipmentNote, source, ' +
+      'lastActorName, lastDispatchedOn, lastEventAt, leftAt, link, locationLabel, locationName, logoUpdatedAt, manualBookName, message, mime, model, models, name, ' +
+      'nextCursor, note, number, numbers, occurredOn, openCaseNumber, openedOn, orderNumber, postelNumber, preview, publicKey, publishedAt, ' +
+      'bcc, cc, query, quote, reason, recipients, reinjectedAt, reporter, result, search, serial, serials, shipmentNote, skipped, skippedTotal, source, ' +
       'stickerLabel, subtitle, summary, tables, target, targetName, testDate, text, thumbMime, ticket, title, to, today, ' +
       'transitFromLocationName, transitOn, transitToLocationName, ts, typeName, unitLocationLabel, updatedAt, updatedBy, uploadedBy, url, version'
     ).split(', '),

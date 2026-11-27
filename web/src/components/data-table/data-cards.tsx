@@ -42,6 +42,8 @@ interface DataCardsProps<T> {
   isLoading?: boolean | undefined;
   /** Klik badan kartu membuka detail (B9); `undefined` untuk baris itu = kartu tak dapat diklik. Nonaktif saat mode pilih. */
   openOf?: ((row: T) => (() => void) | undefined) | undefined;
+  /** Kartu yang disorot sebentar (hasil scan terakhir). */
+  isHighlighted?: ((row: T) => boolean) | undefined;
 }
 
 /**
@@ -61,6 +63,7 @@ export function DataCards<T>({
   actions,
   isLoading,
   openOf,
+  isHighlighted,
 }: DataCardsProps<T>) {
   const roles = resolveMobileRoles(columns);
   const ids = rows.filter((row) => isSelectable?.(row) ?? true).map(rowKey);
@@ -134,9 +137,15 @@ export function DataCards<T>({
               {...(!selecting && openOf?.(row) ? { onOpen: openOf(row) } : {})}
               rootProps={{
                 className:
-                  selection && selectable
-                    ? `${selecting ? 'select-none ' : ''}[-webkit-touch-callout:none] data-[pressing]:select-none`
-                    : undefined,
+                  [
+                    selection && selectable
+                      ? `${selecting ? 'select-none ' : ''}[-webkit-touch-callout:none] data-[pressing]:select-none`
+                      : '',
+                    isHighlighted?.(row) ? 'bg-success-text/15 transition-colors' : '',
+                  ]
+                    .filter(Boolean)
+                    .join(' ')
+                    .trim() || undefined,
                 ...(selectable ? bind(id) : {}),
               }}
               leading={

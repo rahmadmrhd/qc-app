@@ -17,6 +17,7 @@ vi.mock('@/modules/push/components/push-settings-dialog', () => ({
 
 import { enqueueCheck } from '@/modules/handover/lib/check-outbox';
 import { readOutbox, removeOutboxEntries } from '@/modules/handover/lib/outbox';
+import { beginWarehouseSubmit } from '@/modules/serialwh/lib/active-submission';
 import { mockMatchMedia } from '@/test/match-media';
 import { resetOutboxEnv } from '@/test/outbox-env';
 import { UserMenu } from './user-menu';
@@ -116,4 +117,24 @@ test('entri baru saat dialog terbuka: angka naik', async () => {
     await queue('rina@qc.local', 1);
   });
   expect(await screen.findByText(/2 perubahan belum terkirim/)).toBeInTheDocument();
+});
+
+test('kiriman Keluar Gudang berjalan: Keluar menampilkan peringatan, bukan langsung logout', async () => {
+  const end = beginWarehouseSubmit();
+  render(<UserMenu />);
+  await clickKeluar();
+  expect(await screen.findByText(/Pengeluaran Keluar Gudang masih dikirim/)).toBeInTheDocument();
+  expect(logoutMock).not.toHaveBeenCalled();
+  // Selesai selagi dialog terbuka: pesan ikut berubah (dibaca hidup).
+  act(() => end());
+  expect(await screen.findByText(/Aman untuk keluar/)).toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: 'Tetap keluar' }));
+  expect(logoutMock).toHaveBeenCalledTimes(1);
+});
+
+test('kiriman Keluar Gudang sudah selesai: logout biasa tetap langsung', async () => {
+  beginWarehouseSubmit()();
+  render(<UserMenu />);
+  await clickKeluar();
+  expect(logoutMock).toHaveBeenCalledTimes(1);
 });

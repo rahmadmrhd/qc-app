@@ -1,5 +1,7 @@
 import type { RouteTable } from '@server/core/router';
 import { validateIdBatch, validateStatusBatch } from '@server/core/soft-delete';
+import { expectNull } from '@server/core/validate';
+import { itemNameOptions } from './name-options';
 import {
   getItemDto,
   listItemPage,
@@ -21,6 +23,7 @@ import {
 type ItemMethod =
   | 'items.list'
   | 'items.get'
+  | 'items.nameOptions'
   | 'items.save'
   | 'items.setStatus'
   | 'items.setStatusBatch'
@@ -35,6 +38,12 @@ export function itemRoutes(): Pick<RouteTable, ItemMethod> {
       permission: { module: 'item', level: 'view' },
       validate: validateListItems,
       handler: (input, ctx) => listItemPage(ctx.env, input, ctx.user),
+    },
+    // Katalog nama Item untuk saran editor checklist (Keluar Gudang 5.15).
+    'items.nameOptions': {
+      permission: { module: 'item', level: 'view' },
+      validate: expectNull,
+      handler: (_input, ctx) => itemNameOptions(ctx.env, ctx.user),
     },
     'items.get': {
       permission: { module: 'item', level: 'view' },

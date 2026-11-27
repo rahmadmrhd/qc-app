@@ -77,6 +77,7 @@ test('matriks level per modul dikirim lengkap', async () => {
         stickerstock: 'none',
         serial: 'none',
         serialservice: 'none',
+        serialwh: 'none',
         countrylock: 'none',
         dashboard: 'none',
       },

@@ -35,6 +35,7 @@ const NONE_LEVELS = {
   stickerstock: 'none',
   serial: 'none',
   serialservice: 'none',
+  serialwh: 'none',
   countrylock: 'none',
   dashboard: 'none',
 } as MeDto['permissions'];
@@ -68,7 +69,7 @@ function makeUser(options: {
             code: 'B1',
             name: 'BU Satu',
             status: 'active',
-            permissions: { item: 'none', serial: 'view', serialservice: 'none' },
+            permissions: { item: 'none', serial: 'view', serialservice: 'none', serialwh: 'none' },
           },
         ]
       : [],

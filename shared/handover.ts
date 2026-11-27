@@ -81,3 +81,16 @@ export function hasHandoverControlChars(text: string): boolean {
   }
   return false;
 }
+
+/**
+ * Aturan nama customer yang SAMA bagi semua jalur yang membuat master customer (Serah Terima dan Keluar Gudang):
+ * pesan galat pertama, atau `null` bila sah. Nama kosong dianggap sah di sini (pemanggil yang mewajibkannya).
+ */
+export function customerNameProblem(name: string): string | null {
+  if (name.length > HANDOVER_LIMITS.customerName) {
+    return `Nama customer maksimal ${HANDOVER_LIMITS.customerName} karakter`;
+  }
+  if (name !== '' && customerKey(name) === '') return 'Nama customer harus memuat huruf atau angka';
+  if (hasHandoverControlChars(name)) return 'Tidak boleh memuat karakter kontrol';
+  return null;
+}
