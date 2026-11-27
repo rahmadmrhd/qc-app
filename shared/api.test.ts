@@ -622,6 +622,20 @@ const EXAMPLES: { [M in ApiId]: ApiInput<M> } = {
   'dashboardReports.remove': { id: 'r1' },
   'dashboardReports.sendTest': { id: 'r1' },
   'dashboardReports.preview': { id: 'r1' },
+  'clFiles.list': null,
+  'clFiles.get': { id: 'f1' },
+  'clFiles.save': {
+    path: 'mikrotik/AC.rsc',
+    role: 'script',
+    text: ':put {ipTarget}',
+    message: 'ubah',
+    baseSeq: 1,
+    expectedUpdatedAt: '2026-11-28T00:00:00.000Z',
+  },
+  'clFiles.remove': { id: 'f1' },
+  'clFiles.history': { id: 'f1' },
+  'clFiles.revision': { id: 'f1', seq: '2' },
+  'clFiles.revert': { id: 'f1', seq: 1, message: 'balik' },
 };
 
 const ROUNDTRIP_IDS = IDS;

@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { API_ROUTES, toRequestParts } from '@shared/api';
 import { BATCH_MAX } from '@shared/batch';
 import type { ApiId, ApiInput } from '@shared/contract';
+import { CL_PATH_MAX, CL_TEXT_MAX_BYTES } from '@shared/countrylock-bundle';
 import { MARKDOWN_MAX_LENGTH, MAX_IMAGE_BYTES } from '@shared/files';
 import { HANDOVER_LIMITS } from '@shared/handover';
 import { ITEM_LIMITS } from '@shared/items';
@@ -44,6 +45,17 @@ const WORST: Inputs = {
     })),
   },
   'access.users.setStatus': { id: UUID, status: 'inactive' },
+  // Country Lock: teks skrip maksimum (200 KB) berisi karakter terburuk yang lolos validator (tanda kutip: 1 byte -> 2 byte JSON;
+  // karakter kontrol selain tab/LF/CR ditolak validator, jadi bukan escape 6-byte).
+  'clFiles.save': {
+    path: 'p'.repeat(CL_PATH_MAX),
+    role: 'script',
+    text: '"'.repeat(CL_TEXT_MAX_BYTES),
+    message: text(200),
+    baseSeq: 999_999_999,
+    expectedUpdatedAt: STAMP,
+  },
+  'clFiles.revert': { id: UUID, seq: 999_999_999, message: text(200) },
   'access.roles.save': {
     id: UUID,
     name: text(60),

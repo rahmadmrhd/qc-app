@@ -148,7 +148,8 @@ export function insertFileStmt(db: Preparer, file: ClFileRecord): DbStatement {
 
 /**
  * Memajukan `head_rev` dari `expected` ke `next` dengan penjaga CAS yang digabung ke UPDATE: bila kepala sudah bukan
- * `expected` (penulis lain menyela) seluruh `batch()` dibatalkan (`CAS_FAIL_SQL`). Pasang SETELAH `insertRevisionStmt`.
+ * `expected` (penulis lain menyela) atau berkas sudah dihapus, seluruh `batch()` dibatalkan (`CAS_FAIL_SQL`). Pasang
+ * PERTAMA di batch (UPDATE mengunci baris, penulis serentak menunggu lalu gagal CAS) dan `insertRevisionStmt` sesudahnya.
  */
 export function advanceHeadStmt(
   db: Preparer,
@@ -159,9 +160,69 @@ export function advanceHeadStmt(
 ): DbStatement {
   return db
     .prepare(
-      `UPDATE cl_files SET head_rev = CASE WHEN head_rev = ? THEN ? ELSE ${CAS_FAIL_SQL} END, updated_at = ? WHERE id = ?`,
+      `UPDATE cl_files SET head_rev = CASE WHEN head_rev = ? AND removed_at = '' THEN ? ELSE ${CAS_FAIL_SQL} END, updated_at = ? WHERE id = ?`,
     )
     .bind(expected, next, now, fileId);
+}
+
+/** Menandai berkas dihapus (riwayat revisi tetap). Berkas yang sudah dihapus membatalkan batch (`CAS_FAIL_SQL`). */
+export function removeFileStmt(db: Preparer, id: string, now: string): DbStatement {
+  return db
+    .prepare(
+      `UPDATE cl_files SET removed_at = CASE WHEN removed_at = '' THEN ? ELSE ${CAS_FAIL_SQL} END, updated_at = ? WHERE id = ?`,
+    )
+    .bind(now, now, id);
+}
+
+/** Berkas beserta metadata revisi terbarunya (tanpa isi teks). */
+export interface ClFileHead {
+  file: ClFileRecord;
+  revision: ClRevisionRecord;
+}
+
+const HEAD_SELECT =
+  'f.id, f.path, f.role, f.kind, f.head_rev, f.removed_at, f.created_at, f.updated_at, r.id AS r_id, r.seq, r.sha256, r.size, r.message, r.author, r.created_at AS r_created_at';
+
+function toHead(row: Row): ClFileHead {
+  return {
+    file: toFile(row),
+    revision: {
+      id: text(row.r_id),
+      fileId: text(row.id),
+      seq: Number(row.seq),
+      sha256: text(row.sha256),
+      size: Number(row.size),
+      textBody: null,
+      message: text(row.message),
+      author: text(row.author),
+      createdAt: text(row.r_created_at),
+    },
+  };
+}
+
+/** Berkas hidup (opsional termasuk terhapus) dengan metadata revisi terbaru, urut nama jalur. */
+export async function listFileHeads(
+  db: Preparer,
+  options: { includeRemoved?: boolean } = {},
+): Promise<ClFileHead[]> {
+  const where = options.includeRemoved ? '' : " WHERE f.removed_at = ''";
+  const result = await db
+    .prepare(
+      `SELECT ${HEAD_SELECT} FROM cl_files f JOIN cl_revisions r ON r.file_id = f.id AND r.seq = f.head_rev${where} ORDER BY f.path_key, f.created_at, f.id`,
+    )
+    .all<Row>();
+  return result.results.map(toHead);
+}
+
+/** Satu berkas (hidup atau terhapus) dengan metadata revisi terbarunya. */
+export async function getFileHead(db: Preparer, id: string): Promise<ClFileHead | null> {
+  const row = await db
+    .prepare(
+      `SELECT ${HEAD_SELECT} FROM cl_files f JOIN cl_revisions r ON r.file_id = f.id AND r.seq = f.head_rev WHERE f.id = ?`,
+    )
+    .bind(id)
+    .first<Row>();
+  return row === null ? null : toHead(row);
 }
 
 // --- Revisi (append-only) --------------------------------------------------------------------------------------------

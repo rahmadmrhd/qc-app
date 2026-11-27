@@ -352,6 +352,52 @@
     "status": 200
   },
   {
+    "id": "clFiles.get",
+    "verb": "GET",
+    "path": "/countrylock/files/{id}",
+    "status": 200,
+    "etag": "updatedAt"
+  },
+  {
+    "id": "clFiles.history",
+    "verb": "GET",
+    "path": "/countrylock/files/{id}/history",
+    "status": 200
+  },
+  {
+    "id": "clFiles.list",
+    "verb": "GET",
+    "path": "/countrylock/files",
+    "status": 200
+  },
+  {
+    "id": "clFiles.remove",
+    "verb": "DELETE",
+    "path": "/countrylock/files/{id}",
+    "status": 200
+  },
+  {
+    "id": "clFiles.revert",
+    "verb": "POST",
+    "path": "/countrylock/files/{id}/revert",
+    "status": 200,
+    "etag": "updatedAt"
+  },
+  {
+    "id": "clFiles.revision",
+    "verb": "GET",
+    "path": "/countrylock/files/{id}/revisions/{seq}",
+    "status": 200
+  },
+  {
+    "id": "clFiles.save",
+    "verb": "PUT",
+    "path": "/countrylock/files",
+    "status": 200,
+    "etag": "updatedAt",
+    "ifMatch": "expectedUpdatedAt"
+  },
+  {
     "id": "customers.get",
     "verb": "GET",
     "path": "/customers/{id}",

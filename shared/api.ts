@@ -843,6 +843,18 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
   'dashboardReports.remove': { verb: 'DELETE', path: '/dashboard-reports/{id}' },
   'dashboardReports.sendTest': { verb: 'POST', path: '/dashboard-reports/{id}/send-test' },
   'dashboardReports.preview': { verb: 'GET', path: '/dashboard-reports/{id}/preview' },
+  'clFiles.list': { verb: 'GET', path: '/countrylock/files' },
+  'clFiles.save': {
+    verb: 'PUT',
+    path: '/countrylock/files',
+    ifMatch: 'expectedUpdatedAt',
+    etag: 'updatedAt',
+  },
+  'clFiles.get': { verb: 'GET', path: '/countrylock/files/{id}', etag: 'updatedAt' },
+  'clFiles.remove': { verb: 'DELETE', path: '/countrylock/files/{id}' },
+  'clFiles.history': { verb: 'GET', path: '/countrylock/files/{id}/history' },
+  'clFiles.revision': { verb: 'GET', path: '/countrylock/files/{id}/revisions/{seq}' },
+  'clFiles.revert': { verb: 'POST', path: '/countrylock/files/{id}/revert', etag: 'updatedAt' },
 };
 
 export interface RequestParts {

@@ -10,6 +10,7 @@ import type {
   StatusBatchInput,
 } from './batch';
 import type { BuAssignment, BuPermissionMap } from './business-units';
+import type { ClFileRole } from './countrylock-bundle';
 import type {
   DashboardOptionsDto,
   DashboardOptionsInput,
@@ -1920,6 +1921,75 @@ export interface ItemNameOptionsDto {
   truncated: boolean;
 }
 
+// --- Country Lock: berkas draf bundel (fase 1; spek 2026-11-28-country-lock-sync-bundel-design.md §5.2) ---------------
+
+/** Satu berkas draf Country Lock (teks atau biner); ukuran/hash/penulis dari revisi terbaru. */
+export interface ClFileDto {
+  id: string;
+  path: string;
+  role: ClFileRole;
+  kind: 'text' | 'binary';
+  /** Nomor revisi terbaru. */
+  headRev: number;
+  size: number;
+  sha256: string;
+  /** ISO UTC; dasar `If-Match`/ETag penyimpanan. */
+  updatedAt: string;
+  /** Penulis revisi terbaru. */
+  updatedBy: string;
+  /** Berkas sudah dihapus (riwayatnya tetap). */
+  removed: boolean;
+}
+
+export interface ClRevisionDto {
+  seq: number;
+  sha256: string;
+  size: number;
+  message: string;
+  author: string;
+  createdAt: string;
+}
+
+/** Berkas beserta isi teks terbaru (`null` untuk biner). */
+export interface ClFileDetailDto extends ClFileDto {
+  text: string | null;
+}
+
+export interface ClRevisionDetailDto extends ClRevisionDto {
+  text: string | null;
+}
+
+export interface GetClFileInput {
+  id: string;
+}
+
+export interface SaveClFileInput {
+  path: string;
+  role: ClFileRole;
+  text: string;
+  message?: string;
+  /** Revisi terbaru yang dilihat editor; WAJIB untuk berkas yang sudah ada, kosong untuk berkas baru. */
+  baseSeq?: number;
+  /** `updatedAt` berkas yang dilihat editor (header `If-Match`); kosong untuk berkas baru. */
+  expectedUpdatedAt?: string;
+}
+
+export type RemoveClFileInput = GetClFileInput;
+export type ListClFileHistoryInput = GetClFileInput;
+
+/** `seq` ikut jalur URL (`/revisions/{seq}`), jadi berupa teks angka. */
+export interface GetClRevisionInput {
+  id: string;
+  seq: string;
+}
+
+export interface RevertClFileInput {
+  id: string;
+  /** Revisi lama yang isinya dijadikan revisi BARU. */
+  seq: number;
+  message?: string;
+}
+
 export interface ApiContract {
   'auth.me': { input: null; output: MeDto };
   'access.users.list': { input: ListUsersInput | null; output: UserDto[] };
@@ -2231,6 +2301,13 @@ export interface ApiContract {
     input: GetDashboardReportInput;
     output: DashboardReportPreviewDto;
   };
+  'clFiles.list': { input: null; output: ClFileDto[] };
+  'clFiles.get': { input: GetClFileInput; output: ClFileDetailDto };
+  'clFiles.save': { input: SaveClFileInput; output: ClFileDetailDto };
+  'clFiles.remove': { input: RemoveClFileInput; output: null };
+  'clFiles.history': { input: ListClFileHistoryInput; output: ClRevisionDto[] };
+  'clFiles.revision': { input: GetClRevisionInput; output: ClRevisionDetailDto };
+  'clFiles.revert': { input: RevertClFileInput; output: ClFileDetailDto };
 }
 
 export type ApiId = keyof ApiContract;
