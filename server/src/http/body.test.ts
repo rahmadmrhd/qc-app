@@ -68,6 +68,8 @@ const WORST: Inputs = {
     sha256: 'f'.repeat(64),
   },
   'clUploads.finish': { id: UUID },
+  'clBundles.publish': { note: text(200) },
+  'clBundles.reactivate': { number: '999999999', note: text(200) },
   'clFirmwares.save': {
     id: UUID,
     brand: 'ubiquiti',

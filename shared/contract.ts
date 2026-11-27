@@ -10,7 +10,7 @@ import type {
   StatusBatchInput,
 } from './batch';
 import type { BuAssignment, BuPermissionMap } from './business-units';
-import type { ClBrand, ClFileRole } from './countrylock-bundle';
+import type { ClBrand, ClFileRole, ClIssue } from './countrylock-bundle';
 import type {
   DashboardOptionsDto,
   DashboardOptionsInput,
@@ -2055,6 +2055,58 @@ export interface RemoveClFirmwareInput {
   id: string;
 }
 
+/** Firmware dalam foto bundel (tanpa id/urutan: mengikuti manifest). */
+export interface ClBundleFirmwareDto {
+  brand: ClBrand;
+  code: string;
+  label: string;
+  scriptPath: string | null;
+  parallel: boolean;
+}
+
+/** Hasil validasi draf: berkas hidup, firmware, temuan, hash kandidat bundel, dan apakah berbeda dari bundel terbit terakhir. */
+export interface ClDraftDto {
+  files: ClFileDto[];
+  firmwares: ClFirmwareDto[];
+  issues: ClIssue[];
+  computerHash: string;
+  routerHash: string;
+  /** Berbeda dari bundel terbit terakhir (belum ada bundel = true). */
+  changed: boolean;
+}
+
+export interface ClBundleDto {
+  number: number;
+  computerHash: string;
+  routerHash: string;
+  minApp: string;
+  note: string;
+  publishedBy: string;
+  createdAt: string;
+  /** Nomor bundel asal bila ini hasil mengaktifkan ulang bundel lama. */
+  sourceNumber: number | null;
+  fileCount: number;
+}
+
+export interface ClBundleDetailDto extends ClBundleDto {
+  files: { path: string; role: ClFileRole; sha256: string; size: number }[];
+  firmwares: ClBundleFirmwareDto[];
+}
+
+export interface PublishClBundleInput {
+  note: string;
+}
+
+/** `number` ikut jalur URL, jadi berupa teks angka bulat positif. */
+export interface GetClBundleInput {
+  number: string;
+}
+
+export interface ReactivateClBundleInput {
+  number: string;
+  note: string;
+}
+
 export interface ApiContract {
   'auth.me': { input: null; output: MeDto };
   'access.users.list': { input: ListUsersInput | null; output: UserDto[] };
@@ -2380,6 +2432,11 @@ export interface ApiContract {
   'clUploads.start': { input: StartClUploadInput; output: ClUploadSessionDto };
   'clUploads.chunk': { input: ChunkClUploadInput; output: { received: number } };
   'clUploads.finish': { input: FinishClUploadInput; output: ClFileDto };
+  'clBundles.draft': { input: null; output: ClDraftDto };
+  'clBundles.publish': { input: PublishClBundleInput; output: ClBundleDto };
+  'clBundles.list': { input: null; output: ClBundleDto[] };
+  'clBundles.get': { input: GetClBundleInput; output: ClBundleDetailDto };
+  'clBundles.reactivate': { input: ReactivateClBundleInput; output: ClBundleDto };
 }
 
 export type ApiId = keyof ApiContract;

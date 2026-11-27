@@ -423,3 +423,139 @@ export async function firmwareUseCounts(db: Preparer): Promise<Map<string, numbe
     result.results.map((row) => [`${text(row.brand_key)}:${text(row.code)}`, Number(row.n)]),
   );
 }
+
+// --- Bundel: pembacaan massal, sidik jari draf, dan penulisan -------------------------------------------------------
+
+/** Teks revisi terbaru semua berkas teks hidup, menurut id berkas (satu kueri, bukan satu per berkas). */
+export async function liveHeadTexts(db: Preparer): Promise<Map<string, string>> {
+  const result = await db
+    .prepare(
+      "SELECT f.id AS file_id, r.text_body FROM cl_files f JOIN cl_revisions r ON r.file_id = f.id AND r.seq = f.head_rev WHERE f.removed_at = '' AND f.kind = 'text'",
+    )
+    .all<Row>();
+  return new Map(result.results.map((row) => [text(row.file_id), text(row.text_body)]));
+}
+
+const FIREWARE_PRINT =
+  "COUNT(*) AS n, COALESCE(SUM(CRC32(CONCAT_WS('|', id, brand, code, label, IFNULL(script_path, ''), parallel, sort))), 0) AS crc FROM cl_firmwares WHERE removed_at = ''";
+
+/** Sidik jari draf: jumlah berkas hidup + jumlah nomor revisi terbarunya, serta jumlah + CRC isi baris firmware hidup. */
+export interface DraftFingerprint {
+  files: number;
+  headSum: number;
+  firmwares: number;
+  firmwareCrc: number;
+}
+
+/**
+ * Membaca sidik jari draf (tanpa kunci). Dibaca SEBELUM isi draf dimuat: perubahan di antaranya membuat sidik jari
+ * lebih tua daripada isi, sehingga `draftGuardStmts` menggagalkan penerbitan (aman, lalu diulang).
+ */
+export async function draftFingerprint(db: Preparer): Promise<DraftFingerprint> {
+  const files = await db
+    .prepare(
+      "SELECT COUNT(*) AS n, COALESCE(SUM(head_rev), 0) AS s FROM cl_files WHERE removed_at = ''",
+    )
+    .first<Row>();
+  const firmwares = await db.prepare(`SELECT ${FIREWARE_PRINT}`).first<Row>();
+  return {
+    files: Number(files?.n ?? 0),
+    headSum: Number(files?.s ?? 0),
+    firmwares: Number(firmwares?.n ?? 0),
+    firmwareCrc: Number(firmwares?.crc ?? 0),
+  };
+}
+
+/**
+ * Penjaga atomik penerbitan: mengunci (`FOR UPDATE`) baris berkas dan firmware hidup lalu membatalkan `batch()`
+ * (`CAS_FAIL_SQL`) bila sidik jarinya bukan `expected`, sehingga bundel selalu berisi persis draf yang divalidasi dan
+ * penyimpanan berkas serentak menunggu sampai penerbitan selesai.
+ */
+export function draftGuardStmts(db: Preparer, expected: DraftFingerprint): DbStatement[] {
+  return [
+    db
+      .prepare(
+        `SELECT CASE WHEN COUNT(*) = ? AND COALESCE(SUM(head_rev), 0) = ? THEN 1 ELSE ${CAS_FAIL_SQL} END AS guard_ok FROM cl_files WHERE removed_at = '' FOR UPDATE`,
+      )
+      .bind(expected.files, expected.headSum),
+    db
+      .prepare(
+        `SELECT CASE WHEN COUNT(*) = ? AND COALESCE(SUM(CRC32(CONCAT_WS('|', id, brand, code, label, IFNULL(script_path, ''), parallel, sort))), 0) = ? THEN 1 ELSE ${CAS_FAIL_SQL} END AS guard_ok FROM cl_firmwares WHERE removed_at = '' FOR UPDATE`,
+      )
+      .bind(expected.firmwares, expected.firmwareCrc),
+  ];
+}
+
+/** Bundel terbit, nomor terbesar dulu. */
+export async function listBundles(db: Preparer, limit = 100): Promise<ClBundleRecord[]> {
+  const result = await db
+    .prepare(`SELECT ${BUNDLE_COLUMNS} FROM cl_bundles ORDER BY number DESC LIMIT ?`)
+    .bind(limit)
+    .all<Row>();
+  return result.results.map(toBundle);
+}
+
+export function insertBundleStmt(db: Preparer, bundle: ClBundleRecord): DbStatement {
+  return db
+    .prepare(`INSERT INTO cl_bundles (${BUNDLE_COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .bind(
+      bundle.id,
+      bundle.number,
+      bundle.computerHash,
+      bundle.routerHash,
+      bundle.minApp,
+      bundle.manifestJson,
+      bundle.note,
+      bundle.publishedBy,
+      bundle.sourceNumber,
+      bundle.createdAt,
+    );
+}
+
+/** Foto berkas bundel (satu INSERT banyak baris; maks. `CL_FILES_MAX` baris). */
+export function insertBundleFilesStmt(
+  db: Preparer,
+  bundleId: string,
+  files: { path: string; role: ClRole; sha256: string; size: number }[],
+): DbStatement {
+  const values = files.map(() => '(?, ?, ?, ?, ?)').join(', ');
+  const binds: (string | number)[] = [];
+  for (const file of files) binds.push(bundleId, file.path, file.role, file.sha256, file.size);
+  return db
+    .prepare(`INSERT INTO cl_bundle_files (bundle_id, path, role, sha256, size) VALUES ${values}`)
+    .bind(...binds);
+}
+
+/**
+ * Memesan nomor bundel berikutnya lewat penghitung CAS di `counters` (kunci `clbundle`; pola `reserveDispatchNumber`):
+ * `statements` WAJIB ikut `batch()` penulisnya. Penerbit serentak yang kalah memicu `CAS_FAIL_SQL` (diulang pemanggil),
+ * dan UNIQUE `cl_bundles.number` menjadi jaring kedua. Tanpa baris penghitung, urutan dilanjutkan dari nomor tertinggi.
+ */
+export async function reserveBundleNumber(
+  db: Preparer,
+): Promise<{ number: number; statements: DbStatement[] }> {
+  const row = await db
+    .prepare('SELECT value FROM counters WHERE `key` = ?')
+    .bind('clbundle')
+    .first<Row>();
+  let base: number;
+  let expected: number;
+  if (row) {
+    base = Number(row.value);
+    expected = base;
+  } else {
+    const max = await db.prepare('SELECT MAX(number) AS m FROM cl_bundles').first<Row>();
+    base = max?.m === null || max?.m === undefined ? 0 : Number(max.m);
+    expected = -1;
+  }
+  return {
+    number: base + 1,
+    statements: [
+      db
+        .prepare(
+          `INSERT INTO counters (\`key\`, value) VALUES (?, ?) ON DUPLICATE KEY UPDATE value = CASE WHEN value = ? THEN VALUES(value) ELSE ${CAS_FAIL_SQL} END`,
+        )
+        .bind('clbundle', base + 1, expected),
+    ],
+  };
+}

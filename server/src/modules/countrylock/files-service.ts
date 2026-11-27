@@ -39,7 +39,7 @@ const STALE_MESSAGE = 'Berkas sudah diubah orang lain. Muat ulang lalu coba lagi
 const NOT_FOUND_MESSAGE = 'Berkas tidak ditemukan';
 const HISTORY_LIMIT = 200;
 
-function toFileDto(head: ClFileHead): ClFileDto {
+export function toFileDto(head: ClFileHead): ClFileDto {
   const { file, revision } = head;
   return {
     id: file.id,

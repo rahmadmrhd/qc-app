@@ -1,6 +1,16 @@
 import type { RouteTable } from '@server/core/router';
 import { expectNull } from '@server/core/validate';
 import {
+  clBundleDetail,
+  clDraft,
+  listClBundles,
+  publishClBundle,
+  reactivateClBundle,
+  validateGetClBundle,
+  validatePublishClBundle,
+  validateReactivateClBundle,
+} from './bundle-service';
+import {
   clFileHistory,
   getClFile,
   getClRevision,
@@ -47,11 +57,16 @@ type CountryLockMethod =
   | 'clFirmwares.remove'
   | 'clUploads.start'
   | 'clUploads.chunk'
-  | 'clUploads.finish';
+  | 'clUploads.finish'
+  | 'clBundles.draft'
+  | 'clBundles.publish'
+  | 'clBundles.list'
+  | 'clBundles.get'
+  | 'clBundles.reactivate';
 
 /**
  * Country Lock admin (draf bundel). Modul izin global `countrylock`: `view` = memakai Country Lock desktop (tidak membuka
- * rute admin), `edit` = menyunting draf (berkas, firmware, impor), `manage` = menerbitkan bundel dan menghapus firmware.
+ * rute admin), `edit` = menyunting draf (berkas, firmware, impor), `manage` = menerbitkan/mengaktifkan ulang bundel dan menghapus firmware.
  */
 export function countryLockRoutes(): Pick<RouteTable, CountryLockMethod> {
   return {
@@ -124,6 +139,31 @@ export function countryLockRoutes(): Pick<RouteTable, CountryLockMethod> {
       permission: { module: 'countrylock', level: 'edit' },
       validate: validateFinishClUpload,
       handler: (input, ctx) => finishClUpload(ctx.env, input, ctx.user),
+    },
+    'clBundles.draft': {
+      permission: { module: 'countrylock', level: 'edit' },
+      validate: expectNull,
+      handler: (_input, ctx) => clDraft(ctx.env),
+    },
+    'clBundles.publish': {
+      permission: { module: 'countrylock', level: 'manage' },
+      validate: validatePublishClBundle,
+      handler: (input, ctx) => publishClBundle(ctx.env, input, ctx.user),
+    },
+    'clBundles.list': {
+      permission: { module: 'countrylock', level: 'edit' },
+      validate: expectNull,
+      handler: (_input, ctx) => listClBundles(ctx.env),
+    },
+    'clBundles.get': {
+      permission: { module: 'countrylock', level: 'edit' },
+      validate: validateGetClBundle,
+      handler: (input, ctx) => clBundleDetail(ctx.env, input),
+    },
+    'clBundles.reactivate': {
+      permission: { module: 'countrylock', level: 'manage' },
+      validate: validateReactivateClBundle,
+      handler: (input, ctx) => reactivateClBundle(ctx.env, input, ctx.user),
     },
   };
 }

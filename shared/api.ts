@@ -881,6 +881,11 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
     },
   },
   'clUploads.finish': { verb: 'POST', path: '/countrylock/uploads/{id}/finish' },
+  'clBundles.draft': { verb: 'GET', path: '/countrylock/draft' },
+  'clBundles.publish': { verb: 'POST', path: '/countrylock/bundles', status: 201 },
+  'clBundles.list': { verb: 'GET', path: '/countrylock/bundles' },
+  'clBundles.get': { verb: 'GET', path: '/countrylock/bundles/{number}' },
+  'clBundles.reactivate': { verb: 'POST', path: '/countrylock/bundles/{number}/reactivate' },
 };
 
 export interface RequestParts {

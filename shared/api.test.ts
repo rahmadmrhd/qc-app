@@ -653,6 +653,11 @@ const EXAMPLES: { [M in ApiId]: ApiInput<M> } = {
   'clUploads.start': { path: 'mikrotik/os.npk', role: 'router', size: 10, sha256: 'a'.repeat(64) },
   'clUploads.chunk': { id: 'u1', idx: '0', bytes: new Uint8Array([1, 2, 3]) },
   'clUploads.finish': { id: 'u1' },
+  'clBundles.draft': null,
+  'clBundles.publish': { note: 'catatan' },
+  'clBundles.list': null,
+  'clBundles.get': { number: '1' },
+  'clBundles.reactivate': { number: '1', note: 'kembali' },
 };
 
 const ROUNDTRIP_IDS = IDS;

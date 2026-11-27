@@ -102,6 +102,8 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   'countrylock.file_revert': 'Berkas Country Lock dikembalikan ke revisi lama',
   'countrylock.firmware_save': 'Firmware Country Lock disimpan',
   'countrylock.firmware_remove': 'Firmware Country Lock dihapus',
+  'countrylock.publish': 'Bundel Country Lock diterbitkan',
+  'countrylock.reactivate': 'Bundel Country Lock diaktifkan ulang',
   'export.sheets': 'Data diekspor ke Sheets',
   'dashboard.share_create': 'Tautan dashboard dibuat',
   'dashboard.share_update': 'Tautan dashboard diubah',

@@ -273,6 +273,11 @@ export const ALL_API_IDS: Record<ApiId, true> = {
   'clUploads.start': true,
   'clUploads.chunk': true,
   'clUploads.finish': true,
+  'clBundles.draft': true,
+  'clBundles.publish': true,
+  'clBundles.list': true,
+  'clBundles.get': true,
+  'clBundles.reactivate': true,
 };
 
 /**

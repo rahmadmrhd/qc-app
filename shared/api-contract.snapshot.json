@@ -352,6 +352,36 @@
     "status": 200
   },
   {
+    "id": "clBundles.draft",
+    "verb": "GET",
+    "path": "/countrylock/draft",
+    "status": 200
+  },
+  {
+    "id": "clBundles.get",
+    "verb": "GET",
+    "path": "/countrylock/bundles/{number}",
+    "status": 200
+  },
+  {
+    "id": "clBundles.list",
+    "verb": "GET",
+    "path": "/countrylock/bundles",
+    "status": 200
+  },
+  {
+    "id": "clBundles.publish",
+    "verb": "POST",
+    "path": "/countrylock/bundles",
+    "status": 201
+  },
+  {
+    "id": "clBundles.reactivate",
+    "verb": "POST",
+    "path": "/countrylock/bundles/{number}/reactivate",
+    "status": 200
+  },
+  {
     "id": "clFiles.get",
     "verb": "GET",
     "path": "/countrylock/files/{id}",
