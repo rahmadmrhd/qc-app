@@ -56,6 +56,18 @@ beforeEach(() => {
 const page = (q = '') => renderInRouter(<FilesPage q={q} onSearchChange={onSearchChange} />);
 
 describe('FilesPage', () => {
+  test('berkas router menampilkan firmware pemakainya; kosong = belum dirujuk; skrip tidak punya keterangan ini', async () => {
+    files = [
+      file('r1', 'firmware/dipakai.npk', { role: 'router', kind: 'binary', usedBy: ['AC', 'XM'] }),
+      file('r2', 'firmware/yatim.npk', { role: 'router', kind: 'binary', usedBy: [] }),
+      file('a', 'MIKROTIK/mikrotik-ac.txt'),
+    ];
+    await page();
+    expect(await screen.findByText('Dipakai oleh: AC, XM')).toBeTruthy();
+    expect(screen.getByText('Belum dirujuk skrip mana pun')).toBeTruthy();
+    expect(screen.queryAllByText(/Dipakai oleh|Belum dirujuk/)).toHaveLength(2);
+  });
+
   test('settings.json tidak dapat dihapus dari daftar: tombol Hapus tersembunyi dan alasannya tampil', async () => {
     files = [
       file('s', 'settings.json', { role: 'settings' }),

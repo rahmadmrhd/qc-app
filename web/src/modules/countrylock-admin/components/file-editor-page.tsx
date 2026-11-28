@@ -33,6 +33,7 @@ import { fileQueryOptions, useAfterUpload, useRemoveFile, useSaveFile } from '..
 import { BinaryUploadDialog } from './binary-upload';
 import { CodeEditor } from './code-editor';
 import { HistoryPanel } from './history-panel';
+import { UsedBy } from './used-by';
 
 const MESSAGE_MAX = 200;
 
@@ -185,6 +186,11 @@ export function FileEditorPage({ fileId, onBack }: FileEditorPageProps) {
         { label: 'Revisi terbaru', value: `Revisi ${file.headRev}` },
         { label: 'Ukuran', value: formatBytes(file.size) },
         {
+          label: 'Dipakai oleh',
+          value: <UsedBy file={file} />,
+          hidden: file.role !== 'router' || file.usedBy === undefined,
+        },
+        {
           label: 'sha256',
           value: <code className="break-all text-xs">{file.sha256}</code>,
           hidden: isText,
@@ -195,6 +201,7 @@ export function FileEditorPage({ fileId, onBack }: FileEditorPageProps) {
 
   const editTab = (
     <div className="space-y-3">
+      <UsedBy file={file} />
       {settingsFile ? (
         <Alert color="info">
           <AlertDescription>

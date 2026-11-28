@@ -293,6 +293,18 @@ describe('FileEditorPage: berkas biner', () => {
     expect(screen.queryByRole('button', { name: 'Bandingkan' })).toBeNull();
     expect(screen.queryByRole('button', { name: /Kembalikan revisi/ })).toBeNull();
   });
+
+  test('menampilkan firmware yang memakai berkas router ini, atau bahwa belum dirujuk', async () => {
+    current = { ...current, usedBy: ['AC', 'XM'] };
+    await page();
+    expect(await screen.findByText('Dipakai oleh: AC, XM')).toBeTruthy();
+  });
+
+  test('berkas router tanpa rujukan skrip: tertulis belum dirujuk', async () => {
+    current = { ...current, usedBy: [] };
+    await page();
+    expect(await screen.findByText('Belum dirujuk skrip mana pun')).toBeTruthy();
+  });
 });
 
 describe('FileEditorPage: berkas tak ada', () => {

@@ -17,6 +17,7 @@ import { ROLE_LABELS } from '../lib/labels';
 import { filesQueryOptions, useAfterUpload, useRemoveFile } from '../queries';
 import { BinaryUploadDialog } from './binary-upload';
 import { NewFileDialog } from './new-file-dialog';
+import { UsedBy } from './used-by';
 
 const ROLE_COLOR = { settings: 'info', script: 'primary', router: 'secondary' } as const;
 
@@ -62,6 +63,7 @@ export function FilesPage({ q, onSearchChange }: FilesPageProps) {
               Wajib ada; diubah lewat Pengaturan Router, tidak dapat dihapus.
             </span>
           ) : null}
+          <UsedBy file={file} />
         </span>
       ),
     },
