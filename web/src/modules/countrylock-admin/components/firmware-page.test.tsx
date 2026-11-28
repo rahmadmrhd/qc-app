@@ -96,13 +96,25 @@ describe('FirmwarePage', () => {
     expect(screen.getByText('3 item')).toBeTruthy();
   });
 
-  test('hapus firmware yang dipakai: dialog menyebut jumlah item pemakai', async () => {
+  test('hapus firmware yang dipakai item: dialog menyebut jumlah item dan tombol Hapus nonaktif dengan alasan', async () => {
     await page();
     await userEvent.click(await screen.findByRole('button', { name: 'Hapus AC' }));
     const dialog = await screen.findByRole('alertdialog');
     expect(within(dialog).getByText(/Dipakai 3 item/)).toBeTruthy();
+    expect(within(dialog).getByText(/pindahkan atau ubah firmware item itu dulu/i)).toBeTruthy();
+    expect(
+      (within(dialog).getByRole('button', { name: 'Hapus' }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+    expect(apiMock).not.toHaveBeenCalledWith('clFirmwares.remove', expect.anything());
+  });
+
+  test('hapus firmware yang tidak dipakai: tombol aktif dan memanggil clFirmwares.remove', async () => {
+    await page();
+    await userEvent.click(await screen.findByRole('button', { name: 'Hapus AX' }));
+    const dialog = await screen.findByRole('alertdialog');
+    expect(within(dialog).getByText(/Dipakai 0 item/)).toBeTruthy();
     await userEvent.click(within(dialog).getByRole('button', { name: 'Hapus' }));
-    await waitFor(() => expect(apiMock).toHaveBeenCalledWith('clFirmwares.remove', { id: 'f1' }));
+    await waitFor(() => expect(apiMock).toHaveBeenCalledWith('clFirmwares.remove', { id: 'f2' }));
   });
 
   test('pemegang edit TIDAK melihat Hapus firmware, tetapi dapat Ubah', async () => {
