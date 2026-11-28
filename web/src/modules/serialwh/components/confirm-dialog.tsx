@@ -178,16 +178,15 @@ function ConfirmBody({
   function submit() {
     setTouched(true);
     if (blocked) return;
-    // Konfirmasi kecocokan: task tertaut yang tak menyebut Item, atau memuat baris yang menyebut Item lain.
+    // Konfirmasi kecocokan hanya bila TIDAK ada satu pun task tertaut yang menyebut Item ini (tanpa baris hijau):
+    // cukup satu task yang cocok untuk dianggap permintaan sudah sesuai (keputusan pemilik 2026-11-28).
     if (item) {
-      const doubtful = handoverIds.flatMap((id) => {
+      const linked = handoverIds.flatMap((id) => {
         const candidate = candidateRegistry.current.get(id);
-        return candidate && (!candidate.mentionsItem || candidate.mismatchLines.length > 0)
-          ? [candidate]
-          : [];
+        return candidate ? [candidate] : [];
       });
-      if (doubtful.length > 0) {
-        setMismatch(doubtful);
+      if (linked.length > 0 && !linked.some((candidate) => candidate.mentionsItem)) {
+        setMismatch(linked);
         return;
       }
     }
