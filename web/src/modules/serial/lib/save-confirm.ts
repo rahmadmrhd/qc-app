@@ -1,8 +1,11 @@
 import type { StagingRow } from './draft';
 
-/** Satu nilai isian beserta jumlah serial yang memakainya (ditampilkan "nilai (n)"). */
-export interface CountedValue {
-  label: string;
+/** Satu kartu ringkasan: kombinasi unik BU, Item, Lokasi, dan Tanggal uji, beserta jumlah serialnya. */
+export interface SaveConfirmGroup {
+  bu: string;
+  item: string;
+  location: string;
+  testDate: string;
   count: number;
 }
 
@@ -10,26 +13,11 @@ export interface CountedValue {
 export interface SaveConfirmSummary {
   total: number;
   newCount: number;
-  bu: CountedValue[];
-  item: CountedValue[];
-  location: CountedValue[];
-  testDate: CountedValue[];
+  groups: SaveConfirmGroup[];
   /** Baris yang pilihan stikernya sudah dimuat: jumlah jenis dan total qty. Baris lain memakai bawaan saat Simpan. */
   stickerKinds: number;
   stickerQty: number;
   stickerPending: number;
-}
-
-/** Hitung kemunculan tiap nilai (urut nilai); nilai kosong dilewati. */
-function countBy(values: readonly string[]): CountedValue[] {
-  const counts = new Map<string, number>();
-  for (const value of values) {
-    if (value === '') continue;
-    counts.set(value, (counts.get(value) ?? 0) + 1);
-  }
-  return [...counts]
-    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
-    .map(([label, count]) => ({ label, count }));
 }
 
 /** Ringkasan baris draf yang akan dikirim (hanya baris yang dikirim: `rows` sudah disaring pemanggil). */
@@ -49,21 +37,28 @@ export function saveConfirmSummaryOf(rows: readonly StagingRow[]): SaveConfirmSu
       }
     }
   }
+  const groups = new Map<string, SaveConfirmGroup>();
+  for (const row of rows) {
+    const key = [row.buLabel, row.itemLabel, row.locationLabel, row.testDate].join('\u0000');
+    const found = groups.get(key);
+    if (found) {
+      found.count++;
+    } else {
+      groups.set(key, {
+        bu: row.buLabel,
+        item: row.itemLabel,
+        location: row.locationLabel,
+        testDate: row.testDate,
+        count: 1,
+      });
+    }
+  }
   return {
     total: rows.length,
     newCount: rows.filter((row) => row.existing === undefined).length,
-    bu: countBy(rows.map((row) => row.buLabel)),
-    item: countBy(rows.map((row) => row.itemLabel)),
-    location: countBy(rows.map((row) => row.locationLabel)),
-    testDate: countBy(rows.map((row) => row.testDate)),
+    groups: [...groups.values()],
     stickerKinds,
     stickerQty,
     stickerPending,
   };
-}
-
-/** Teks "nilai (n), nilai (n)"; kosong bila tak ada nilai. */
-export function formatCounted(values: readonly CountedValue[]): string {
-  if (values.length === 0) return '-';
-  return values.map((value) => `${value.label} (${value.count})`).join(', ');
 }

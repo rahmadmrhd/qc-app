@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import type { StagingRow } from './draft';
-import { formatCounted, saveConfirmSummaryOf } from './save-confirm';
+import { saveConfirmSummaryOf } from './save-confirm';
 
 const row = (over: Partial<StagingRow>): StagingRow =>
   ({
@@ -25,30 +25,24 @@ const row = (over: Partial<StagingRow>): StagingRow =>
   }) as StagingRow;
 
 describe('saveConfirmSummaryOf', () => {
-  test('setiap nilai berbeda disertai jumlah serialnya', () => {
+  test('satu kartu per kombinasi unik BU, Item, Lokasi, dan Tanggal uji, dengan jumlah serialnya', () => {
     const summary = saveConfirmSummaryOf([
       row({ serial: 'A', itemLabel: 'Alta AP6', testDate: '2026-11-03' }),
+      row({ serial: 'B', itemLabel: 'Alta AP6', testDate: '2026-11-03' }),
       row({
-        serial: 'B',
+        serial: 'C',
         itemLabel: 'Alta AP6-Pro',
         testDate: '2026-11-03',
         existing: { id: 'x' } as never,
       }),
-      row({ serial: 'C', itemLabel: 'Alta AP6', buLabel: 'BU B', testDate: '2026-11-01' }),
+      row({ serial: 'D', itemLabel: 'Alta AP6', buLabel: 'BU B', testDate: '2026-11-01' }),
     ]);
-    expect(summary.total).toBe(3);
-    expect(summary.newCount).toBe(2);
-    expect(summary.bu).toEqual([
-      { label: 'BU A', count: 2 },
-      { label: 'BU B', count: 1 },
-    ]);
-    expect(summary.item).toEqual([
-      { label: 'Alta AP6', count: 2 },
-      { label: 'Alta AP6-Pro', count: 1 },
-    ]);
-    expect(summary.testDate).toEqual([
-      { label: '2026-11-01', count: 1 },
-      { label: '2026-11-03', count: 2 },
+    expect(summary.total).toBe(4);
+    expect(summary.newCount).toBe(3);
+    expect(summary.groups).toEqual([
+      { bu: 'BU A', item: 'Alta AP6', location: 'Gudang', testDate: '2026-11-03', count: 2 },
+      { bu: 'BU A', item: 'Alta AP6-Pro', location: 'Gudang', testDate: '2026-11-03', count: 1 },
+      { bu: 'BU B', item: 'Alta AP6', location: 'Gudang', testDate: '2026-11-01', count: 1 },
     ]);
   });
 
@@ -65,15 +59,5 @@ describe('saveConfirmSummaryOf', () => {
     expect(summary.stickerKinds).toBe(1);
     expect(summary.stickerQty).toBe(2);
     expect(summary.stickerPending).toBe(1);
-  });
-
-  test('formatCounted: "nilai (n), nilai (n)"; kosong menjadi "-"', () => {
-    expect(
-      formatCounted([
-        { label: 'Alta AP6', count: 1 },
-        { label: 'Alta AP6-Pro', count: 1 },
-      ]),
-    ).toBe('Alta AP6 (1), Alta AP6-Pro (1)');
-    expect(formatCounted([])).toBe('-');
   });
 });

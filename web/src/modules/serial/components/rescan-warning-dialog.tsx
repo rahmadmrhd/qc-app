@@ -9,7 +9,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { formatStamp } from '@/lib/format-stamp';
 import { RESCAN_LIST_MAX, type RescanWarning } from '../lib/rescan';
-import type { CountedValue, SaveConfirmSummary } from '../lib/save-confirm';
+import type { SaveConfirmGroup, SaveConfirmSummary } from '../lib/save-confirm';
 
 export interface RescanWarningDialogProps {
   open: boolean;
@@ -35,20 +35,28 @@ function summaryText(summary: SaveConfirmSummary): { label: string; value: strin
   ];
 }
 
-/** Kartu per nilai unik dengan jumlah serialnya (BU, Item, Lokasi, Tanggal uji). */
-function CountedCards({ title, values }: { title: string; values: readonly CountedValue[] }) {
+/** Satu kartu per kombinasi unik BU, Item, Lokasi, dan Tanggal uji, dengan detail setiap field dan jumlah serial. */
+function GroupCards({ groups }: { groups: readonly SaveConfirmGroup[] }) {
   return (
-    <div className="space-y-1.5">
-      <p className="text-sm text-muted-foreground">{title}</p>
-      <div className="flex flex-wrap gap-2">
-        {values.length === 0 ? <span className="text-sm">-</span> : null}
-        {values.map((value) => (
-          <div key={value.label} className="rounded-md border bg-muted/40 px-3 py-2 text-sm">
-            <p className="font-medium">{value.label}</p>
-            <p className="text-xs text-muted-foreground">{value.count} serial</p>
-          </div>
-        ))}
-      </div>
+    <div className="grid gap-2">
+      {groups.map((group) => (
+        <div
+          key={`${group.bu}|${group.item}|${group.location}|${group.testDate}`}
+          className="space-y-1 rounded-md border bg-muted/40 p-3 text-sm"
+        >
+          <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5">
+            <dt className="text-muted-foreground">BU</dt>
+            <dd>{group.bu || '-'}</dd>
+            <dt className="text-muted-foreground">Item</dt>
+            <dd>{group.item || '-'}</dd>
+            <dt className="text-muted-foreground">Lokasi</dt>
+            <dd>{group.location || '-'}</dd>
+            <dt className="text-muted-foreground">Tanggal uji</dt>
+            <dd>{group.testDate || '-'}</dd>
+          </dl>
+          <p className="pt-1 font-medium">{group.count} serial</p>
+        </div>
+      ))}
     </div>
   );
 }
@@ -87,10 +95,7 @@ export function RescanWarningDialog({
                 </div>
               ))}
             </dl>
-            <CountedCards title="BU" values={summary.bu} />
-            <CountedCards title="Item" values={summary.item} />
-            <CountedCards title="Lokasi" values={summary.location} />
-            <CountedCards title="Tanggal uji" values={summary.testDate} />
+            <GroupCards groups={summary.groups} />
           </div>
         ) : null}
         {hasWarnings ? (
