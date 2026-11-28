@@ -112,7 +112,8 @@ describe('FirmwarePage', () => {
     await page();
     await userEvent.click(await screen.findByRole('button', { name: 'Hapus AX' }));
     const dialog = await screen.findByRole('alertdialog');
-    expect(within(dialog).getByText(/Dipakai 0 item/)).toBeTruthy();
+    expect(within(dialog).getByText(/Tidak dipakai item mana pun/)).toBeTruthy();
+    expect(within(dialog).queryByText(/Dipakai 0 item/)).toBeNull();
     await userEvent.click(within(dialog).getByRole('button', { name: 'Hapus' }));
     await waitFor(() => expect(apiMock).toHaveBeenCalledWith('clFirmwares.remove', { id: 'f2' }));
   });

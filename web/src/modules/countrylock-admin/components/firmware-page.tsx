@@ -141,7 +141,13 @@ export function FirmwarePage() {
         count={1}
         subject={deleteTarget ? `firmware ${deleteTarget.code}` : 'firmware'}
         permanent
-        usage={deleteTarget ? `Dipakai ${deleteTarget.inUseCount} item.` : undefined}
+        usage={
+          deleteTarget
+            ? deleteTarget.inUseCount > 0
+              ? `Dipakai ${deleteTarget.inUseCount} item.`
+              : 'Tidak dipakai item mana pun.'
+            : undefined
+        }
         blockedReason={
           deleteTarget && deleteTarget.inUseCount > 0
             ? 'Firmware yang masih dipakai item tidak dapat dihapus: pindahkan atau ubah firmware item itu dulu.'
