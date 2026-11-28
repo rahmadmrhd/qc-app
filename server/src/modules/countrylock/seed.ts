@@ -45,14 +45,33 @@ async function retryDeadlock<T>(run: () => Promise<T>): Promise<T> {
   }
 }
 
+/** Penanda di tabel `settings`: seed firmware awal sudah pernah berjalan (satu kali seumur basis data). */
+export const COUNTRYLOCK_FIRMWARE_SEEDED_KEY = 'COUNTRYLOCK_FIRMWARE_SEEDED';
+
 /**
- * Mengisi `cl_firmwares` dengan firmware awal. Idempoten dan aman dijalankan serentak: sebuah `(brand, code)` hanya
- * dimasukkan bila belum ada baris SAMA SEKALI, hidup maupun sudah dihapus admin (firmware yang sengaja dihapus tidak
- * dihidupkan lagi saat start berikutnya); bentrokan serentak di indeks `cl_firmwares_code_live` diabaikan
- * (`ON DUPLICATE KEY UPDATE id = id`). `script_path` kosong dan `parallel` mati: admin/impor mengisinya kemudian.
+ * Mengisi `cl_firmwares` dengan firmware awal SEKALI SAJA seumur basis data: sesudah penanda
+ * `COUNTRYLOCK_FIRMWARE_SEEDED` ada, seed tak pernah menulis lagi (firmware yang kodenya diganti, dihapus, atau seluruh
+ * daftarnya dikosongkan admin tidak dihidupkan kembali saat start berikutnya). Lingkungan yang sudah di-seed versi lama
+ * (tabel berisi baris tetapi penanda belum ada) hanya diberi penanda. Aman dijalankan serentak: sebuah `(brand, code)`
+ * hanya dimasukkan bila belum ada baris sama sekali, bentrokan di indeks `cl_firmwares_code_live` diabaikan
+ * (`ON DUPLICATE KEY UPDATE id = id`), dan penanda ditulis `INSERT IGNORE` SETELAH baris terisi (kegagalan di tengah
+ * dicoba lagi saat start berikutnya). `script_path` kosong dan `parallel` mati: admin/impor mengisinya kemudian.
  * Dipanggil `createServer` tiap start setelah migrasi (bukan migrasi SQL: pemeriksa dump pemulihan menolak DML biasa).
  */
 export async function seedCountryLockFirmwares(env: Env): Promise<{ inserted: number }> {
+  const marked = await env.DB.prepare('SELECT 1 AS ok FROM settings WHERE `key` = ?')
+    .bind(COUNTRYLOCK_FIRMWARE_SEEDED_KEY)
+    .first();
+  if (marked !== null) return { inserted: 0 };
+  const markSeeded = () =>
+    env.DB.prepare('INSERT IGNORE INTO settings (`key`, value) VALUES (?, ?)')
+      .bind(COUNTRYLOCK_FIRMWARE_SEEDED_KEY, nowIso(env))
+      .run();
+  const existing = await env.DB.prepare('SELECT 1 AS ok FROM cl_firmwares LIMIT 1').first();
+  if (existing !== null) {
+    await markSeeded();
+    return { inserted: 0 };
+  }
   const now = nowIso(env);
   let inserted = 0;
   const perBrand: Record<string, number> = {};
@@ -81,5 +100,6 @@ export async function seedCountryLockFirmwares(env: Env): Promise<{ inserted: nu
     );
     inserted += result.meta.changes > 0 ? 1 : 0;
   }
+  await markSeeded();
   return { inserted };
 }

@@ -14,7 +14,7 @@ import {
   listFiles,
   listRevisions,
 } from './repo';
-import { seedCountryLockFirmwares } from './seed';
+import { COUNTRYLOCK_FIRMWARE_SEEDED_KEY, seedCountryLockFirmwares } from './seed';
 
 let env: TestEnv;
 
@@ -120,6 +120,47 @@ describe('seedCountryLockFirmwares', () => {
     expect(live).toHaveLength(16);
     expect(live.some((row) => row.brand === 'mikrotik' && row.code === 'AC')).toBe(false);
     expect(await firmwareRows(env.DB, { includeRemoved: true })).toHaveLength(17);
+  });
+
+  test('admin mengganti kode firmware: seed berikutnya tidak membuat baris hantu berkode lama', async () => {
+    await seedCountryLockFirmwares(env);
+    await env.DB.prepare(
+      "UPDATE cl_firmwares SET code = 'AC-v7' WHERE brand = 'mikrotik' AND code = 'AC'",
+    ).run();
+    const again = await seedCountryLockFirmwares(env);
+    expect(again.inserted).toBe(0);
+    const rows = await firmwareRows(env.DB, { includeRemoved: true });
+    expect(rows).toHaveLength(17);
+    expect(rows.some((row) => row.brand === 'mikrotik' && row.code === 'AC')).toBe(false);
+    expect(rows.some((row) => row.code === 'AC-v7')).toBe(true);
+  });
+
+  test('seed hanya sekali: penanda di settings; tabel yang sudah berisi (lingkungan lama tanpa penanda) tidak diisi ulang', async () => {
+    const marker = () =>
+      env.DB.prepare('SELECT value FROM settings WHERE `key` = ?')
+        .bind(COUNTRYLOCK_FIRMWARE_SEEDED_KEY)
+        .first<{ value: string }>();
+    expect(await marker()).toBeNull();
+    await seedCountryLockFirmwares(env);
+    expect(await marker()).not.toBeNull();
+
+    // Admin mengosongkan daftar sepenuhnya: penanda mencegah seed menghidupkannya lagi.
+    await env.DB.prepare('DELETE FROM cl_firmwares').run();
+    expect((await seedCountryLockFirmwares(env)).inserted).toBe(0);
+    expect(await firmwareRows(env.DB, { includeRemoved: true })).toHaveLength(0);
+
+    // Lingkungan yang sudah di-seed versi lama (baris ada, penanda belum): hanya menulis penanda.
+    await env.DB.prepare('DELETE FROM settings WHERE `key` = ?')
+      .bind(COUNTRYLOCK_FIRMWARE_SEEDED_KEY)
+      .run();
+    await env.DB.prepare(
+      "INSERT INTO cl_firmwares (id, brand, code, label, script_path, parallel, sort, removed_at, created_at, updated_at) VALUES ('f1', 'mikrotik', 'X', 'X', NULL, 0, 10, '', ?, ?)",
+    )
+      .bind(NOW, NOW)
+      .run();
+    expect((await seedCountryLockFirmwares(env)).inserted).toBe(0);
+    expect(await firmwareRows(env.DB, { includeRemoved: true })).toHaveLength(1);
+    expect(await marker()).not.toBeNull();
   });
 });
 

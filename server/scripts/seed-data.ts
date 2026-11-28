@@ -108,6 +108,9 @@ export const SEED_KEPT_TABLES = ['schema_migrations', 'settings'];
  */
 export function buildSeedStatements(email: string, nowMs: number): SeedStatement[] {
   const sql: SeedStatement[] = RESET_TABLES.map((table) => raw(`DELETE FROM ${table}`));
+  // `cl_firmwares` dikosongkan di atas; penanda "seed firmware sudah jalan" (`settings`, sengaja tidak dikosongkan) ikut
+  // dihapus supaya start server dev berikutnya mengisi ulang firmware awal (seed firmware hanya jalan sekali per penanda).
+  sql.push(raw("DELETE FROM settings WHERE `key` = 'COUNTRYLOCK_FIRMWARE_SEEDED'"));
 
   const t0 = iso(nowMs - 3 * 24 * HOUR);
   const meta = { created_at: t0, updated_at: t0, updated_by: 'seed' };
