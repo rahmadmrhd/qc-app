@@ -40,24 +40,66 @@ describe('saveConfirmSummaryOf', () => {
     expect(summary.total).toBe(4);
     expect(summary.newCount).toBe(3);
     expect(summary.groups).toEqual([
-      { bu: 'BU A', item: 'Alta AP6', location: 'Gudang', testDate: '2026-11-03', count: 2 },
-      { bu: 'BU A', item: 'Alta AP6-Pro', location: 'Gudang', testDate: '2026-11-03', count: 1 },
-      { bu: 'BU B', item: 'Alta AP6', location: 'Gudang', testDate: '2026-11-01', count: 1 },
+      {
+        bu: 'BU A',
+        item: 'Alta AP6',
+        location: 'Gudang',
+        testDate: '2026-11-03',
+        stickers: [],
+        count: 2,
+      },
+      {
+        bu: 'BU A',
+        item: 'Alta AP6-Pro',
+        location: 'Gudang',
+        testDate: '2026-11-03',
+        stickers: [],
+        count: 1,
+      },
+      {
+        bu: 'BU B',
+        item: 'Alta AP6',
+        location: 'Gudang',
+        testDate: '2026-11-01',
+        stickers: [],
+        count: 1,
+      },
     ]);
   });
 
-  test('stiker: jenis dan qty dihitung; baris bawaan (null) dihitung terpisah', () => {
+  test('stiker per kartu: daftar stiker dengan qty > 0; kelompok dipisah bila stikernya berbeda', () => {
     const summary = saveConfirmSummaryOf([
       row({
         stickers: [
-          { stickerId: 's1', name: 'A', qty: 2 },
-          { stickerId: 's2', name: 'B', qty: 0 },
+          { stickerId: 's1', name: 'Stiker A', qty: 2 },
+          { stickerId: 's2', name: 'Stiker B', qty: 0 },
         ],
       }),
-      row({ stickers: null }),
+      row({
+        stickers: [
+          { stickerId: 's1', name: 'Stiker A', qty: 2 },
+          { stickerId: 's2', name: 'Stiker B', qty: 0 },
+        ],
+      }),
+      row({ stickers: [] }),
     ]);
-    expect(summary.stickerKinds).toBe(1);
-    expect(summary.stickerQty).toBe(2);
-    expect(summary.stickerPending).toBe(1);
+    expect(summary.groups).toEqual([
+      {
+        bu: 'BU A',
+        item: 'Item A',
+        location: 'Gudang',
+        testDate: '2026-11-01',
+        stickers: [{ name: 'Stiker A', qty: 2 }],
+        count: 2,
+      },
+      {
+        bu: 'BU A',
+        item: 'Item A',
+        location: 'Gudang',
+        testDate: '2026-11-01',
+        stickers: [],
+        count: 1,
+      },
+    ]);
   });
 });

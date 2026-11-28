@@ -20,18 +20,13 @@ export interface RescanWarningDialogProps {
   onCancel(): void;
 }
 
-/** Baris ringkasan yang berisi teks biasa (Serial Number dan Stiker). */
+/** Baris ringkasan berupa teks (Serial Number). */
 function summaryText(summary: SaveConfirmSummary): { label: string; value: string }[] {
-  const parts: string[] = [];
-  if (summary.stickerKinds > 0)
-    parts.push(`${summary.stickerKinds} jenis, ${summary.stickerQty} pcs`);
-  if (summary.stickerPending > 0) parts.push(`${summary.stickerPending} baris bawaan`);
   return [
     {
       label: 'Serial Number',
       value: `${summary.total}${summary.newCount > 0 ? ` (${summary.newCount} baru)` : ''}`,
     },
-    { label: 'Stiker', value: parts.length > 0 ? parts.join('; ') : 'Tidak ada' },
   ];
 }
 
@@ -54,6 +49,20 @@ function GroupCards({ groups }: { groups: readonly SaveConfirmGroup[] }) {
             <dt className="text-muted-foreground">Tanggal uji</dt>
             <dd>{group.testDate || '-'}</dd>
           </dl>
+          <div className="space-y-0.5 pt-1">
+            <p className="text-muted-foreground">Stiker</p>
+            {group.stickers.length === 0 ? (
+              <p>Tidak ada</p>
+            ) : (
+              <ul className="space-y-0.5">
+                {group.stickers.map((sticker) => (
+                  <li key={sticker.name}>
+                    {sticker.name} × {sticker.qty}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
           <p className="pt-1 font-medium">{group.count} serial</p>
         </div>
       ))}

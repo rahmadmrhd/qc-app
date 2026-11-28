@@ -902,6 +902,69 @@ function RecordPageInner({
     [],
   );
 
+  /** Memuat default stiker baris yang belum dipilih dan menandai baris yang pilihannya tak bisa dimuat (sebelum konfirmasi). */
+  async function prepareSave(
+    current: StagingRow[],
+  ): Promise<{ sendIds: Set<string>; skipped: number } | null> {
+    // Hanya baris yang ada saat Simpan ditekan yang dikirim; pindaian yang masuk sesudahnya menunggu simpan berikutnya.
+    const sendIds = new Set(current.map((row) => row.clientId));
+    let skipped = 0;
+    // Baris yang pilihan stikernya belum dimuat memakai bawaan: semua stiker yang berlaku.
+    const pending = new Map<string, { itemId: string; buId: string }>();
+    for (const row of current) {
+      if (row.stickers === null) {
+        pending.set(`${row.itemId}|${row.buId}`, { itemId: row.itemId, buId: row.buId });
+      }
+    }
+    const entries = [...pending];
+    const settled = await Promise.allSettled(
+      entries.map(([, pair]) =>
+        queryClient.fetchQuery(serialStickerOptionsQueryOptions(pair.itemId, pair.buId)),
+      ),
+    );
+    const defaultsByPair = new Map<string, { stickerId: string; name: string; qty: number }[]>();
+    const badPairs = new Set<string>();
+    for (const [index, outcome] of settled.entries()) {
+      const key = entries[index]?.[0] ?? '';
+      if (outcome.status === 'fulfilled') {
+        defaultsByPair.set(
+          key,
+          outcome.value.stickers.map((sticker) => ({
+            stickerId: sticker.id,
+            name: sticker.name,
+            qty: sticker.defaultQty,
+          })),
+        );
+      } else if (isReferenceError(outcome.reason)) {
+        badPairs.add(key);
+      } else {
+        // Gangguan jaringan atau server: tidak ada baris yang ditandai salah; seluruh simpan dihentikan.
+        setNotice({
+          tone: 'error',
+          text: `Stiker yang berlaku gagal dimuat: ${describeError(outcome.reason)}`,
+        });
+        return null;
+      }
+    }
+    setAllRows(
+      rowsRef.current.map((row) => {
+        if (!sendIds.has(row.clientId) || row.stickers !== null) return row;
+        const key = `${row.itemId}|${row.buId}`;
+        if (badPairs.has(key)) {
+          sendIds.delete(row.clientId);
+          skipped++;
+          return {
+            ...clearOutcome(row),
+            unresolved: ['item'] as ('item' | 'location' | 'stickers')[],
+          };
+        }
+        return { ...row, stickers: defaultsByPair.get(key) ?? [] };
+      }),
+    );
+
+    return { sendIds, skipped };
+  }
+
   async function saveRows(external: boolean): Promise<boolean> {
     const current = rowsRef.current;
     const blocked = current.filter(
@@ -921,13 +984,18 @@ function RecordPageInner({
       });
       return false;
     }
+    // Default stiker dimuat sebelum konfirmasi agar ringkasan memuat stiker yang akan tertempel.
+    const prepared = await prepareSave(current);
+    if (!prepared) return false;
+    const sendRows = rowsRef.current.filter((row) => prepared.sendIds.has(row.clientId));
+    if (sendRows.length === 0) return false;
     const rescans = findRescanWarnings(current);
     // Konfirmasi selalu muncul sebelum kirim; cek ulang (bila ada) digabung di dialog yang sama.
     {
       preparingRef.current = true;
       let proceed: boolean;
       try {
-        proceed = await confirmSave(saveConfirmSummaryOf(current), rescans);
+        proceed = await confirmSave(saveConfirmSummaryOf(sendRows), rescans);
       } finally {
         preparingRef.current = false;
       }
@@ -942,61 +1010,7 @@ function RecordPageInner({
     let savedCount = 0;
     let recheckedCount = 0;
     try {
-      // Hanya baris yang ada saat Simpan ditekan yang dikirim; pindaian yang masuk sesudahnya menunggu simpan berikutnya.
-      const sendIds = new Set(current.map((row) => row.clientId));
-      // Baris yang pilihan stikernya belum dimuat memakai bawaan: semua stiker yang berlaku.
-      const pending = new Map<string, { itemId: string; buId: string }>();
-      for (const row of current) {
-        if (row.stickers === null) {
-          pending.set(`${row.itemId}|${row.buId}`, { itemId: row.itemId, buId: row.buId });
-        }
-      }
-      const entries = [...pending];
-      const settled = await Promise.allSettled(
-        entries.map(([, pair]) =>
-          queryClient.fetchQuery(serialStickerOptionsQueryOptions(pair.itemId, pair.buId)),
-        ),
-      );
-      const defaultsByPair = new Map<string, { stickerId: string; name: string; qty: number }[]>();
-      const badPairs = new Set<string>();
-      for (const [index, outcome] of settled.entries()) {
-        const key = entries[index]?.[0] ?? '';
-        if (outcome.status === 'fulfilled') {
-          defaultsByPair.set(
-            key,
-            outcome.value.stickers.map((sticker) => ({
-              stickerId: sticker.id,
-              name: sticker.name,
-              qty: sticker.defaultQty,
-            })),
-          );
-        } else if (isReferenceError(outcome.reason)) {
-          badPairs.add(key);
-        } else {
-          // Gangguan jaringan atau server: tidak ada baris yang ditandai salah; seluruh simpan dihentikan.
-          setNotice({
-            tone: 'error',
-            text: `Stiker yang berlaku gagal dimuat: ${describeError(outcome.reason)}`,
-          });
-          return false;
-        }
-      }
-      let skipped = 0;
-      setAllRows(
-        rowsRef.current.map((row) => {
-          if (!sendIds.has(row.clientId) || row.stickers !== null) return row;
-          const key = `${row.itemId}|${row.buId}`;
-          if (badPairs.has(key)) {
-            sendIds.delete(row.clientId);
-            skipped++;
-            return {
-              ...clearOutcome(row),
-              unresolved: ['item'] as ('item' | 'location' | 'stickers')[],
-            };
-          }
-          return { ...row, stickers: defaultsByPair.get(key) ?? [] };
-        }),
-      );
+      const { sendIds, skipped } = prepared;
 
       const batches = toBatches(rowsRef.current.filter((row) => sendIds.has(row.clientId)));
       const tally: SaveSummary = { created: 0, rechecked: 0, duplicate: 0, failed: 0, skipped };
