@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { signSessionToken } from '@server/core/session';
 import { loadUserContext } from '@server/modules/access/context';
+import { COUNTRYLOCK_FIRMWARE_SEEDED_KEY } from '@server/modules/countrylock/seed';
 import { derivedColumns, parseChecks } from '@server/modules/handover/repo';
 import { getRoutes } from '@server/routes';
 import { callRoute } from '@server-test/call-route';
@@ -27,6 +28,21 @@ describe('seed data contoh', () => {
     const covered = new Set([...RESET_TABLES, ...SEED_KEPT_TABLES]);
     expect(schemaTables.filter((name) => !covered.has(name)).sort()).toEqual([]);
     expect(RESET_TABLES.filter((name) => !schemaTables.includes(name)).sort()).toEqual([]);
+  });
+
+  test('db:seed ikut menghapus penanda seed firmware Country Lock, supaya start server berikutnya mengisi ulang firmware dev', async () => {
+    const env = await createTestEnv();
+    await env.DB.prepare('INSERT INTO settings (`key`, value) VALUES (?, ?)')
+      .bind(COUNTRYLOCK_FIRMWARE_SEEDED_KEY, '2026-10-25T03:00:00.000Z')
+      .run();
+    await applySeed(env.DB, 'saya@example.test', NOW);
+    const marker = await env.DB.prepare('SELECT value FROM settings WHERE `key` = ?')
+      .bind(COUNTRYLOCK_FIRMWARE_SEEDED_KEY)
+      .first();
+    expect(marker).toBeNull();
+    // Penanda hilang + cl_firmwares kosong => seed server berikutnya mengisi ulang 17 firmware.
+    const { seedCountryLockFirmwares } = await import('@server/modules/countrylock/seed');
+    expect((await seedCountryLockFirmwares(env)).inserted).toBe(17);
   });
 
   test('pengguna admin sesuai email: izin penuh di semua lokasi; email dinormalkan', async () => {

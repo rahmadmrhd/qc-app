@@ -10,6 +10,7 @@ import type {
   StatusBatchInput,
 } from './batch';
 import type { BuAssignment, BuPermissionMap } from './business-units';
+import type { ClBrand, ClFileRole, ClIssue, ClSettings } from './countrylock-bundle';
 import type {
   DashboardOptionsDto,
   DashboardOptionsInput,
@@ -898,7 +899,7 @@ export interface ItemDto extends ItemSummaryDto {
   attachments: string[];
   /** Detail Markdown. */
   detail: string;
-  /** Kode firmware Country Lock (`shared/firmware.ts`); '' = belum diisi atau bukan item Country lock. */
+  /** Kode firmware Country Lock (daftar dinamis `cl_firmwares`); '' = belum diisi atau bukan item Country lock. */
   firmware: string;
   /** Item wajib foto bukti pada Catat Serial (spek 2026-11-18); `proofMin` selalu 1 bila tidak wajib. */
   proofRequired: boolean;
@@ -919,7 +920,7 @@ export interface SaveItemInput {
   model: string;
   isCountryLock: boolean;
   /**
-   * Kode firmware Country Lock; harus salah satu kode merk itu (`shared/firmware.ts`) atau '' dan hanya untuk item
+   * Kode firmware Country Lock; harus kode firmware HIDUP milik merk itu (`cl_firmwares`) atau '' dan hanya untuk item
    * Country lock (selain itu ditolak). Tidak dikirim = tak diubah (klien lama), dan dikosongkan bila item bukan Country
    * lock atau kodenya tak berlaku bagi merk baru.
    */
@@ -1964,6 +1965,220 @@ export interface ItemNameOptionsDto {
   truncated: boolean;
 }
 
+// --- Country Lock: berkas draf bundel (fase 1; spek 2026-11-28-country-lock-sync-bundel-design.md §5.2) ---------------
+
+/** Satu berkas draf Country Lock (teks atau biner); ukuran/hash/penulis dari revisi terbaru. */
+export interface ClFileDto {
+  id: string;
+  path: string;
+  role: ClFileRole;
+  kind: 'text' | 'binary';
+  /** Nomor revisi terbaru. */
+  headRev: number;
+  size: number;
+  sha256: string;
+  /** ISO UTC; dasar `If-Match`/ETag penyimpanan. */
+  updatedAt: string;
+  /** Penulis revisi terbaru. */
+  updatedBy: string;
+  /** Berkas sudah dihapus (riwayatnya tetap). */
+  removed: boolean;
+  /**
+   * Hanya berkas peran `router` (dan tak terhapus): kode firmware yang skripnya merujuk `/temp/<nama dasar berkas>`
+   * (urut abjad; kosong = tak dirujuk skrip mana pun). Tidak ada untuk berkas lain.
+   */
+  usedBy?: string[];
+}
+
+export interface ClRevisionDto {
+  seq: number;
+  sha256: string;
+  size: number;
+  message: string;
+  author: string;
+  createdAt: string;
+}
+
+/** Berkas beserta isi teks terbaru (`null` untuk biner). */
+export interface ClFileDetailDto extends ClFileDto {
+  text: string | null;
+}
+
+export interface ClRevisionDetailDto extends ClRevisionDto {
+  text: string | null;
+}
+
+export interface GetClFileInput {
+  id: string;
+}
+
+export interface SaveClFileInput {
+  path: string;
+  role: ClFileRole;
+  text: string;
+  message?: string;
+  /** Revisi terbaru yang dilihat editor; WAJIB untuk berkas yang sudah ada, kosong untuk berkas baru. */
+  baseSeq?: number;
+  /** `updatedAt` berkas yang dilihat editor (header `If-Match`); kosong untuk berkas baru. */
+  expectedUpdatedAt?: string;
+}
+
+export type RemoveClFileInput = GetClFileInput;
+export type ListClFileHistoryInput = GetClFileInput;
+
+/** `seq` ikut jalur URL (`/revisions/{seq}`), jadi berupa teks angka. */
+export interface GetClRevisionInput {
+  id: string;
+  seq: string;
+}
+
+export interface RevertClFileInput {
+  id: string;
+  /** Revisi lama yang isinya dijadikan revisi BARU. */
+  seq: number;
+  /** Revisi terbaru yang dilihat pemanggil; WAJIB. Tak sama dengan revisi terbaru sekarang = 412 (basi). */
+  baseSeq: number;
+  /** `updatedAt` berkas yang dilihat pemanggil (header `If-Match`); bila ada dan tak sama = 412. */
+  expectedUpdatedAt?: string;
+  message?: string;
+}
+
+/** Membuka sesi unggah biner bertahap (peran `router` saja). */
+export interface StartClUploadInput {
+  path: string;
+  role: 'router';
+  size: number;
+  /** 64 heksadesimal huruf kecil. */
+  sha256: string;
+}
+
+export interface ClUploadSessionDto {
+  uploadId: string;
+  /** Ukuran potongan yang harus dikirim klien (potongan terakhir boleh lebih kecil). */
+  chunkBytes: number;
+}
+
+/** `idx` ikut jalur URL (`/chunks/{idx}`), jadi berupa teks angka. */
+export interface ChunkClUploadInput {
+  id: string;
+  idx: string;
+  bytes: Uint8Array;
+}
+
+export interface FinishClUploadInput {
+  id: string;
+}
+
+/** Satu firmware Country Lock (daftar dinamis, spek §5.2); `inUseCount` = item hidup yang memakainya. */
+export interface ClFirmwareDto {
+  id: string;
+  brand: ClBrand;
+  code: string;
+  label: string;
+  /** Jalur berkas skrip (role `script`) di draf; `null` = belum punya skrip. */
+  scriptPath: string | null;
+  parallel: boolean;
+  sort: number;
+  inUseCount: number;
+  updatedAt: string;
+}
+
+export interface ClFirmwareOptionDto {
+  code: string;
+  label: string;
+}
+
+export interface ListClFirmwareOptionsInput {
+  brand: ClBrand;
+}
+
+export interface SaveClFirmwareInput {
+  /** Tanpa `id` = firmware baru. */
+  id?: string;
+  brand: ClBrand;
+  code: string;
+  label: string;
+  scriptPath: string | null;
+  parallel: boolean;
+  sort: number;
+  expectedUpdatedAt?: string;
+}
+
+export interface RemoveClFirmwareInput {
+  id: string;
+}
+
+/** Firmware dalam foto bundel (tanpa id/urutan: mengikuti manifest). */
+export interface ClBundleFirmwareDto {
+  brand: ClBrand;
+  code: string;
+  label: string;
+  scriptPath: string | null;
+  parallel: boolean;
+}
+
+/** Hasil validasi draf: berkas hidup, firmware, temuan, hash kandidat bundel, dan apakah berbeda dari bundel terbit terakhir. */
+export interface ClDraftDto {
+  files: ClFileDto[];
+  firmwares: ClFirmwareDto[];
+  issues: ClIssue[];
+  computerHash: string;
+  routerHash: string;
+  /** Berbeda dari bundel terbit terakhir (belum ada bundel = true). */
+  changed: boolean;
+}
+
+export interface ClBundleDto {
+  number: number;
+  computerHash: string;
+  routerHash: string;
+  minApp: string;
+  note: string;
+  publishedBy: string;
+  createdAt: string;
+  /** Nomor bundel asal bila ini hasil mengaktifkan ulang bundel lama. */
+  sourceNumber: number | null;
+  fileCount: number;
+}
+
+export interface ClBundleDetailDto extends ClBundleDto {
+  files: { path: string; role: ClFileRole; sha256: string; size: number }[];
+  firmwares: ClBundleFirmwareDto[];
+}
+
+export interface PublishClBundleInput {
+  note: string;
+}
+
+/** `number` ikut jalur URL, jadi berupa teks angka bulat positif. */
+export interface GetClBundleInput {
+  number: string;
+}
+
+export interface ReactivateClBundleInput {
+  number: string;
+  note: string;
+}
+
+/**
+ * Impor sekali pakai dari `config.QC` dan folder skrip lama (diparse di web). Seluruh JSON permintaan dibatasi
+ * `CL_IMPORT_MAX_JSON_BYTES`; impor lebih besar dipecah klien ke beberapa panggilan (idempoten: berkas yang sudah ada dilewati).
+ */
+export interface ImportClInput {
+  settings: ClSettings;
+  scripts: { path: string; text: string; brand: ClBrand }[];
+  firmwares: { brand: ClBrand; code: string; label: string; scriptPath: string | null }[];
+}
+
+export interface ImportClResult {
+  filesCreated: number;
+  /** Berkas yang tidak dibuat (sudah ada: isinya sama, atau berbeda dan dilaporkan di `issues`). */
+  filesSkipped: number;
+  /** Firmware yang `scriptPath`-nya baru dikaitkan pada panggilan ini. */
+  firmwaresLinked: number;
+  issues: ClIssue[];
+}
+
 export interface ApiContract {
   'auth.me': { input: null; output: MeDto };
   'access.users.list': { input: ListUsersInput | null; output: UserDto[] };
@@ -2275,6 +2490,26 @@ export interface ApiContract {
     input: GetDashboardReportInput;
     output: DashboardReportPreviewDto;
   };
+  'clFiles.list': { input: null; output: ClFileDto[] };
+  'clFiles.get': { input: GetClFileInput; output: ClFileDetailDto };
+  'clFiles.save': { input: SaveClFileInput; output: ClFileDetailDto };
+  'clFiles.remove': { input: RemoveClFileInput; output: null };
+  'clFiles.history': { input: ListClFileHistoryInput; output: ClRevisionDto[] };
+  'clFiles.revision': { input: GetClRevisionInput; output: ClRevisionDetailDto };
+  'clFiles.revert': { input: RevertClFileInput; output: ClFileDetailDto };
+  'clFirmwares.list': { input: null; output: ClFirmwareDto[] };
+  'clFirmwares.options': { input: ListClFirmwareOptionsInput; output: ClFirmwareOptionDto[] };
+  'clFirmwares.save': { input: SaveClFirmwareInput; output: ClFirmwareDto };
+  'clFirmwares.remove': { input: RemoveClFirmwareInput; output: null };
+  'clUploads.start': { input: StartClUploadInput; output: ClUploadSessionDto };
+  'clUploads.chunk': { input: ChunkClUploadInput; output: { received: number } };
+  'clUploads.finish': { input: FinishClUploadInput; output: ClFileDto };
+  'clBundles.draft': { input: null; output: ClDraftDto };
+  'clBundles.publish': { input: PublishClBundleInput; output: ClBundleDto };
+  'clBundles.list': { input: null; output: ClBundleDto[] };
+  'clBundles.get': { input: GetClBundleInput; output: ClBundleDetailDto };
+  'clBundles.reactivate': { input: ReactivateClBundleInput; output: ClBundleDto };
+  'clImport.run': { input: ImportClInput; output: ImportClResult };
 }
 
 export type ApiId = keyof ApiContract;

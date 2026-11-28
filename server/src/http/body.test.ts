@@ -2,6 +2,12 @@ import { describe, expect, test } from 'bun:test';
 import { API_ROUTES, toRequestParts } from '@shared/api';
 import { BATCH_MAX } from '@shared/batch';
 import type { ApiId, ApiInput } from '@shared/contract';
+import {
+  CL_BINARY_MAX_BYTES,
+  CL_PATH_MAX,
+  CL_TEXT_MAX_BYTES,
+  FIRMWARE_CODE_MAX,
+} from '@shared/countrylock-bundle';
 import { MARKDOWN_MAX_LENGTH, MAX_IMAGE_BYTES } from '@shared/files';
 import { HANDOVER_LIMITS } from '@shared/handover';
 import { ITEM_LIMITS } from '@shared/items';
@@ -24,6 +30,20 @@ const BATCH_IDS = Array.from({ length: BATCH_MAX }, (_, index) => `${'i'.repeat(
 
 type Inputs = { [M in ApiId]?: ApiInput<M> };
 
+const importMode = (ip: string) => ({
+  ip,
+  ipServer: '10.0.0.1',
+  connectVia: 'Target' as const,
+  interfaceBridge: 'b'.repeat(60),
+});
+const importBrand = (label: string) => ({
+  label,
+  username: 'u'.repeat(60),
+  password: 'p'.repeat(60),
+  web: `http://${'w'.repeat(100)}/{ip}`,
+  modes: { single: importMode('192.168.1.20'), multi: importMode('') },
+});
+
 const longList = <T>(count: number, make: (index: number) => T): T[] =>
   Array.from({ length: count }, (_, index) => make(index));
 
@@ -44,6 +64,71 @@ const WORST: Inputs = {
     })),
   },
   'access.users.setStatus': { id: UUID, status: 'inactive' },
+  // Country Lock: teks skrip maksimum (200 KB) berisi karakter terburuk yang lolos validator (tanda kutip: 1 byte -> 2 byte JSON;
+  // karakter kontrol selain tab/LF/CR ditolak validator, jadi bukan escape 6-byte).
+  'clFiles.save': {
+    path: 'p'.repeat(CL_PATH_MAX),
+    role: 'script',
+    text: '"'.repeat(CL_TEXT_MAX_BYTES),
+    message: text(200),
+    baseSeq: 999_999_999,
+    expectedUpdatedAt: STAMP,
+  },
+  'clFiles.revert': {
+    id: UUID,
+    seq: 999_999_999,
+    baseSeq: 999_999_999,
+    expectedUpdatedAt: STAMP,
+    message: text(200),
+  },
+  'clUploads.start': {
+    path: 'p'.repeat(CL_PATH_MAX),
+    role: 'router',
+    size: CL_BINARY_MAX_BYTES,
+    sha256: 'f'.repeat(64),
+  },
+  'clUploads.finish': { id: UUID },
+  'clBundles.publish': { note: text(200) },
+  'clBundles.reactivate': { number: '999999999', note: text(200) },
+  // Impor sekali pakai: muatan terbesar yang DITERIMA validator (<= CL_IMPORT_MAX_JSON_BYTES = 900 KB; tanda kutip = 2 byte
+  // JSON per karakter). Muatan lebih besar ditolak VALIDATION oleh validator, bukan 413, sehingga klien memecah impor.
+  'clImport.run': {
+    settings: {
+      schema: 1,
+      router: {
+        ip: '10.0.0.1',
+        username: 'admin',
+        password: 'p'.repeat(200),
+        interfaceBridge: 'b',
+      },
+      network: { computerIp: '10.0.0.5', prefixLength: 24 },
+      brands: {
+        mikrotik: importBrand('Mikrotik'),
+        ubiquiti: importBrand('Ubiquiti'),
+      },
+    },
+    scripts: longList(4, (index) => ({
+      path: `${'p'.repeat(190)}${index}.rsc`,
+      text: '"'.repeat(100_000),
+      brand: 'mikrotik' as const,
+    })),
+    firmwares: longList(200, (index) => ({
+      brand: 'ubiquiti' as const,
+      code: `${'c'.repeat(FIRMWARE_CODE_MAX - 4)}${String(index).padStart(4, '0')}`,
+      label: 'l'.repeat(120),
+      scriptPath: `${'p'.repeat(190)}0.rsc`,
+    })),
+  },
+  'clFirmwares.save': {
+    id: UUID,
+    brand: 'ubiquiti',
+    code: 'c'.repeat(FIRMWARE_CODE_MAX),
+    label: text(120),
+    scriptPath: 'p'.repeat(CL_PATH_MAX),
+    parallel: true,
+    sort: 999_999_999,
+    expectedUpdatedAt: STAMP,
+  },
   'access.roles.save': {
     id: UUID,
     name: text(60),

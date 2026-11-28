@@ -3,6 +3,7 @@ import type {
   BridgeClient,
   BridgeExternalFileInfo,
   DriveFolderEntry,
+  DriveRange,
   SheetsExportChunk,
 } from '@server/core/bridge-client';
 import { base64ToBytes, bytesToBase64 } from '@server/core/bytes';
@@ -15,6 +16,8 @@ export interface FakeFile {
   shared: boolean;
   trashed: boolean;
   appProperties?: Record<string, string>;
+  /** ISO; tak diisi `uploadFile` (tes yang butuh umur berkas mengisinya sendiri). */
+  createdTime?: string;
 }
 
 export interface FakeBridgeState {
@@ -181,15 +184,28 @@ export function createFakeBridge(): FakeBridge {
       });
       return { id, size: bytes.length, md5Checksum: createHash('md5').update(bytes).digest('hex') };
     },
-    async downloadFile(fileId, folderId) {
-      enter('downloadFile', [fileId, folderId]);
+    async downloadFile(fileId, folderId, range?: DriveRange) {
+      enter('downloadFile', [fileId, folderId, range]);
       const file = visible(fileId, folderId);
       if (!file) return null;
       const bytes = base64ToBytes(file.base64);
+      if (range === undefined) {
+        return {
+          mime: file.mime,
+          size: bytes.length,
+          body: new Response(bytes).body as ReadableStream<Uint8Array>,
+        };
+      }
+      if (range.start < 0 || range.end < range.start || range.start >= bytes.length) {
+        throw new Error('Rentang byte tidak valid');
+      }
+      const served = { start: range.start, end: Math.min(range.end, bytes.length - 1) };
       return {
         mime: file.mime,
         size: bytes.length,
-        body: new Response(bytes).body as ReadableStream<Uint8Array>,
+        range: served,
+        body: new Response(bytes.slice(served.start, served.end + 1))
+          .body as ReadableStream<Uint8Array>,
       };
     },
     async listFolder(folderId, options) {
@@ -210,6 +226,7 @@ export function createFakeBridge(): FakeBridge {
             size: bytes.length,
             md5Checksum: createHash('md5').update(bytes).digest('hex'),
             appProperties: file.appProperties ?? {},
+            ...(file.createdTime === undefined ? {} : { createdTime: file.createdTime }),
           };
         })
         .sort((a, b) => a.name.localeCompare(b.name));

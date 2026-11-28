@@ -16,6 +16,7 @@ import {
   toRequestParts,
 } from './api';
 import type { ApiId, ApiInput } from './contract';
+import { CL_CHUNK_BYTES } from './countrylock-bundle';
 import { MAX_IMAGE_BYTES } from './files';
 import { POSTEL_LIMITS } from './postel';
 import { QR_LIMITS } from './qrcode';
@@ -622,6 +623,98 @@ const EXAMPLES: { [M in ApiId]: ApiInput<M> } = {
   'dashboardReports.remove': { id: 'r1' },
   'dashboardReports.sendTest': { id: 'r1' },
   'dashboardReports.preview': { id: 'r1' },
+  'clFiles.list': null,
+  'clFiles.get': { id: 'f1' },
+  'clFiles.save': {
+    path: 'mikrotik/AC.rsc',
+    role: 'script',
+    text: ':put {ipTarget}',
+    message: 'ubah',
+    baseSeq: 1,
+    expectedUpdatedAt: '2026-11-28T00:00:00.000Z',
+  },
+  'clFiles.remove': { id: 'f1' },
+  'clFiles.history': { id: 'f1' },
+  'clFiles.revision': { id: 'f1', seq: '2' },
+  'clFiles.revert': {
+    id: 'f1',
+    seq: 1,
+    baseSeq: 3,
+    expectedUpdatedAt: '2026-11-28T00:00:00.000Z',
+    message: 'balik',
+  },
+  'clFirmwares.list': null,
+  'clFirmwares.options': { brand: 'mikrotik' },
+  'clFirmwares.save': {
+    id: 'fw1',
+    brand: 'ubiquiti',
+    code: 'XR',
+    label: 'XR Firmware',
+    scriptPath: 'ubiquiti/XR.sh',
+    parallel: true,
+    sort: 10,
+    expectedUpdatedAt: '2026-11-28T00:00:00.000Z',
+  },
+  'clFirmwares.remove': { id: 'fw1' },
+  'clUploads.start': { path: 'mikrotik/os.npk', role: 'router', size: 10, sha256: 'a'.repeat(64) },
+  'clUploads.chunk': { id: 'u1', idx: '0', bytes: new Uint8Array([1, 2, 3]) },
+  'clUploads.finish': { id: 'u1' },
+  'clBundles.draft': null,
+  'clBundles.publish': { note: 'catatan' },
+  'clBundles.list': null,
+  'clBundles.get': { number: '1' },
+  'clBundles.reactivate': { number: '1', note: 'kembali' },
+  'clImport.run': {
+    settings: {
+      schema: 1,
+      router: { ip: '10.0.0.1', username: 'admin', password: 'x', interfaceBridge: 'bridge1' },
+      network: { computerIp: '10.0.0.5', prefixLength: 24 },
+      brands: {
+        mikrotik: {
+          label: 'Mikrotik',
+          username: 'admin',
+          password: '',
+          web: 'http://{ip}',
+          modes: {
+            single: {
+              ip: '192.168.1.20',
+              ipServer: '10.0.0.1',
+              connectVia: 'Target',
+              interfaceBridge: 'bridge1',
+            },
+            multi: {
+              ip: '',
+              ipServer: '10.0.0.1',
+              connectVia: 'Target',
+              interfaceBridge: 'bridge1',
+            },
+          },
+        },
+        ubiquiti: {
+          label: 'Ubiquiti',
+          username: 'ubnt',
+          password: 'ubnt',
+          web: 'http://{ip}',
+          modes: {
+            single: {
+              ip: '192.168.1.20',
+              ipServer: '10.0.0.1',
+              connectVia: 'Server',
+              interfaceBridge: 'bridge1',
+            },
+            multi: {
+              ip: '',
+              ipServer: '10.0.0.1',
+              connectVia: 'Server',
+              interfaceBridge: 'bridge1',
+            },
+          },
+        },
+      },
+    },
+    scripts: [{ path: 'mikrotik/AC.rsc', text: ':put 1', brand: 'mikrotik' }],
+    firmwares: [{ brand: 'mikrotik', code: 'AC', label: 'AC', scriptPath: 'mikrotik/AC.rsc' }],
+  },
 };
 
 const ROUNDTRIP_IDS = IDS;
@@ -1009,6 +1102,7 @@ describe('rute biner', () => {
   test('batas ukuran tiap rute memakai konstanta yang ada (tidak dinaikkan)', () => {
     expect(API_ROUTES['files.upload'].rawBody?.maxBytes).toBe(MAX_IMAGE_BYTES);
     expect(API_ROUTES['serialProofs.upload'].rawBody?.maxBytes).toBe(MAX_IMAGE_BYTES);
+    expect(API_ROUTES['clUploads.chunk'].rawBody?.maxBytes).toBe(CL_CHUNK_BYTES + 1024);
     expect(API_ROUTES['postelFiles.upload'].rawBody?.maxBytes).toBe(
       POSTEL_LIMITS.attachmentMaxBytes,
     );

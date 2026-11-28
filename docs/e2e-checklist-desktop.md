@@ -226,6 +226,23 @@ Pembaruan paksa dan layar penahan (fase 3 versi API, 2026-11-20; spek `2026-11-2
 | K25 | Hapus rute yang dipakai tab web lama (catat di `RETIRED_ROUTES`, build server uji), lakukan aksi yang memanggilnya di tab itu | Server menjawab 426 `CLIENT_OUTDATED`; tab memuat ulang sendiri bila tak ada ketikan belum tersimpan, selain itu menunggu sampai tersimpan atau dibuang | |
 | K26 | Matikan koneksi, isi centang/komentar di PWA hingga masuk antrean offline, hapus rute yang dipakai entri itu di server uji, sambungkan kembali | Entri ditolak 426 dibuang ke jalur "ditolak" dengan alasan jelas (diumumkan sekali), tidak dicoba ulang tanpa henti dan tidak hilang tanpa jejak; berlaku untuk pengirim halaman DAN Background Sync (Chrome/Edge) | |
 
+## L. Sinkron bundel Country Lock (menyusul fase 2; BELUM dibangun dan BELUM diuji)
+
+Prasyarat: fase 2 spek `docs/superpowers/specs/2026-11-28-country-lock-sync-bundel-design.md` selesai (sinkron komputer, jaringan, dan router jump). Fase 1 (server, admin web, unggah biner, impor, unduhan publik) sudah ada di kode, tetapi belum diuji di perangkat nyata. Jangan menandai hasil sebelum fase 2 selesai.
+
+| # | Langkah | Hasil yang diharapkan | Hasil |
+|---|---|---|---|
+| L1 | Di komputer tanpa folder paket, buka Country Lock dengan server terjangkau | Halaman tidak meminta folder atau `config.QC`; bundel terbaru terunduh dan `sha256` setiap berkas cocok | |
+| L2 | Matikan server, buka Country Lock lagi | Bundel lokal terakhir yang utuh dipakai; mode tunggal tetap bisa inject | |
+| L3 | Putuskan jaringan di tengah unduhan bundel | Bundel setengah jadi tidak aktif; bundel sebelumnya tetap dipakai | |
+| L4 | Sambungkan router jump baru atau ganti mode single/multi | Sinkron router berjalan dengan dialog progres; inject terbuka hanya setelah `routerHash` cocok | |
+| L5 | Terbitkan bundel dengan IP komputer yang berbeda dari bundel sebelumnya | Peringatan keras tampil sebelum terbit berisi daftar akibatnya; komputer menyelaraskan IP setelah sinkron | |
+| L6 | `GET /api/desktop/countrylock/manifest` tanpa token, lalu dengan token salah 20 kali | Tanpa token atau token salah: 404 problem+json yang sama; setelah 20 kegagalan dari satu IP: 429 | |
+| L7 | `GET /api/desktop/countrylock/files/<sha256>` dengan header `Range` | Respons 206 dengan `Content-Range`; isi sesuai rentang; `sha256` berkas utuh cocok | |
+| L8 | Admin mendaftarkan firmware baru, lalu memilihnya di Data Item sebelum bundel terbit; coba hapus firmware yang masih dipakai item hidup | Firmware muncul dari daftar draf; penghapusan firmware yang dipakai ditolak | |
+| L9 | Impor `config.QC` dan skrip lama di halaman Impor dua kali | Impor kedua tidak menggandakan berkas atau firmware | |
+| L10 | Dua admin menyunting berkas yang sama | Admin kedua menerima "Berkas diubah orang lain" tanpa isian tertimpa | |
+
 ## Pengisian hasil
 
 - Penguji dan tanggal: 

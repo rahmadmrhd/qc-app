@@ -6,6 +6,11 @@ import type { RejectedFile } from './types';
 export interface FilePickerProps {
   /** Jenis (mime) yang diterima. Pemilih berkas dapat lolos dari filter `accept` (mis. "Semua berkas"), jadi dipisah lagi. */
   accept: readonly string[];
+  /**
+   * Menerima berkas jenis apa pun (mis. biner router `.npk`): `accept` diabaikan, tak ada atribut `accept` pada input
+   * dan tak ada pemisahan menurut tipe. Ukuran/isi tetap diperiksa pemanggil.
+   */
+  anyType?: boolean;
   multiple?: boolean;
   disabled?: boolean;
   /** Berkas bertipe sah dan berkas yang ditolak (nama + alasan). Ukuran diperiksa pemanggil (`intakeFiles`). */
@@ -21,6 +26,7 @@ export interface FilePickerProps {
  */
 export function FilePicker({
   accept,
+  anyType = false,
   multiple,
   disabled,
   onFiles,
@@ -45,13 +51,17 @@ export function FilePicker({
         type="file"
         hidden
         multiple={multiple}
-        accept={accept.join(',')}
+        accept={anyType ? undefined : accept.join(',')}
         data-testid="file-picker-input"
         onChange={(event) => {
           const files = Array.from(event.target.files ?? []);
           // Pilihan yang sama dapat dipilih lagi.
           event.target.value = '';
           if (files.length === 0) return;
+          if (anyType) {
+            onFiles(files, []);
+            return;
+          }
           const split = partitionByType(files, accept);
           onFiles(split.files, split.rejected);
         }}

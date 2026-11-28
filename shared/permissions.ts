@@ -57,7 +57,7 @@ export const MODULE_LEVELS: Record<ModuleKey, readonly Level[]> = {
   serial: ['none', 'view', 'edit', 'manage'],
   serialservice: ['none', 'view', 'edit'],
   serialwh: ['none', 'view', 'edit'],
-  countrylock: ['none', 'view'],
+  countrylock: ['none', 'view', 'edit', 'manage'],
   dashboard: ['none', 'view', 'edit', 'manage'],
 };
 
@@ -123,7 +123,10 @@ export const MODULE_LEVEL_HINTS: Partial<Record<ModuleKey, Partial<Record<Level,
     edit: 'Melihat serta mencatat Keluar Gudang: memilih atau membuat Serial Number untuk sebuah SO dan menautkan task Serah Terima.',
   },
   countrylock: {
-    view: 'Melihat menu Country Lock dan membukanya di aplikasi desktop dari peramban (dengan akun yang sama). Halaman Country Lock di aplikasi desktop tetap dapat dibuka tanpa login.',
+    view: 'Memakai Country Lock: melihat menu dan membukanya di aplikasi desktop dari peramban (dengan akun yang sama). Halaman Country Lock di aplikasi desktop tetap dapat dibuka tanpa login.',
+    edit: 'Memakai Country Lock serta menyunting draf bundel: berkas, pengaturan, firmware, dan impor.',
+    manage:
+      'Semua akses Ubah, ditambah menerbitkan atau mengaktifkan ulang bundel dan menghapus firmware.',
   },
   dashboard: {
     view: 'Membuka halaman Dashboard dan melihat widget (data tetap mengikuti izin modul sumbernya). TIDAK dapat membagikan tautan atau mengelola laporan terjadwal.',

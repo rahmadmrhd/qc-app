@@ -14,6 +14,7 @@ import {
 } from '@server/jobs/runner';
 import { createMariadbDumpRunner, parseDatabaseUrl } from '@server/modules/backup/dump';
 import { createVerifyPortsFactory } from '@server/modules/backup/verify-ports';
+import { seedCountryLockFirmwares } from '@server/modules/countrylock/seed';
 import { drainVisitRecordings } from '@server/modules/dashboard/share-visits';
 import { closeAllNotificationStreams } from '@server/modules/notification/stream-hub';
 import { createWebPushSender } from '@server/modules/notification/web-push';
@@ -128,6 +129,12 @@ export function createServer(config: Config, options: ServerOptions = {}): QcSer
       if (options.prepare) {
         // Jenis sistem Manual Book dan Postel dijamin ada sejak start (keputusan pemilik 2026-11-25); tak pernah melempar.
         await ensureSystemStickerTypes(env);
+        // Firmware awal Country Lock (tabel dinamis `cl_firmwares`); idempoten, galat dicatat tanpa menggagalkan start.
+        try {
+          await seedCountryLockFirmwares(env);
+        } catch (error) {
+          console.error('Pengisian firmware awal Country Lock gagal:', error);
+        }
         try {
           await backfillPostelStickers(env);
         } catch (error) {
