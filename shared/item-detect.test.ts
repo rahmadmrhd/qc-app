@@ -1,10 +1,12 @@
 import { describe, expect, test } from 'bun:test';
 import {
+  classifyNoteLines,
   compactKey,
   countBoundedMatches,
   type DetectableItem,
   detectItemsInNote,
   itemDisplayName,
+  linesMentioningOtherItems,
   noteMentionsItem,
 } from './item-detect';
 
@@ -71,5 +73,35 @@ describe('pembantu', () => {
   test('countBoundedMatches', () => {
     expect(countBoundedMatches('ax 300 dan ax300', 'ax300')).toBe(2);
     expect(countBoundedMatches('ax 3000', 'ax300')).toBe(0);
+  });
+});
+
+describe('linesMentioningOtherItems', () => {
+  test('hanya baris yang menyebut Item lain dan tidak menyebut Item terpilih', () => {
+    const note = ['- [ ] Tenda AX-300 2 pcs', '- [ ] Mercusys MR30G 1 pcs', 'catatan bebas'].join(
+      '\n',
+    );
+    expect(linesMentioningOtherItems(note, 'i1', [tenda, mercusys])).toEqual([
+      'Mercusys MR30G 1 pcs',
+    ]);
+    expect(linesMentioningOtherItems(note, 'i2', [tenda, mercusys])).toEqual([
+      'Tenda AX-300 2 pcs',
+    ]);
+  });
+  test('baris yang menyebut keduanya tidak ditandai; tanpa katalog = kosong', () => {
+    expect(
+      linesMentioningOtherItems('Tenda AX-300 dan Mercusys MR30G', 'i1', [tenda, mercusys]),
+    ).toEqual([]);
+    expect(linesMentioningOtherItems('Mercusys MR30G', 'i1', [])).toEqual([]);
+  });
+});
+
+describe('classifyNoteLines', () => {
+  test('matched = baris Item terpilih, other = baris Item lain saja', () => {
+    const note = ['- [ ] Tenda AX-300 2 pcs', '- [ ] Mercusys MR30G 1 pcs', 'bebas'].join('\n');
+    expect(classifyNoteLines(note, 'i1', [tenda, mercusys])).toEqual({
+      matched: ['Tenda AX-300 2 pcs'],
+      other: ['Mercusys MR30G 1 pcs'],
+    });
   });
 });

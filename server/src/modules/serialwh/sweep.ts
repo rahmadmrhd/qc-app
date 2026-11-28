@@ -2,8 +2,15 @@ import { CAS_FAIL_SQL, isGuardFailure } from '@server/core/cas';
 import type { Env } from '@server/core/env';
 import { nowIso, nowOf } from '@server/core/env';
 import { WAREHOUSE_LIMITS } from '@shared/serial-warehouse';
-import { orderAuditTarget, readyAuditTarget, WAREHOUSE_AUDIT, warehouseAuditStmt } from './audit';
+import {
+  orderAuditTarget,
+  readyAuditTarget,
+  saleAuditTarget,
+  WAREHOUSE_AUDIT,
+  warehouseAuditStmt,
+} from './audit';
 import { cancelReadyStatements } from './boxes';
+import { isBareSale } from './repo';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 /** Pengeluaran dibatalkan per tik penjadwal (sisanya menyusul pada tik berikutnya). */
@@ -38,7 +45,9 @@ export async function sweepStaleDispatches(env: Env): Promise<number> {
     const target =
       row.kind.trim() === 'ready'
         ? readyAuditTarget(row.id.trim(), row.dispatched_on)
-        : orderAuditTarget(row.order_id.trim(), row.number ?? '');
+        : isBareSale(row)
+          ? saleAuditTarget(row.id.trim(), row.dispatched_on)
+          : orderAuditTarget(row.order_id.trim(), row.number ?? '');
     try {
       await env.DB.batch([
         env.DB.prepare(

@@ -1,4 +1,5 @@
 import type {
+  WarehouseHandoverCandidateDto,
   WarehouseHandoverContextDto,
   WarehouseItemOptionDto,
   WarehouseOptionsDto,
@@ -12,7 +13,7 @@ import {
 } from '@shared/serial-warehouse';
 import { isIsoDate } from '@shared/serials';
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { LinkField, type LinkOption } from '@/components/link-field';
 import { Select } from '@/components/select';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -30,7 +31,12 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { CustomerCombobox } from '@/modules/handover/components/customer-combobox';
+import { HandoverStatusBadge } from '@/modules/handover/components/handover-status-badge';
 import { todayWib } from '@/modules/serial/lib/locations';
+import {
+  defaultBuId as pickDefaultBu,
+  defaultLocationId as pickDefaultLocation,
+} from '../lib/defaults';
 import { summarizeRows } from '../lib/draft';
 import type { WarehouseDraftRow } from '../lib/draft-store';
 import { boxPlanSummary, parsePositiveInt } from '../lib/ready-box';
@@ -40,8 +46,10 @@ import {
   readyMaxBoxQueryOptions,
   warehouseOrderOptionsQueryOptions,
 } from '../queries';
+import { CandidateNote, MarkLegend } from './candidate-note';
 import { HandoverLinkPicker } from './handover-link-picker';
 import { findMatchingOrder, OrderNumberCombobox } from './order-number-combobox';
+import { TaskSalesList } from './task-sales-list';
 import { WarningBanners } from './warning-banners';
 
 export type WarehousePurpose = 'order' | 'ready';
@@ -57,9 +65,11 @@ export interface ConfirmValues {
   customerName: string;
   note: string;
   handoverIds: string[];
-  /** Lokasi/tanggal uji untuk serial baru yang belum punya (hanya bila ada baris seperti itu). */
-  newLocationId?: string;
-  newTestDate?: string;
+  /**
+   * Lokasi dialog: melengkapi serial baru yang belum berlokasi dan membatasi daftar task Serah Terima. Serial baru yang
+   * belum punya tanggal uji memakai tanggal catat/keluar (diisi halaman; chip Tanggal uji menang bila terisi).
+   */
+  locationId: string;
   /** Hanya mode `ready`: nomor kardus pertama dan pcs per kardus. */
   boxStart?: number;
   boxSize?: number;
@@ -74,12 +84,15 @@ export interface ConfirmDialogProps {
   formBuId: string;
   buOptions: readonly LinkOption[];
   locationOptions: readonly LinkOption[];
-  /** Nilai awal dari chip Lokasi/Tanggal uji (boleh kosong). */
+  /** Nilai awal dari chip Lokasi form (boleh kosong; bila terisi menang atas data serial dan lokasi aktif). */
   defaultLocationId: string;
-  defaultTestDate: string;
+  /** Lokasi aktif pengguna (cadangan Lokasi bila tepat satu). */
+  activeLocationIds?: readonly string[];
   options: WarehouseOptionsDto | undefined;
   /** Konteks task asal (`?handover`). */
   handoverContext?: WarehouseHandoverContextDto | undefined;
+  /** Nomor riwayat Penjualan tanpa No SO menaut ke detailnya (pengguna boleh membaca Riwayat Gudang, bukan aplikasi desktop). */
+  historyLinkable?: boolean;
   originHandoverId?: string | undefined;
   /** Tujuan pengeluaran; dipegang halaman karena ikut menentukan arti filter "Sembunyikan yang sudah tercatat". */
   purpose: WarehousePurpose;
@@ -118,9 +131,10 @@ function ConfirmBody({
   buOptions,
   locationOptions,
   defaultLocationId,
-  defaultTestDate,
+  activeLocationIds = [],
   options,
   handoverContext,
+  historyLinkable = false,
   originHandoverId,
   purpose,
   onPurposeChange,
@@ -138,13 +152,31 @@ function ConfirmBody({
     originHandoverId ? [originHandoverId] : [],
   );
   const [touched, setTouched] = useState(false);
-  // BU pilihan di dialog ini: baru menggantikan chip BU form saat disimpan (batal tidak mengubah apa pun).
-  const [pickedBuId, setPickedBuId] = useState(formBuId);
-  // Serial baru tanpa lokasi/tanggal uji (chip filter kosong saat scan) melengkapinya di sini.
-  const fillLocation = rows.some((row) => row.kind === 'new' && row.locationId === '');
-  const fillTestDate = rows.some((row) => row.kind === 'new' && row.testDate === '');
-  const [newLocationId, setNewLocationId] = useState(defaultLocationId);
-  const [newTestDate, setNewTestDate] = useState(defaultTestDate === '' ? today : defaultTestDate);
+  // BU dan Lokasi awal: chip form, lalu data serial yang sudah ada, lalu cadangan (satu BU Item, lokasi aktif tunggal).
+  // Keduanya tetap dapat diubah; BU baru menggantikan chip BU form saat disimpan (batal tidak mengubah apa pun).
+  const [pickedBuId, setPickedBuId] = useState(() =>
+    pickDefaultBu({
+      rows,
+      chipBuId: formBuId,
+      itemBuIds: item?.buIds ?? [],
+      buOptionIds: buOptions.map((option) => option.id),
+    }),
+  );
+  const [pickedLocationId, setPickedLocationId] = useState(() =>
+    pickDefaultLocation({
+      rows,
+      chipLocationId: defaultLocationId,
+      activeLocationIds,
+      locationOptionIds: locationOptions.map((option) => option.id),
+    }),
+  );
+  // Lokasi dialog ini menjadi lokasi SEMUA serial baru (juga yang sudah berlokasi dari chip saat scan).
+  const fillLocation = rows.some((row) => row.kind === 'new');
+  // Task tertaut yang pernah dimuat pemilih (untuk konfirmasi kecocokan sebelum simpan).
+  const candidateRegistry = useRef(new Map<string, WarehouseHandoverCandidateDto>());
+  const [mismatch, setMismatch] = useState<WarehouseHandoverCandidateDto[] | null>(null);
+  // Pemilih memberi tahu bila `candidateRegistry` terisi, supaya tanda "belum diperiksa" ikut menyegar.
+  const [, bumpRegistry] = useState(0);
 
   const typed = normalizeOrderNumber(orderNumber);
   const orderQuery = useInfiniteQuery({
@@ -168,6 +200,16 @@ function ConfirmBody({
 
   // SO yang ada mengunci BU ke BU SO-nya (satu SO satu BU).
   const buId = matched ? matched.buId : pickedBuId;
+  // SO yang ada mengisi Lokasi dari lokasi task tertautnya (satu SO satu lokasi); setelah itu Lokasi tetap dapat diubah.
+  const matchedKey = matched?.id ?? '';
+  const matchedLocation = matched?.locationId ?? '';
+  // biome-ignore lint/correctness/useExhaustiveDependencies: hanya saat SO yang cocok berganti
+  useEffect(() => {
+    if (matchedKey === '' || matchedLocation === '') return;
+    if (locationOptions.some((option) => option.id === matchedLocation)) {
+      setPickedLocationId(matchedLocation);
+    }
+  }, [matchedKey, matchedLocation]);
   // Customer SO yang ada menang.
   const effectiveCustomer = matched ? matched.customerName : customerName;
   const customerId =
@@ -238,18 +280,23 @@ function ConfirmBody({
       : null;
 
   const needsItemBu = rows.some((row) => row.kind === 'new');
-  const orderProblem = orderNumberProblem(typed);
+  // No SO opsional: kosong = Penjualan tanpa SO; terisi tetap divalidasi.
+  const orderProblem = typed === '' ? null : orderNumberProblem(typed);
   const errors = {
     order: isReady
       ? undefined
       : orderProblem === 'empty'
-        ? 'No SO wajib diisi'
+        ? undefined
         : orderProblem === 'too_long'
           ? `No SO maksimal ${WAREHOUSE_LIMITS.orderNumberMax} karakter`
           : orderProblem === 'control_chars'
             ? 'No SO memuat karakter yang tidak boleh'
             : undefined,
-    customer: isReady || effectiveCustomer.trim() !== '' ? undefined : 'Customer wajib diisi',
+    // Customer wajib hanya untuk SO baru; tanpa No SO ia hanya membantu menyaring task.
+    customer:
+      isReady || typed === '' || matched !== null || effectiveCustomer.trim() !== ''
+        ? undefined
+        : 'Customer wajib diisi',
     bu:
       buId === ''
         ? 'BU wajib dipilih'
@@ -260,11 +307,7 @@ function ConfirmBody({
       !isIsoDate(dispatchedOn) || dispatchedOn > today
         ? `${isReady ? 'Tanggal catat' : 'Tanggal keluar'} tidak boleh setelah hari ini`
         : undefined,
-    location: fillLocation && newLocationId === '' ? 'Lokasi wajib dipilih' : undefined,
-    testDate:
-      fillTestDate && (!isIsoDate(newTestDate) || newTestDate > today)
-        ? 'Tanggal uji tidak boleh kosong atau setelah hari ini'
-        : undefined,
+    location: fillLocation && pickedLocationId === '' ? 'Lokasi wajib dipilih' : undefined,
     boxStart:
       isReady && (boxStart === null || boxStart > WAREHOUSE_BOX_LIMITS.numberMax)
         ? `Nomor kardus awal harus 1 sampai ${WAREHOUSE_BOX_LIMITS.numberMax}`
@@ -290,6 +333,29 @@ function ConfirmBody({
   function submit() {
     setTouched(true);
     if (blocked) return;
+    // Konfirmasi kecocokan: task tertaut yang tak menyebut Item, atau memuat baris yang menyebut Item lain.
+    if (!isReady && item) {
+      const doubtful = handoverIds.flatMap((id) => {
+        const candidate = candidateRegistry.current.get(id);
+        return candidate && (!candidate.mentionsItem || candidate.mismatchLines.length > 0)
+          ? [candidate]
+          : [];
+      });
+      if (doubtful.length > 0) {
+        setMismatch(doubtful);
+        return;
+      }
+    }
+    proceed();
+  }
+
+  // Task tertaut (mis. task asal di lokasi lain dari Lokasi dialog) yang tak pernah dimuat pemilih: kecocokannya belum
+  // diperiksa. Hanya tanda; tidak memblokir simpan.
+  const uncheckedIds =
+    !isReady && item ? handoverIds.filter((id) => !candidateRegistry.current.has(id)) : [];
+
+  /** Memanggil `onConfirm` SINKRON dari klik (tombol Simpan, atau tombol konfirmasi kecocokan). */
+  function proceed() {
     if (isReady && boxStart !== null && boxSize !== null) {
       onConfirm({
         mode: 'ready',
@@ -301,8 +367,7 @@ function ConfirmBody({
         handoverIds: [],
         boxStart,
         boxSize,
-        ...(fillLocation ? { newLocationId } : {}),
-        ...(fillTestDate ? { newTestDate } : {}),
+        locationId: pickedLocationId,
       });
       return;
     }
@@ -315,8 +380,7 @@ function ConfirmBody({
       customerName: effectiveCustomer.trim(),
       note: note.trim(),
       handoverIds,
-      ...(fillLocation ? { newLocationId } : {}),
-      ...(fillTestDate ? { newTestDate } : {}),
+      locationId: pickedLocationId,
     });
   }
 
@@ -395,6 +459,8 @@ function ConfirmBody({
               </div>
             ) : null}
 
+            <TaskSalesList sales={handoverContext?.sales ?? []} linkable={historyLinkable} />
+
             <OrderNumberCombobox
               id="wh-order-number"
               value={orderNumber}
@@ -428,13 +494,13 @@ function ConfirmBody({
           ) : null}
         </div>
 
-        {fillLocation ? (
+        <div className="space-y-1.5">
           <LinkField
-            id="wh-new-location"
-            label="Lokasi serial baru"
-            required
-            value={newLocationId === '' ? null : newLocationId}
-            onChange={(next) => setNewLocationId(next ?? '')}
+            id="wh-location"
+            label="Lokasi"
+            required={fillLocation}
+            value={pickedLocationId === '' ? null : pickedLocationId}
+            onChange={(next) => setPickedLocationId(next ?? '')}
             options={locationOptions}
             localFilter
             highlight
@@ -442,35 +508,16 @@ function ConfirmBody({
             placeholder="Pilih lokasi"
             {...(touched && errors.location ? { error: errors.location } : {})}
           />
-        ) : null}
-        {fillTestDate ? (
-          <div className="space-y-1.5">
-            <Label htmlFor="wh-new-test-date" required>
-              Tanggal uji serial baru
-            </Label>
-            <Input
-              id="wh-new-test-date"
-              type="date"
-              max={today}
-              aria-required="true"
-              value={newTestDate}
-              onChange={(event) => setNewTestDate(event.target.value)}
-            />
-            {touched && errors.testDate ? (
-              <p role="alert" className="text-xs text-destructive-text">
-                {errors.testDate}
-              </p>
-            ) : null}
-          </div>
-        ) : null}
+          {fillLocation ? (
+            <p className="text-xs text-muted-foreground">Dipakai juga untuk serial baru.</p>
+          ) : null}
+        </div>
 
         {isReady ? null : (
           <>
             {matched ? (
               <div className="space-y-1.5">
-                <Label htmlFor="wh-customer-locked" required>
-                  Customer
-                </Label>
+                <Label htmlFor="wh-customer-locked">Customer</Label>
                 <Input id="wh-customer-locked" value={matched.customerName} readOnly disabled />
               </div>
             ) : (
@@ -494,6 +541,9 @@ function ConfirmBody({
             <div className="space-y-2">
               <Label>Tautan Serah Terima</Label>
               <HandoverLinkPicker
+                locationId={pickedLocationId}
+                registry={candidateRegistry}
+                onRegistryChange={() => bumpRegistry((n) => n + 1)}
                 {...(customerId ? { customerId } : {})}
                 {...(effectiveCustomer.trim() !== ''
                   ? { customerName: effectiveCustomer.trim() }
@@ -504,6 +554,11 @@ function ConfirmBody({
                 onChange={setHandoverIds}
                 {...(originHandoverId ? { lockedIds: [originHandoverId] } : {})}
               />
+              {uncheckedIds.length > 0 ? (
+                <p className="text-xs text-warning-text" role="status">
+                  Task asal belum diperiksa kecocokannya dengan Item (daftar belum memuat task ini).
+                </p>
+              ) : null}
               {originalLinked && originHandoverId && handoverContext ? (
                 <p className="text-xs text-muted-foreground">
                   SO ini akan ditautkan ke task {handoverContext.handover.number}.
@@ -642,6 +697,69 @@ function ConfirmBody({
           Simpan & salin
         </Button>
       </DialogFooter>
+      <Dialog
+        open={mismatch !== null}
+        onOpenChange={(next) => {
+          if (!next) setMismatch(null);
+        }}
+      >
+        <DialogContent size="full-on-phone" className="sm:max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Apakah daftar permintaan item ini sudah sesuai?</DialogTitle>
+            <DialogDescription>
+              {item ? `Item: ${item.label}. ` : ''}Periksa task di bawah sebelum disimpan.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <MarkLegend />
+            <ul className="space-y-3" aria-label="Task yang perlu diperiksa">
+              {(mismatch ?? []).map((candidate) => (
+                <li key={candidate.id} className="space-y-2 rounded-md border p-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-medium">{candidate.number}</span>
+                    <HandoverStatusBadge status={candidate.status} />
+                  </div>
+                  {candidate.mentionsItem ? null : (
+                    <p className="text-sm text-warning-text">
+                      Catatan task ini tidak menyebut Item ini.
+                    </p>
+                  )}
+                  {candidate.mismatchLines.length > 0 ? (
+                    <p className="text-sm text-warning-text">
+                      Ada baris yang mungkin tidak cocok (menyebut Item lain).
+                    </p>
+                  ) : null}
+                  <CandidateNote candidate={candidate} className="max-h-60" />
+                </li>
+              ))}
+            </ul>
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              color="secondary"
+              onClick={() => setMismatch(null)}
+            >
+              Kembali
+            </Button>
+            <Button
+              type="button"
+              onClick={() => {
+                setMismatch(null);
+                // Keadaan dapat berubah selama dialog kecocokan terbuka (mis. pemeriksaan SO selesai): periksa ulang.
+                if (blocked) {
+                  setTouched(true);
+                  return;
+                }
+                proceed();
+              }}
+            >
+              Sesuai, lanjut simpan
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

@@ -23,6 +23,7 @@ import {
   orderKey,
   WAREHOUSE_LIMITS,
   WAREHOUSE_READY_NOTE,
+  WAREHOUSE_SALE_NOTE,
   WAREHOUSE_SOURCE,
   type WarehouseDispatchStatus,
   warehouseRecordedNote,
@@ -33,6 +34,7 @@ import {
   dispatchDoneAuditStmt,
   orderAuditTarget,
   readyAuditTarget,
+  saleAuditTarget,
   WAREHOUSE_AUDIT,
   type WarehouseAuditTarget,
   warehouseAuditStmt,
@@ -51,6 +53,7 @@ import { reserveDispatchNumber } from './number';
 import {
   type DispatchRow,
   insertDispatchSerialStmt,
+  isBareSale,
   loadDispatchRow,
   loadDispatchRowByClientId,
   loadDispatchSerialNumbers,
@@ -196,7 +199,7 @@ async function outputOf(
   const status = dispatch.status.trim() as WarehouseDispatchStatus;
   return {
     dispatchId: dispatch.id.trim(),
-    ...(dispatch.kind.trim() === 'ready'
+    ...(dispatch.kind.trim() === 'ready' || isBareSale(dispatch)
       ? {}
       : { orderId: dispatch.order_id.trim(), orderNumber: orderNumber ?? '' }),
     status,
@@ -224,6 +227,8 @@ async function submitOnce(
     throw fieldError('dispatchedOn', 'Tanggal keluar tidak boleh di masa depan');
   }
   const ready = header.mode === 'ready';
+  // Penjualan tanpa No SO: tanpa catatan SO (`order_id` = id pengeluaran), customer opsional.
+  const bare = !ready && header.orderNumber === '';
   const hash = headerHash(header);
   const existing = await loadDispatchRowByClientId(env.DB, input.clientId);
 
@@ -240,6 +245,8 @@ async function submitOnce(
     if (ready) {
       // Catat ready tidak punya SO: BU ada di baris pengeluaran itu sendiri.
       assertWhBu(user, existing.bu_id.trim(), 'edit', 'Catatan ready tidak ditemukan');
+    } else if (bare) {
+      assertWhBu(user, existing.bu_id.trim(), 'edit');
     } else {
       order = await loadOrderRow(env.DB, existing.order_id.trim());
       if (!order) throw appError('NOT_FOUND', 'Catatan SO tidak ditemukan');
@@ -259,7 +266,7 @@ async function submitOnce(
   } else {
     if (input.chunkIndex > 0) throw fieldError('chunkIndex', 'Pengeluaran belum dimulai');
     const key = orderKey(header.orderNumber);
-    if (ready) {
+    if (ready || bare) {
       // Tanpa SO: tidak ada yang dimuat.
     } else if (header.orderId !== undefined) {
       order = await loadOrderRow(env.DB, header.orderId);
@@ -281,6 +288,11 @@ async function submitOnce(
   if (ready) {
     // Pencatatan BARU wajib BU hidup; lanjutan (pengeluaran sudah ada) tetap jalan walau BU dihapus di tengah kiriman
     // (hak edit pada BU pencatatan sudah diperiksa di atas), seperti SO yang sudah ada pada mode SO.
+    if (!existing && !whLiveBuIds(user, 'edit').includes(buId)) {
+      throw appError('NOT_FOUND', 'BU tidak ditemukan');
+    }
+  } else if (bare) {
+    // Pengeluaran baru wajib BU hidup ber-`serialwh: edit`; lanjutan tetap jalan (hak sudah diperiksa di atas).
     if (!existing && !whLiveBuIds(user, 'edit').includes(buId)) {
       throw appError('NOT_FOUND', 'BU tidak ditemukan');
     }
@@ -408,10 +420,12 @@ async function submitOnce(
       fresh: { clientId: row.clientId, locationId: row.locationId, testDate: row.testDate },
     });
   }
-  if (order && plans.length > 0) {
+  // Serial ganda dalam satu SO (atau satu pengeluaran tanpa SO yang sedang berjalan) dilewati.
+  const scopeId = order ? order.id.trim() : bare && existing ? existing.id.trim() : null;
+  if (scopeId !== null && plans.length > 0) {
     const taken = await serialsInOrder(
       env.DB,
-      order.id.trim(),
+      scopeId,
       plans.map((plan) => plan.serialId),
     );
     plans = plans.filter((plan) => {
@@ -504,9 +518,14 @@ async function submitOnce(
   const targetOf = (): WarehouseAuditTarget =>
     ready
       ? readyAuditTarget(dispatchId, header.dispatchedOn)
-      : orderAuditTarget(orderId, orderNumber);
+      : bare
+        ? saleAuditTarget(dispatchId, header.dispatchedOn)
+        : orderAuditTarget(orderId, orderNumber);
+  // Customer pengeluaran tanpa SO (kolom `warehouse_dispatches`); kosong pada Penjualan ber-SO dan Ready.
+  let bareCustomer = { id: '', name: '' };
   if (existing) {
     dispatchId = existing.id.trim();
+    if (bare) orderId = existing.order_id.trim();
     if (order) {
       orderId = order.id.trim();
       orderNumber = order.number;
@@ -515,6 +534,13 @@ async function submitOnce(
     dispatchId = newId();
     if (ready) {
       // Tanpa catatan SO, tautan task, atau customer.
+    } else if (bare) {
+      orderId = dispatchId;
+      if (header.customerName !== '') {
+        const customer = await planCustomerByName(env, header.customerName, user);
+        bareCustomer = { id: customer.customer.id, name: customer.customer.name };
+        statements.push(...customer.statements);
+      }
     } else if (order) {
       orderId = order.id.trim();
       orderNumber = order.number;
@@ -560,7 +586,7 @@ async function submitOnce(
     statements.push(...reservation.statements);
     statements.push(
       env.DB.prepare(
-        "INSERT INTO warehouse_dispatches (id, number, order_id, client_id, item_id, dispatched_on, note, mode, kind, bu_id, status, header_hash, chunk_size, chunk_count, chunks_received, serial_total, created_count, created_at, created_by, completed_at, cancelled_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'clipboard', ?, ?, 'pending', ?, ?, ?, 0, ?, 0, ?, ?, '', '')",
+        "INSERT INTO warehouse_dispatches (id, number, order_id, client_id, item_id, dispatched_on, note, mode, kind, bu_id, customer_id, customer_name, status, header_hash, chunk_size, chunk_count, chunks_received, serial_total, created_count, created_at, created_by, completed_at, cancelled_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'clipboard', ?, ?, ?, ?, 'pending', ?, ?, ?, 0, ?, 0, ?, ?, '', '')",
       ).bind(
         dispatchId,
         reservation.number,
@@ -570,7 +596,9 @@ async function submitOnce(
         header.dispatchedOn,
         header.note,
         ready ? 'ready' : 'order',
-        ready ? buId : '',
+        ready || bare ? buId : '',
+        bareCustomer.id,
+        bareCustomer.name,
         hash,
         header.chunkSize,
         Math.ceil(header.total / header.chunkSize),
@@ -614,7 +642,8 @@ async function submitOnce(
                 itemId: header.itemId,
                 dispatchedOn: header.dispatchedOn,
                 serialTotal: header.total,
-                newOrder: order === null,
+                newOrder: !bare && order === null,
+                ...(bare ? { withoutOrder: true } : {}),
               },
             },
       ),
@@ -627,7 +656,11 @@ async function submitOnce(
       'INSERT INTO warehouse_dispatch_chunks (dispatch_id, chunk_index, received_at, skipped_json) VALUES (?, ?, ?, ?)',
     ).bind(dispatchId, input.chunkIndex, now, JSON.stringify(skipped)),
   );
-  const note = ready ? WAREHOUSE_READY_NOTE : warehouseRecordedNote(orderNumber);
+  const note = ready
+    ? WAREHOUSE_READY_NOTE
+    : bare
+      ? WAREHOUSE_SALE_NOTE
+      : warehouseRecordedNote(orderNumber);
   const stickerNames = new Map(stickers.map((sticker) => [sticker.id, sticker.name]));
   const picks = stickers.map((sticker) => ({ stickerId: sticker.id, qty: sticker.defaultQty }));
   let created = 0;
@@ -653,7 +686,9 @@ async function submitOnce(
           stickerNames,
           eventData: ready
             ? { source: WAREHOUSE_SOURCE, mode: 'ready', dispatchId }
-            : { source: WAREHOUSE_SOURCE, orderId, orderNumber },
+            : bare
+              ? { source: WAREHOUSE_SOURCE, mode: 'order', dispatchId }
+              : { source: WAREHOUSE_SOURCE, orderId, orderNumber },
           occurredOn: header.dispatchedOn,
           now,
         })),
@@ -719,8 +754,9 @@ async function submitOnce(
       dispatchId,
     }),
   );
-  // Tanggal terakhir SO naik hanya saat pengeluaran SELESAI (pending/dibatalkan tak dihitung). Ready tak punya SO.
-  if (!ready) {
+  // Tanggal terakhir SO naik hanya saat pengeluaran SELESAI (pending/dibatalkan tak dihitung). Ready dan Penjualan
+  // tanpa SO tak punya catatan SO.
+  if (!ready && !bare) {
     statements.push(
       env.DB.prepare(
         "UPDATE warehouse_orders SET last_dispatched_on = GREATEST(last_dispatched_on, ?) WHERE id = ? AND EXISTS (SELECT 1 FROM warehouse_dispatches WHERE id = ? AND status = 'done')",
@@ -731,5 +767,5 @@ async function submitOnce(
 
   const dispatch = await loadDispatchRow(env.DB, dispatchId);
   if (!dispatch) throw appError('INTERNAL', 'Pengeluaran gagal disimpan');
-  return outputOf(env, dispatch, ready ? undefined : orderNumber, created, skipped);
+  return outputOf(env, dispatch, ready || bare ? undefined : orderNumber, created, skipped);
 }

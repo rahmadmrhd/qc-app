@@ -1,4 +1,8 @@
-import type { MeDto, WarehouseDispatchDetailDto } from '@shared/contract';
+import type {
+  MeDto,
+  WarehouseDispatchDetailDto,
+  WarehouseDispatchSerialDto,
+} from '@shared/contract';
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, expect, test, vi } from 'vitest';
@@ -59,13 +63,14 @@ const detail = (over: Partial<WarehouseDispatchDetailDto> = {}): WarehouseDispat
 });
 
 const activityCalls: Record<string, unknown>[] = [];
+let serialItems: WarehouseDispatchSerialDto[] | null = null;
 
 function mockDispatch(dispatch: WarehouseDispatchDetailDto) {
   apiMock.mockImplementation((id: string, input: unknown) => {
     if (id === 'serialWarehouse.dispatchGet') return Promise.resolve(dispatch);
     if (id === 'serialWarehouse.dispatchSerials') {
       return Promise.resolve({
-        items: [
+        items: serialItems ?? [
           { seq: 1, serialId: 's1', serial: 'A1', createdNew: true, deleted: false },
           { seq: 2, serialId: 's2', serial: 'A2', createdNew: false, deleted: false },
           { seq: 3, serialId: 's3', serial: 'A3', createdNew: false, deleted: true },
@@ -88,6 +93,7 @@ beforeEach(() => {
   draftIdMock.mockReset();
   draftIdMock.mockReturnValue(null);
   activityCalls.length = 0;
+  serialItems = null;
   me = {
     email: 'wh@x.com',
     name: 'WH',
@@ -182,4 +188,107 @@ test('pengeluaran tak ditemukan: pesan dan tautan kembali', async () => {
     'href',
     '/serial/gudang/riwayat',
   );
+});
+
+test('Penjualan tanpa No SO: strip tanpa tautan, customer dari pengeluaran, log memakai id pengeluaran', async () => {
+  mockDispatch(detail({ orderId: '', orderNumber: '', handovers: [] }));
+  await renderInRouter(<DispatchDetailPage dispatchId="d1" />);
+  expect(await screen.findByText('A1')).toBeInTheDocument();
+  expect(screen.getByText('No SO')).toBeInTheDocument();
+  expect(screen.queryByRole('link', { name: 'SO-001' })).toBeNull();
+  expect(document.querySelector('a[href^="/serial/gudang/riwayat/so/"]')).toBeNull();
+  expect(screen.getByText('PT Maju')).toBeInTheDocument();
+  expect(
+    screen.getByText(/Belum ada task Serah Terima tertaut pada pengeluaran ini/),
+  ).toBeInTheDocument();
+  await waitFor(() => expect(activityCalls[0]).toMatchObject({ kind: 'warehouseOrder', id: 'd1' }));
+});
+
+test('Ready Stock: serial tampil per kardus dengan isi/kapasitas dan nada selang-seling', async () => {
+  serialItems = [
+    {
+      seq: 0,
+      serialId: 's1',
+      serial: 'R1',
+      createdNew: false,
+      deleted: false,
+      boxId: 'b1',
+      boxNumber: 7,
+      capacity: 2,
+      boxCount: 2,
+    },
+    {
+      seq: 1,
+      serialId: 's2',
+      serial: 'R2',
+      createdNew: false,
+      deleted: false,
+      boxId: 'b1',
+      boxNumber: 7,
+      capacity: 2,
+      boxCount: 2,
+    },
+    {
+      seq: 2,
+      serialId: 's3',
+      serial: 'R3',
+      createdNew: false,
+      deleted: false,
+      boxId: 'b2',
+      boxNumber: 8,
+      capacity: 2,
+      boxCount: 2,
+    },
+    {
+      seq: 3,
+      serialId: 's4',
+      serial: 'R4',
+      createdNew: false,
+      deleted: false,
+      boxId: 'b2',
+      boxNumber: 8,
+      capacity: 2,
+      boxCount: 2,
+    },
+    {
+      seq: 4,
+      serialId: 's5',
+      serial: 'R5',
+      createdNew: true,
+      deleted: false,
+      boxId: 'b3',
+      boxNumber: 9,
+      capacity: 2,
+      boxCount: 1,
+    },
+  ];
+  mockDispatch(
+    detail({
+      kind: 'ready',
+      orderId: '',
+      orderNumber: '',
+      customerId: '',
+      customerName: '',
+      handovers: [],
+    }),
+  );
+  await renderInRouter(<DispatchDetailPage dispatchId="d1" />);
+  expect(await screen.findByText('R1')).toBeInTheDocument();
+  const tone = (serial: string) =>
+    (screen.getByText(serial).closest('tr') as HTMLElement).getAttribute('data-box-tone');
+  expect(['R1', 'R2', 'R3', 'R4', 'R5'].map(tone)).toEqual(['a', 'a', 'b', 'b', 'a']);
+  const last = screen.getByText('R5').closest('tr') as HTMLElement;
+  expect(within(last).getByText('9')).toBeInTheDocument();
+  expect(within(last).getByText('1/2')).toBeInTheDocument();
+  expect(within(last).getByText('Dibuat saat keluar')).toBeInTheDocument();
+  expect(
+    screen.getByRole('table', { name: 'Serial Number pencatatan per kardus' }),
+  ).toBeInTheDocument();
+});
+
+test('Penjualan (tanpa info kardus) memakai tabel biasa tanpa kolom Kardus', async () => {
+  mockDispatch(detail());
+  await renderInRouter(<DispatchDetailPage dispatchId="d1" />);
+  await screen.findByText('A1');
+  expect(screen.queryByRole('columnheader', { name: 'Kardus' })).toBeNull();
 });

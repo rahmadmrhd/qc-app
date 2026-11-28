@@ -66,6 +66,9 @@ export function clipboardText(serials: readonly string[]): string {
 /** Pesan kejadian serial yang dibuat dari Keluar Gudang mode ready. */
 export const WAREHOUSE_READY_NOTE = 'Dicatat Gudang · Ready';
 
+/** Pesan kejadian serial baru dari Penjualan tanpa No SO. */
+export const WAREHOUSE_SALE_NOTE = 'Dicatat Gudang · Penjualan';
+
 /** Pesan kejadian serial yang dibuat dari Keluar Gudang. */
 export function warehouseRecordedNote(orderNumber: string): string {
   return `Dicatat Gudang · SO ${orderNumber}`;

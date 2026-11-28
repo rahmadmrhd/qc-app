@@ -177,7 +177,16 @@ function parseHeader(raw: unknown): WarehouseSubmitHeader {
   } else {
     if (typeof raw.orderNumber !== 'string') return invalid('orderNumber', 'No SO tidak valid');
     orderNumber = normalizeOrderNumber(raw.orderNumber);
-    const problem = orderNumberProblem(orderNumber);
+    // No SO kosong = Penjualan tanpa SO (tanpa catatan SO, tanpa `orderId`).
+    const problem = orderNumber === '' ? null : orderNumberProblem(orderNumber);
+    if (
+      orderNumber === '' &&
+      raw.orderId !== undefined &&
+      raw.orderId !== null &&
+      raw.orderId !== ''
+    ) {
+      return invalid('orderId', 'Tanpa No SO tidak memakai catatan SO');
+    }
     if (problem !== null) {
       return invalid(
         'orderNumber',
@@ -206,7 +215,9 @@ function parseHeader(raw: unknown): WarehouseSubmitHeader {
     if (typeof raw.customerName !== 'string') {
       return invalid('customerName', 'Customer tidak valid');
     }
-    const customerProblem = customerNameProblem(customerName);
+    // Tanpa No SO customer opsional (hanya penyaring task); dengan No SO tetap wajib.
+    const customerProblem =
+      orderNumber === '' && customerName === '' ? null : customerNameProblem(customerName);
     if (customerProblem !== null) return invalid('customerName', customerProblem);
   }
   if (!isText(raw.itemId, 100)) return invalid('itemId', 'Item tidak valid');

@@ -7,11 +7,16 @@ import type {
 } from '@shared/contract';
 import { WAREHOUSE_LIMITS } from '@shared/serial-warehouse';
 
-/** Kursor kandidat task: `<created_at>~<id>` (buram bagi klien). */
-export function parseCandidateCursor(cursor: string): { createdAt: string; id: string } | null {
-  const at = cursor.indexOf('~');
-  if (at <= 0 || at === cursor.length - 1) return null;
-  return { createdAt: cursor.slice(0, at), id: cursor.slice(at + 1) };
+/**
+ * Kursor kandidat task: `<peringkat status>~<created_at>~<id>` (buram bagi klien; peringkat 0 = Baru, 1 = Sedang
+ * dikerjakan, 2 = Selesai). Kursor format lama `<created_at>~<id>` ditolak (`VALIDATION`).
+ */
+export function parseCandidateCursor(
+  cursor: string,
+): { rank: number; createdAt: string; id: string } | null {
+  const match = /^([012])~([^~]+)~([^~]+)$/.exec(cursor);
+  if (!match?.[1] || !match[2] || !match[3]) return null;
+  return { rank: Number(match[1]), createdAt: match[2], id: match[3] };
 }
 
 /** Pemilih task: filter opsional, `limit` 1..`candidatesMax`, `cursor` buram. */
@@ -22,6 +27,7 @@ export function validateWarehouseHandoverCandidates(
   const customerId = reader.str('customerId', { max: 100 });
   const customerName = reader.str('customerName', { max: 255 });
   const query = reader.str('query', { max: 100 });
+  const locationId = reader.str('locationId', { max: 100 });
   const orderId = reader.str('orderId', { max: 100 });
   const itemId = reader.str('itemId', { max: 100 });
   const cursor = reader.str('cursor', { max: 200 });
@@ -53,6 +59,7 @@ export function validateWarehouseHandoverCandidates(
     ...(customerName !== '' ? { customerName } : {}),
     ...(query !== '' ? { query } : {}),
     ...(includeFinished === true ? { includeFinished: true } : {}),
+    ...(locationId !== '' ? { locationId } : {}),
     ...(orderId !== '' ? { orderId } : {}),
     ...(itemId !== '' ? { itemId } : {}),
     ...(cursor !== '' ? { cursor } : {}),

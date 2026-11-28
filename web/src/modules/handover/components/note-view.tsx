@@ -55,7 +55,7 @@ const NO_PENDING_COMMENTS: readonly PendingComment[] = [];
 const TOP_LEVEL_ITEM = /^- \[[ xX]\]/;
 
 /** Nomor baris sumber (1-based) → indeks butir checklist tingkat atas; sama dengan `extractChecklist`. */
-function checklistLines(note: string): Map<number, number> {
+export function checklistLines(note: string): Map<number, number> {
   const map = new Map<number, number>();
   let index = 0;
   note.split(/\r\n|\r|\n/).forEach((line, i) => {
