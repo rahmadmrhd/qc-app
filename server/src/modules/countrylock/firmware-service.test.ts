@@ -214,6 +214,10 @@ describe('saveClFirmware', () => {
       { ...base, code: '' },
       { ...base, code: 'x'.repeat(41) },
       { ...base, code: 'a\nb' },
+      { ...base, code: 'a\u202Eb' }, // pengatur arah teks (bidi)
+      { ...base, code: 'a\u2028b' }, // pemisah baris
+      { ...base, label: 'L\u0007' },
+      { ...base, label: 'L\u2066x' },
       { ...base, label: '' },
       { ...base, label: 'x'.repeat(121) },
       { ...base, brand: 'cambium' },

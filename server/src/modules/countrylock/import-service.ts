@@ -21,6 +21,7 @@ import {
   SETTINGS_PATH,
   validateClPath,
 } from '@shared/countrylock-bundle';
+import { hasControlChars } from '@shared/text';
 import { sha256Hex } from './hash';
 import {
   CL_CONFLICTS,
@@ -122,11 +123,16 @@ function readFirmwares(reader: Reader): ImportClInput['firmwares'] {
     const code = item.code;
     const label = item.label;
     const scriptPath = item.scriptPath;
-    if (typeof code !== 'string' || code === '' || code.length > FIRMWARE_CODE_MAX) {
+    if (
+      typeof code !== 'string' ||
+      code === '' ||
+      code.length > FIRMWARE_CODE_MAX ||
+      hasControlChars(code)
+    ) {
       reader.fail(`${where}.code`, 'Kode firmware tidak valid');
       return;
     }
-    if (typeof label !== 'string' || label.length > LABEL_MAX) {
+    if (typeof label !== 'string' || label.length > LABEL_MAX || hasControlChars(label)) {
       reader.fail(`${where}.label`, 'Label firmware tidak valid');
       return;
     }
@@ -278,10 +284,15 @@ export async function importCountryLock(
   const brandOfScript = new Map(
     input.scripts.map((script) => [pathKey(script.path), script.brand]),
   );
+  // Jalur berkas SEBENARNYA (huruf besar/kecil persis seperti berkas hidup atau berkas yang dibuat impor ini).
+  const realPathOf = new Map<string, string>();
+  for (const script of input.scripts) realPathOf.set(pathKey(script.path), script.path);
+  for (const head of heads) realPathOf.set(pathKey(head.file.path), head.file.path);
   const firmwares = new Map(
     (await firmwareRows(env.DB)).map((row) => [`${row.brand}:${row.code}`, row]),
   );
-  let linked = 0;
+  const linkStatementIndexes: number[] = [];
+  const plannedLinks = new Map<string, string>();
   for (const wanted of input.firmwares) {
     const label = `${wanted.brand}/${wanted.code}`;
     const row = firmwares.get(`${wanted.brand}:${wanted.code}`);
@@ -313,7 +324,21 @@ export async function importCountryLock(
       });
       continue;
     }
-    if (row.scriptPath === wanted.scriptPath) continue;
+    const realPath = realPathOf.get(pathKey(wanted.scriptPath)) ?? wanted.scriptPath;
+    const alreadyPlanned = plannedLinks.get(row.id);
+    if (alreadyPlanned !== undefined) {
+      // Entri ganda untuk firmware yang sama dalam satu impor: yang pertama menang.
+      if (pathKey(alreadyPlanned) !== pathKey(realPath)) {
+        issues.push({
+          severity: 'warning',
+          code: 'IMPORT_FIRMWARE_LINK_DIFFERS',
+          path: wanted.scriptPath,
+          message: `Firmware ${label} sudah menaut skrip lain; tidak diubah`,
+        });
+      }
+      continue;
+    }
+    if (row.scriptPath !== null && pathKey(row.scriptPath) === pathKey(realPath)) continue;
     if (row.scriptPath !== null) {
       issues.push({
         severity: 'warning',
@@ -323,18 +348,20 @@ export async function importCountryLock(
       });
       continue;
     }
+    plannedLinks.set(row.id, realPath);
+    linkStatementIndexes.push(statements.length);
     statements.push(
       env.DB.prepare(
         "UPDATE cl_firmwares SET script_path = ?, updated_at = ? WHERE id = ? AND removed_at = '' AND script_path IS NULL",
-      ).bind(wanted.scriptPath, now, row.id),
+      ).bind(realPath, now, row.id),
     );
-    linked += 1;
   }
 
+  const planned = linkStatementIndexes.length;
   const result: ImportClResult = {
     filesCreated: created.length,
     filesSkipped: skipped,
-    firmwaresLinked: linked,
+    firmwaresLinked: planned,
     issues,
   };
   if (statements.length === 0) return result;
@@ -350,11 +377,15 @@ export async function importCountryLock(
       after: {
         filesCreated: created.length,
         filesSkipped: skipped,
-        firmwaresLinked: linked,
+        firmwaresLinked: planned,
         paths: created,
       },
     }),
   );
-  await batchGuarded(env.DB, statements, CL_CONFLICTS, STALE_MESSAGE);
+  const results = await batchGuarded(env.DB, statements, CL_CONFLICTS, STALE_MESSAGE);
+  // Hitungan jujur: hanya UPDATE yang benar-benar mengubah baris (penjaga `script_path IS NULL` dapat mengalahkan kita).
+  result.firmwaresLinked = linkStatementIndexes.filter(
+    (index) => (results[index]?.meta.changes ?? 0) > 0,
+  ).length;
   return result;
 }

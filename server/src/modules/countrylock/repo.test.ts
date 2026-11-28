@@ -58,7 +58,7 @@ async function insertFirmware(code: string, removedAt = ''): Promise<void> {
 }
 
 describe('seedCountryLockFirmwares', () => {
-  // Daftar awal sama dengan `config.QC` lama (sumber: `shared/firmware.ts` yang sudah dihapus; kode dan label).
+  // Daftar awal sama dengan `config.QC` lama (daftar tetap lama yang sudah dihapus; kode dan label).
   const INITIAL = {
     mikrotik: [
       ['AC', 'AC'],

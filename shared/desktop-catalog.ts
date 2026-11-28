@@ -42,7 +42,7 @@ export interface CatalogItemDto {
   model: string;
   aliases: string[];
   /**
-   * Kode firmware Country Lock (`shared/firmware.ts`; '' = belum diisi). Server yang belum mengenal field ini tidak
+   * Kode firmware Country Lock (daftar dinamis `cl_firmwares`; '' = belum diisi). Server yang belum mengenal field ini tidak
    * mengirimnya: pembaca memperlakukan tak ada sebagai ''.
    */
   firmware?: string;

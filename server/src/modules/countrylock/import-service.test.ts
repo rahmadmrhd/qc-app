@@ -184,6 +184,56 @@ describe('importCountryLock', () => {
     expect(ac?.scriptPath).toBe('mikrotik/AC.rsc');
   });
 
+  test('jalur skrip firmware beda huruf besar/kecil tetap menaut; yang disimpan jalur berkas sebenarnya', async () => {
+    const result = await importCountryLock(
+      env,
+      payload({
+        firmwares: [{ brand: 'mikrotik', code: 'AC', label: 'AC', scriptPath: 'MIKROTIK/ac.RSC' }],
+      }),
+      ACTOR,
+    );
+    expect(result).toMatchObject({ firmwaresLinked: 1, issues: [] });
+    const ac = (await listClFirmwares(env)).find((firmware) => firmware.code === 'AC');
+    expect(ac?.scriptPath).toBe('mikrotik/AC.rsc');
+    // Impor ulang dengan huruf lain tidak dianggap "menaut skrip lain".
+    const again = await importCountryLock(
+      env,
+      payload({
+        firmwares: [{ brand: 'mikrotik', code: 'AC', label: 'AC', scriptPath: 'mikrotik/ac.rsc' }],
+      }),
+      ACTOR,
+    );
+    expect(again.firmwaresLinked).toBe(0);
+    expect(again.issues.map((issue) => issue.code)).not.toContain('IMPORT_FIRMWARE_LINK_DIFFERS');
+  });
+
+  test('entri firmware ganda dalam satu impor: dihitung sekali, yang pertama menang, yang berbeda dilaporkan', async () => {
+    const result = await importCountryLock(
+      env,
+      payload({
+        firmwares: [
+          { brand: 'mikrotik', code: 'AC', label: 'AC', scriptPath: 'mikrotik/AC.rsc' },
+          { brand: 'mikrotik', code: 'AC', label: 'AC', scriptPath: 'mikrotik/AC.rsc' },
+          { brand: 'mikrotik', code: 'AC', label: 'AC', scriptPath: 'mikrotik/AD.rsc' },
+        ],
+      }),
+      ACTOR,
+    );
+    expect(result.firmwaresLinked).toBe(1);
+    expect(result.issues.map((issue) => issue.code)).toEqual(['IMPORT_FIRMWARE_LINK_DIFFERS']);
+    const ac = (await listClFirmwares(env)).find((firmware) => firmware.code === 'AC');
+    expect(ac?.scriptPath).toBe('mikrotik/AC.rsc');
+  });
+
+  test('kode atau label firmware dengan karakter kontrol atau bidi = VALIDATION', () => {
+    for (const bad of [
+      { brand: 'mikrotik', code: 'A\nC', label: 'AC', scriptPath: null },
+      { brand: 'mikrotik', code: 'AC', label: 'A\u202EC', scriptPath: null },
+    ]) {
+      expect(() => payload({ firmwares: [bad] })).toThrow();
+    }
+  });
+
   test('path jahat pada entri ke-2: VALIDATION dan tak ada berkas tersimpan', async () => {
     const error = await errorOf(
       Promise.resolve().then(() =>

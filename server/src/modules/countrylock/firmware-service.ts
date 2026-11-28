@@ -15,6 +15,7 @@ import type {
   SaveClFirmwareInput,
 } from '@shared/contract';
 import { CL_PATH_MAX, FIRMWARE_CODE_MAX } from '@shared/countrylock-bundle';
+import { hasControlChars } from '@shared/text';
 import {
   CL_CONFLICTS,
   type ClFirmwareRecord,
@@ -34,14 +35,6 @@ const NOT_FOUND_MESSAGE = 'Firmware tidak ditemukan';
 const IN_USE_MESSAGE = 'Firmware masih dipakai item';
 
 // --- Validasi ----------------------------------------------------------------------------------------------------
-
-function hasControlChars(value: string): boolean {
-  for (let i = 0; i < value.length; i++) {
-    const code = value.charCodeAt(i);
-    if (code < 0x20 || code === 0x7f) return true;
-  }
-  return false;
-}
 
 export function validateListFirmwareOptions(raw: unknown): ListClFirmwareOptionsInput {
   const reader = readObject(raw);
