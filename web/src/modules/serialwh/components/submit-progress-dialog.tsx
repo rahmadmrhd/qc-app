@@ -54,10 +54,10 @@ export function SubmitProgressDialog({
         <AlertDialogHeader>
           <AlertDialogTitle>
             {state?.phase === 'sending'
-              ? 'Menyimpan pengeluaran…'
+              ? 'Menyimpan catatan…'
               : state?.phase === 'paused'
                 ? 'Koneksi terputus'
-                : 'Pengeluaran belum tersimpan semua'}
+                : 'Catatan belum tersimpan semua'}
           </AlertDialogTitle>
           <AlertDialogDescription>
             {state?.phase === 'sending'

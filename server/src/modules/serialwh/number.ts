@@ -41,7 +41,7 @@ export async function reserveDispatchNumber(
     const max = await env.DB.prepare(
       'SELECT MAX(CAST(SUBSTR(number, ?) AS UNSIGNED)) AS m FROM warehouse_dispatches WHERE number >= ? AND number < ?',
     )
-      .bind(start.length + 1, start, `${prefix}/${buCode}/${period}.`)
+      .bind(start.length + 1, start, `${start.slice(0, -1)}.`)
       .first<{ m: number | string | null }>();
     base = max?.m === null || max?.m === undefined ? 0 : Number(max.m);
     expected = -1;

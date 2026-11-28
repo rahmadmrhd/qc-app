@@ -210,14 +210,25 @@ const READY_ACTION_LABELS: Record<string, string> = {
   'serialwh.dispatch_cancel': 'Ready Stock dibatalkan otomatis',
 };
 
+/** Label untuk catatan Gudang (mode note) pada aksi yang kuncinya dipakai bersama mode SO. */
+const NOTE_ACTION_LABELS: Record<string, string> = {
+  'serialwh.dispatch_create': 'Catatan Gudang dicatat',
+  'serialwh.dispatch_done': 'Catatan Gudang selesai',
+  'serialwh.dispatch_cancel': 'Catatan Gudang dibatalkan otomatis',
+};
+
 /**
  * Label aksi audit. `context` (jenis aktivitas `warehouseReady` atau target jejak berawalan "Ready ") memilih label
  * mode ready untuk aksi yang kuncinya dipakai bersama mode SO.
  */
 export function auditActionLabel(
   action: string,
-  context?: { kind?: string; target?: string },
+  context?: { kind?: string; target?: string; note?: boolean },
 ): string {
+  if (context?.note === true || context?.target?.startsWith('Catatan ') === true) {
+    const label = NOTE_ACTION_LABELS[action];
+    if (label) return label;
+  }
   const ready =
     context?.kind === 'warehouseReady' || context?.target?.startsWith('Ready ') === true;
   if (ready) {

@@ -1,11 +1,12 @@
 import type { WarehouseDispatchDto, WarehouseDispatchSerialDto } from '@shared/contract';
+import { clipboardText, readyStockClipboard } from '@shared/serial-warehouse';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { ChevronDown, ChevronRight } from 'lucide-react';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { ActionButton } from '@/components/action-button';
-import { type DataColumn, DataTable } from '@/components/data-table';
+import { BulkBar, type DataColumn, DataTable, useRowSelection } from '@/components/data-table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useStackNavigation } from '@/hooks/use-stack-navigation';
@@ -41,41 +42,72 @@ const SERIAL_COLUMNS: DataColumn<WarehouseDispatchSerialDto>[] = [
   },
 ];
 
-/** Tabel Serial Number satu pengeluaran (berkursor `seq`); dimuat hanya setelah dibuka. */
-export function DispatchSerials({ dispatchId }: { dispatchId: string }) {
-  const list = useInfiniteQuery(warehouseDispatchSerialsQueryOptions(dispatchId));
-  const rows = list.data?.pages.flatMap((page) => page.items) ?? [];
-  // Pencatatan Ready: tabel per kardus (selang-seling warna per kardus).
+/** Teks salinan serial terpilih: Ready berkardus = "Kardus<TAB>Serial", Penjualan = satu SN per baris. */
+export function selectedSerialsText(rows: readonly WarehouseDispatchSerialDto[]): string {
   if (hasBoxes(rows)) {
-    return (
-      <DispatchBoxTable
-        rows={rows}
-        isLoading={list.isPending}
-        isError={list.isLoadingError}
-        onRetry={() => void list.refetch()}
-        hasMore={list.hasNextPage}
-        loadingMore={list.isFetchingNextPage}
-        loadMoreError={list.isFetchNextPageError}
-        onLoadMore={() => void list.fetchNextPage()}
-      />
+    return readyStockClipboard(
+      rows.map((row) => ({ box: row.boxNumber ?? 0, serial: row.serial })),
     );
   }
+  return clipboardText(rows.map((row) => row.serial));
+}
+
+/** Tabel Serial Number satu pengeluaran (berkursor `seq`); dimuat hanya setelah dibuka. Baris dapat dipilih lalu disalin. */
+export function DispatchSerials({ dispatchId }: { dispatchId: string }) {
+  const list = useInfiniteQuery(warehouseDispatchSerialsQueryOptions(dispatchId));
+  const rows = useMemo(() => list.data?.pages.flatMap((page) => page.items) ?? [], [list.data]);
+  const selection = useRowSelection(dispatchId);
+  const [fallback, setFallback] = useState<{ text: string; count: number } | null>(null);
+
+  // Gestur klik sinkron: teks sudah ada di tangan, jadi tidak ada `await` sebelum penulisan clipboard.
+  async function copySelected() {
+    const chosen = rows.filter((row) => selection.selected.has(`${row.seq}`));
+    if (chosen.length === 0) return;
+    const text = selectedSerialsText(chosen);
+    const ok = await copyLines(text);
+    if (ok) toast.success(`${chosen.length} Serial Number disalin`);
+    else setFallback({ text, count: chosen.length });
+  }
+
+  const common = {
+    isLoading: list.isPending,
+    isError: list.isLoadingError,
+    onRetry: () => void list.refetch(),
+    hasMore: list.hasNextPage,
+    loadingMore: list.isFetchingNextPage,
+    loadMoreError: list.isFetchNextPageError,
+    onLoadMore: () => void list.fetchNextPage(),
+    selection,
+  };
   return (
-    <DataTable
-      rows={rows}
-      rowKey={(row) => `${row.seq}`}
-      columns={SERIAL_COLUMNS}
-      label="Serial Number pengeluaran"
-      fit="content"
-      empty="Belum ada Serial Number."
-      isLoading={list.isPending}
-      isError={list.isLoadingError}
-      onRetry={() => void list.refetch()}
-      hasMore={list.hasNextPage}
-      loadingMore={list.isFetchingNextPage}
-      loadMoreError={list.isFetchNextPageError}
-      onLoadMore={() => void list.fetchNextPage()}
-    />
+    <div className="space-y-2">
+      <BulkBar count={selection.count} onClear={selection.clear}>
+        <ActionButton action="copy" label="Salin terpilih" onClick={() => void copySelected()} />
+      </BulkBar>
+      {/* Pencatatan Ready: tabel per kardus (selang-seling warna per kardus). */}
+      {hasBoxes(rows) ? (
+        <DispatchBoxTable rows={rows} {...common} />
+      ) : (
+        <DataTable
+          rows={rows}
+          rowKey={(row) => `${row.seq}`}
+          columns={SERIAL_COLUMNS}
+          label="Serial Number pengeluaran"
+          selectLabel={(row) => row.serial}
+          fit="content"
+          empty="Belum ada Serial Number."
+          {...common}
+        />
+      )}
+      <ClipboardResultDialog
+        open={fallback !== null}
+        onOpenChange={(next) => {
+          if (!next) setFallback(null);
+        }}
+        text={fallback?.text ?? ''}
+        count={fallback?.count ?? 0}
+      />
+    </div>
   );
 }
 

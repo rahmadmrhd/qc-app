@@ -26,6 +26,7 @@ describe('nomor riwayat Gudang', () => {
   test('format murni: awalan OUT/RS, kode BU, YYMM, urutan 4 digit', () => {
     expect(dispatchNumber('order', 'A', '2611', 7)).toBe('OUT/A/2611-0007');
     expect(dispatchNumber('ready', 'UM-1', '2611', 12345)).toBe('RS/UM-1/2611-12345');
+    expect(dispatchNumber('note', 'A', '2611', 1)).toBe('WH/A/2611-0001');
   });
 
   test('urutan per awalan, BU, dan bulan WIB; potongan lanjutan tidak menambah nomor', async () => {

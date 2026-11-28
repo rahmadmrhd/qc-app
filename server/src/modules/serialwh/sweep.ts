@@ -3,6 +3,7 @@ import type { Env } from '@server/core/env';
 import { nowIso, nowOf } from '@server/core/env';
 import { WAREHOUSE_LIMITS } from '@shared/serial-warehouse';
 import {
+  noteAuditTarget,
   orderAuditTarget,
   readyAuditTarget,
   saleAuditTarget,
@@ -10,7 +11,7 @@ import {
   warehouseAuditStmt,
 } from './audit';
 import { cancelReadyStatements } from './boxes';
-import { isBareSale } from './repo';
+import { isBareSale, isNoteDispatch } from './repo';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 /** Pengeluaran dibatalkan per tik penjadwal (sisanya menyusul pada tik berikutnya). */
@@ -45,9 +46,11 @@ export async function sweepStaleDispatches(env: Env): Promise<number> {
     const target =
       row.kind.trim() === 'ready'
         ? readyAuditTarget(row.id.trim(), row.dispatched_on)
-        : isBareSale(row)
-          ? saleAuditTarget(row.id.trim(), row.dispatched_on)
-          : orderAuditTarget(row.order_id.trim(), row.number ?? '');
+        : isNoteDispatch(row)
+          ? noteAuditTarget(row.id.trim(), row.dispatched_on)
+          : isBareSale(row)
+            ? saleAuditTarget(row.id.trim(), row.dispatched_on)
+            : orderAuditTarget(row.order_id.trim(), row.number ?? '');
     try {
       await env.DB.batch([
         env.DB.prepare(

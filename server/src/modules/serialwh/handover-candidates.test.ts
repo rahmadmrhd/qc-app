@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, setDefaultTimeout, test } from 'bun:test'
 import { ENV } from '@server-test/handover-env';
 import { seedItem } from '@server-test/item-fixtures';
 import { restCall } from '@server-test/rest-call';
+import { restClient } from '@server-test/rest-client';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import { linkOrder, seedOrder, seedTask, seedWarehouseWorld, WH_USERS } from './handover-test-env';
 
@@ -122,6 +123,47 @@ describe('serialWarehouse.handoverCandidates', () => {
     expect(none.data.items[0].mismatchLines).toEqual([]);
   });
 
+  test('dengan itemId, task yang menyebut Item diprioritaskan di atas (urutan biasa dipertahankan), kursor berupa posisi', async () => {
+    await seedTask(env, {
+      id: 't-x1',
+      createdAt: '2026-11-05T00:00:00.000Z',
+      note: '- [ ] Tenda CX500 1 unit',
+    });
+    await seedTask(env, {
+      id: 't-a-lama',
+      createdAt: '2026-11-01T00:00:00.000Z',
+      boardStatus: 'done',
+      note: '- [ ] Tenda AX300 2 unit',
+    });
+    await seedTask(env, {
+      id: 't-x2',
+      createdAt: '2026-11-04T00:00:00.000Z',
+      note: '- [ ] Tenda CX500 3 unit',
+    });
+    await seedTask(env, {
+      id: 't-a-baru',
+      createdAt: '2026-11-02T00:00:00.000Z',
+      note: '- [ ] Tenda AX300 1 unit',
+    });
+    const res = await call(WH_USERS.wh, { itemId: 'i-ax300' });
+    expect(ids(res.data.items)).toEqual(['t-a-baru', 't-a-lama', 't-x1', 't-x2']);
+    const first = await call(WH_USERS.wh, { itemId: 'i-ax300', limit: 3 });
+    expect(ids(first.data.items)).toEqual(['t-a-baru', 't-a-lama', 't-x1']);
+    expect(first.data.nextCursor).toBe('o~3');
+    const next = await call(WH_USERS.wh, {
+      itemId: 'i-ax300',
+      limit: 3,
+      cursor: first.data.nextCursor,
+    });
+    expect(ids(next.data.items)).toEqual(['t-x2']);
+    expect(next.data.nextCursor).toBeNull();
+    const bad = await call(WH_USERS.wh, {
+      itemId: 'i-ax300',
+      cursor: '2026-11-01T00:00:00.000Z~t-1',
+    });
+    expect(bad.ok).toBe(false);
+  });
+
   test('linked di depan dan tidak diulang di items', async () => {
     await seedTask(env, { id: 't-1', createdAt: '2026-11-01T00:00:00.000Z' });
     await seedTask(env, { id: 't-2', createdAt: '2026-11-02T00:00:00.000Z', boardStatus: 'done' });
@@ -141,7 +183,7 @@ describe('serialWarehouse.handoverCandidates', () => {
     expect(res.error.code).toBe('NOT_FOUND');
   });
 
-  test('mentionsItem hanya penanda, bukan peringkat; baris Item lain masuk mismatchLines', async () => {
+  test('mentionsItem menaikkan task ke atas (bukan penyaring); baris Item lain masuk mismatchLines', async () => {
     await seedTask(env, {
       id: 't-old',
       note: 'beli Tenda AX300 5 unit',
@@ -153,10 +195,10 @@ describe('serialWarehouse.handoverCandidates', () => {
       createdAt: '2026-11-02T00:00:00.000Z',
     });
     const res = await call(WH_USERS.wh, { itemId: 'i-ax300' });
-    expect(ids(res.data.items)).toEqual(['t-new', 't-old']);
-    expect(res.data.items.map((row: Json) => row.mentionsItem)).toEqual([false, true]);
-    expect(res.data.items[0].mismatchLines).toEqual(['Tenda CX500 3 unit']);
-    expect(res.data.items[1].mismatchLines).toEqual([]);
+    expect(ids(res.data.items)).toEqual(['t-old', 't-new']);
+    expect(res.data.items.map((row: Json) => row.mentionsItem)).toEqual([true, false]);
+    expect(res.data.items[0].mismatchLines).toEqual([]);
+    expect(res.data.items[1].mismatchLines).toEqual(['Tenda CX500 3 unit']);
     const none = await call(WH_USERS.wh, {});
     expect(none.data.items.every((row: Json) => row.mentionsItem === false)).toBe(true);
   });
@@ -190,5 +232,20 @@ describe('serialWarehouse.handoverCandidates', () => {
   test('tanpa hak serialwh edit = 403', async () => {
     const res = await call(WH_USERS.viewer, {});
     expect(res.ok).toBe(false);
+  });
+});
+
+describe('GET /serial-warehouse/handover-candidates lewat HTTP (query string sungguhan)', () => {
+  test('locationId, itemId, customerName, dan limit diterima sebagai parameter query', async () => {
+    await seedTask(env, { id: 't-a', locationId: ENV.locA });
+    await seedTask(env, { id: 't-b', locationId: ENV.locB });
+    const client = restClient(env);
+    const res = await client.get(
+      `/serial-warehouse/handover-candidates?locationId=${ENV.locA}&itemId=i-cx500&limit=20`,
+      { email: WH_USERS.qc },
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { items: { id: string }[] };
+    expect(body.items.map((row) => row.id)).toEqual(['t-a']);
   });
 });

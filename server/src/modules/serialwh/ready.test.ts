@@ -194,7 +194,10 @@ describe('Catat ready: simpan', () => {
       orderNumber: 'SO-LATER',
       existing: [{ id: 'x1', serial: 'LATER-1' }],
     });
-    expect(again.data?.skipped).toEqual([{ serial: 'LATER-1', reason: 'Sudah ada di SO ini' }]);
+    expect(again.ok).toBe(false);
+    expect(again.error?.message).toBe(
+      'Tidak ada serial yang dapat dicatat. Dilewati: Sudah ada di SO ini (1)',
+    );
   });
 
   test('lanjutan ready tetap jalan walau BU dihapus di tengah kiriman; pencatatan baru ke BU terhapus ditolak', async () => {
@@ -311,7 +314,8 @@ describe('Catat ready: simpan', () => {
     });
     const row = { kind: 'existing', serialId: 'sw1', serial: 'SWEEP-SO' };
     const blocked = await submitReady(E, [row]);
-    expect(blocked.data.skipped).toHaveLength(1);
+    expect(blocked.ok).toBe(false);
+    expect(blocked.error.fields.rows).toContain('Sudah tercatat WH (1)');
     env.clock.set(Date.parse('2026-11-20T03:00:00.000Z'));
     expect(await sweepStaleDispatches(env)).toBe(1);
     const freed = await submitReady(E, [row]);
@@ -326,9 +330,12 @@ describe('Catat ready: simpan', () => {
       { kind: 'existing', serialId: 'b1', serial: 'BAD-R1' },
       { kind: 'existing', serialId: 'b2', serial: 'BAD-R2' },
     ]);
-    expect(out.ok).toBe(true);
-    expect(out.data.serials).toEqual([]);
-    expect(out.data.skipped).toHaveLength(2);
+    expect(out.ok).toBe(false);
+    expect(out.error.code).toBe('VALIDATION');
+    expect(out.error.fields.rows).toBe(
+      'Tidak ada serial yang dapat dicatat. Dilewati: Bukan berstatus Lolos di posisi QC (1); Tipe berbeda (1)',
+    );
+    expect(await count('SELECT COUNT(*) AS n FROM warehouse_dispatches')).toBe(0);
   });
 
   test('idempoten per clientId: kirim ulang tak menggandakan; mode atau isi beda ditolak', async () => {

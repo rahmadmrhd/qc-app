@@ -60,8 +60,8 @@ export function ClipboardResultDialog({
           <div className="space-y-1.5" data-testid="skipped-list">
             <p className="text-sm font-medium text-warning-text">Dilewati ({skipped.length})</p>
             <p className="text-xs text-muted-foreground">
-              Serial ini tidak masuk pengeluaran dan masih ada di pilihan. Perbaiki atau keluarkan,
-              lalu kirim lagi (boleh ke SO yang sama).
+              Serial ini tidak masuk catatan dan masih ada di pilihan. Perbaiki atau keluarkan, lalu
+              kirim lagi (boleh ke SO yang sama).
             </p>
             <ul className="max-h-40 space-y-0.5 overflow-auto text-sm">
               {skipped.map((entry) => (

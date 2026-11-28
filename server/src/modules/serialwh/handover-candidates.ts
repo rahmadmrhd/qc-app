@@ -36,6 +36,12 @@ interface CandidateRow {
 const RANK = { new: 0, in_progress: 1, done: 2 } as const;
 /** Batas baris tidak cocok yang dikirim per task. */
 const MISMATCH_MAX = 10;
+/**
+ * Dengan `itemId`, task yang menyebut Item itu diprioritaskan di paling atas. Penyebutan baru diketahui setelah catatan
+ * diurai, jadi satu putaran membaca sampai sebanyak ini task (urutan biasa), mengurutkannya (penyebut dulu, urutan biasa
+ * dipertahankan), lalu membagi halaman dengan kursor posisi `o~<n>`. Task di luar batas ini tidak ikut diprioritaskan.
+ */
+const MENTION_SCAN_MAX = 400;
 
 const COLUMNS = 'h.id, h.number, h.created_at, h.note, h.checks, h.board_status';
 
@@ -44,7 +50,8 @@ const COLUMNS = 'h.id, h.number, h.created_at, h.note, h.checks, h.board_status'
  * task di lokasi itu tampil; customer hanya menyaring. Status yang tampil: Baru, Sedang dikerjakan, Selesai (Dibatalkan dan
  * terhapus tidak). Urutan: peringkat status, lalu `created_at` terbaru, lalu id. `includeFinished` diterima demi klien lama
  * tetapi tidak berpengaruh. `linked` = task tertaut ke `orderId` yang terbaca (selalu di depan, dikeluarkan dari `items`);
- * `mentionsItem`, `matchedLines`, dan `mismatchLines` hanya penanda, bukan peringkat atau penyaring.
+ * `mentionsItem`, `matchedLines`, dan `mismatchLines` hanya penanda, bukan penyaring; dengan `itemId`, task yang menyebut Item itu diprioritaskan di paling atas (lihat
+ * `MENTION_SCAN_MAX`, kursornya berbentuk posisi), selain itu urutan di atas tidak berubah.
  */
 export async function handoverCandidates(
   env: Env,
@@ -138,8 +145,15 @@ export async function handoverCandidates(
       ' AND h.id NOT IN (SELECT w.handover_id FROM warehouse_order_handovers w WHERE w.order_id = ?)';
     sharedBinds.push(input.orderId);
   }
+  const byMention = itemId !== undefined;
+  let offset = 0;
   let cursor: { rank: number; createdAt: string; id: string } | null = null;
-  if (input.cursor !== undefined) {
+  if (input.cursor !== undefined && byMention) {
+    const match = /^o~(\d{1,4})$/.exec(input.cursor);
+    if (!match)
+      throw appError('VALIDATION', 'Kursor tidak valid', { cursor: 'Kursor tidak valid' });
+    offset = Number(match[1]);
+  } else if (input.cursor !== undefined) {
     cursor = parseCandidateCursor(input.cursor);
     if (!cursor) {
       throw appError('VALIDATION', 'Kursor tidak valid', { cursor: 'Kursor tidak valid' });
@@ -150,6 +164,7 @@ export async function handoverCandidates(
   // Hasil = UNION ALL lalu urut (peringkat status, dibuat terbaru, id): sama persis dengan satu kueri berurutan.
   const branches: string[] = [];
   const binds: unknown[] = [];
+  const scanLimit = byMention ? MENTION_SCAN_MAX : limit + 1;
   for (const location of locations) {
     for (const status of ['new', 'in_progress', 'done'] as const) {
       const rank = RANK[status];
@@ -163,15 +178,25 @@ export async function handoverCandidates(
       branches.push(
         `(SELECT ${COLUMNS} FROM handovers h WHERE h.location_id = ? AND h.board_status = '${status}' AND ${liveWhere('h')}${extra}${cursorSql} ORDER BY h.created_at DESC, h.id DESC LIMIT ?)`,
       );
-      binds.push(location, ...sharedBinds, ...cursorBinds, limit + 1);
+      binds.push(location, ...sharedBinds, ...cursorBinds, scanLimit);
     }
   }
   if (branches.length === 0) return { linked, items: [], nextCursor: null };
   const rows = await env.DB.prepare(
     `SELECT * FROM (${branches.join(' UNION ALL ')}) c ORDER BY CASE c.board_status WHEN 'new' THEN 0 WHEN 'in_progress' THEN 1 ELSE 2 END, c.created_at DESC, c.id DESC LIMIT ?`,
   )
-    .bind(...binds, limit + 1)
+    .bind(...binds, scanLimit)
     .all<CandidateRow>();
+  if (byMention) {
+    const all = rows.results.map((row) => toDto(row, false));
+    const ordered = [
+      ...all.filter((dto) => dto.mentionsItem),
+      ...all.filter((dto) => !dto.mentionsItem),
+    ];
+    const items = ordered.slice(offset, offset + limit);
+    const nextCursor = ordered.length > offset + limit ? `o~${offset + limit}` : null;
+    return { linked, items, nextCursor };
+  }
   const page = rows.results.slice(0, limit);
   const last = page[page.length - 1];
   const rankOf = (row: CandidateRow): number =>

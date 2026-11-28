@@ -34,6 +34,7 @@ const KIND_OPTIONS = [
   { value: 'all', label: 'Semua jenis' },
   { value: 'order', label: WAREHOUSE_KIND_LABEL.order },
   { value: 'ready', label: WAREHOUSE_KIND_LABEL.ready },
+  { value: 'note', label: WAREHOUSE_KIND_LABEL.note },
 ];
 
 interface DateRange {
@@ -163,7 +164,9 @@ export function OrdersFilters({ search, onChange, rows }: OrdersFiltersProps) {
           options={KIND_OPTIONS}
           value={search.kind ?? 'all'}
           onValueChange={(next) =>
-            onChange({ kind: next === 'order' || next === 'ready' ? next : undefined })
+            onChange({
+              kind: next === 'order' || next === 'ready' || next === 'note' ? next : undefined,
+            })
           }
         />
       </FilterChip>

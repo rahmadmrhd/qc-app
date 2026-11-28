@@ -53,6 +53,11 @@ const CUSTOMER_NAME_EXPR = 'IF(o.id IS NULL, d.customer_name, o.customer_name)';
 
 const SELECT = `SELECT d.id, d.number, d.kind, d.order_id, o.number AS order_number, o.id AS so_id, bu.id AS bu_id, bu.code AS bu_code, bu.name AS bu_name, ${CUSTOMER_ID_EXPR} AS customer_id, ${CUSTOMER_NAME_EXPR} AS customer_name, d.item_id, b.name AS brand_name, i.model, (SELECT COUNT(*) FROM warehouse_dispatch_serials s WHERE s.dispatch_id = d.id) AS serial_count, d.dispatched_on, d.status, d.note, d.created_by, d.created_at, d.completed_at, d.cancelled_at, d.chunk_count, d.chunks_received, d.created_count FROM warehouse_dispatches d LEFT JOIN warehouse_orders o ON o.id = d.order_id JOIN business_units bu ON bu.id = ${BU_EXPR} LEFT JOIN items i ON i.id = d.item_id LEFT JOIN brands b ON b.id = i.brand_id`;
 
+function dispatchKindOf(raw: string): WarehouseDispatchListItemDto['kind'] {
+  const kind = raw.trim();
+  return kind === 'ready' || kind === 'note' ? kind : 'order';
+}
+
 function asStatus(raw: string): WarehouseDispatchStatus {
   const status = raw.trim();
   return status === 'done' || status === 'cancelled' ? status : 'pending';
@@ -65,7 +70,7 @@ function toItem(
   return {
     id: row.id.trim(),
     number: row.number,
-    kind: row.kind.trim() === 'ready' ? 'ready' : 'order',
+    kind: dispatchKindOf(row.kind),
     orderId: (row.so_id ?? '').trim(),
     orderNumber: row.order_number ?? '',
     buId: row.bu_id.trim(),

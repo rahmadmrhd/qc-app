@@ -379,6 +379,7 @@ describe('skema baseline', () => {
       { name: '0044_wh_penjualan_tanpa_so.sql' },
       { name: '0045_indeks_kandidat_task_gudang.sql' },
       { name: '0046_country_lock_bundel.sql' },
+      { name: '0047_wh_catatan.sql' },
     ]);
   });
 

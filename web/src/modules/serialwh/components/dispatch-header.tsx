@@ -93,8 +93,7 @@ export function DispatchHeader({
         <p className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
           <Lock aria-hidden className="size-3" />
           <span>
-            Terkunci karena {selectedCount} serial sudah dipilih. Selesaikan pengeluaran Tipe ini,
-            atau
+            Terkunci karena {selectedCount} serial sudah dipilih. Selesaikan catatan Tipe ini, atau
           </span>
           {frozen ? null : (
             <Button

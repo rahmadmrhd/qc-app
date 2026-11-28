@@ -54,7 +54,7 @@ export interface DispatchRow {
   dispatched_on: string;
   note: string;
   mode: string;
-  /** `order` atau `ready` (migrasi 0041). */
+  /** `order`, `ready` (migrasi 0041), atau `note` (catatan saja, 2026-11-28). */
   kind: string;
   /** BU pencatatan; terisi pada `ready` dan Penjualan tanpa SO (pada Penjualan ber-SO BU ada di catatan SO). */
   bu_id: string;
@@ -72,10 +72,13 @@ export interface DispatchRow {
   created_by: string;
   completed_at: string;
   cancelled_at: string;
+  /** Nomor kardus awal dan isi per kardus pengeluaran `note` (migrasi 0046); 0 pada jenis lain. */
+  box_start: number | string;
+  box_size: number | string;
 }
 
 const DISPATCH_COLUMNS =
-  'd.id, d.number, d.order_id, d.client_id, d.item_id, d.dispatched_on, d.note, d.mode, d.kind, d.bu_id, d.customer_id, d.customer_name, d.status, d.header_hash, d.chunk_size, d.chunk_count, d.chunks_received, d.serial_total, d.created_count, d.created_at, d.created_by, d.completed_at, d.cancelled_at';
+  'd.id, d.number, d.order_id, d.client_id, d.item_id, d.dispatched_on, d.note, d.mode, d.kind, d.bu_id, d.customer_id, d.customer_name, d.status, d.header_hash, d.chunk_size, d.chunk_count, d.chunks_received, d.serial_total, d.created_count, d.created_at, d.created_by, d.completed_at, d.cancelled_at, d.box_start, d.box_size';
 
 /**
  * Penjualan TANPA No SO: `kind` order dan `order_id` = id pengeluaran itu sendiri (tak ada baris `warehouse_orders`). Id
@@ -83,6 +86,12 @@ const DISPATCH_COLUMNS =
  */
 export const isBareSale = (row: { id: string; kind: string; order_id: string }): boolean =>
   row.kind.trim() === 'order' && row.order_id.trim() === row.id.trim();
+
+/**
+ * Pencatatan `note`: tanpa catatan SO (`order_id` = id pengeluaran itu sendiri, seperti Penjualan tanpa SO, sehingga kunci
+ * unik `(order_id, serial_id)` hanya melarang serial ganda DI DALAM satu catatan), BU di baris pengeluaran.
+ */
+export const isNoteDispatch = (row: { kind: string }): boolean => row.kind.trim() === 'note';
 
 export const loadDispatchRowByClientId = (
   db: Preparer,

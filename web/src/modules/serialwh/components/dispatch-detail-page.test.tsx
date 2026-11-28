@@ -292,3 +292,72 @@ test('Penjualan (tanpa info kardus) memakai tabel biasa tanpa kolom Kardus', asy
   await screen.findByText('A1');
   expect(screen.queryByRole('columnheader', { name: 'Kardus' })).toBeNull();
 });
+
+test('Penjualan: pilih baris lalu "Salin terpilih" menyalin satu SN per baris; tanpa pilihan tanpa bar aksi', async () => {
+  copyMock.mockResolvedValue(true);
+  mockDispatch(detail());
+  await renderInRouter(<DispatchDetailPage dispatchId="d1" />);
+  await screen.findByText('A1');
+  expect(screen.queryByRole('button', { name: 'Salin terpilih' })).toBeNull();
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih A1' }));
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih A3' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Salin terpilih' }));
+  await waitFor(() => expect(copyMock).toHaveBeenCalledTimes(1));
+  expect(copyMock.mock.calls[0]?.[0]).toBe('A1\nA3');
+});
+
+test('Ready: "Salin terpilih" menyalin Kardus<TAB>Serial dengan apostrof untuk sel berawalan rumus', async () => {
+  copyMock.mockResolvedValue(true);
+  serialItems = [
+    {
+      seq: 0,
+      serialId: 's1',
+      serial: 'R1',
+      createdNew: false,
+      deleted: false,
+      boxId: 'b1',
+      boxNumber: 7,
+      capacity: 2,
+      boxCount: 2,
+    },
+    {
+      seq: 1,
+      serialId: 's2',
+      serial: '=R2',
+      createdNew: false,
+      deleted: false,
+      boxId: 'b1',
+      boxNumber: 7,
+      capacity: 2,
+      boxCount: 2,
+    },
+    {
+      seq: 2,
+      serialId: 's3',
+      serial: 'R3',
+      createdNew: false,
+      deleted: false,
+      boxId: 'b2',
+      boxNumber: 8,
+      capacity: 2,
+      boxCount: 1,
+    },
+  ];
+  mockDispatch(
+    detail({
+      kind: 'ready',
+      orderId: '',
+      orderNumber: '',
+      customerId: '',
+      customerName: '',
+      handovers: [],
+    }),
+  );
+  await renderInRouter(<DispatchDetailPage dispatchId="d1" />);
+  await screen.findByText('R1');
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih =R2' }));
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih R3' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Salin terpilih' }));
+  await waitFor(() => expect(copyMock).toHaveBeenCalledTimes(1));
+  expect(copyMock.mock.calls[0]?.[0]).toBe("Kardus\tSerial\n7\t'=R2\n8\tR3");
+});

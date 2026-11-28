@@ -4,7 +4,8 @@ import { hasControlChars } from './text';
 
 export const WAREHOUSE_LIMITS = {
   orderNumberMax: 40,
-  noteMax: 1000,
+  /** Catatan pengeluaran (Markdown). 1000 sebelum 2026-11-28; dinaikkan agar sama dengan catatan Serah Terima. */
+  noteMax: 5000,
   /** Sama dengan `SERIAL_LIMITS.batchRows` (dijaga tes paritas). */
   chunkMax: 200,
   handoverLinksMax: 20,
@@ -21,8 +22,12 @@ export const WAREHOUSE_LIMITS = {
 
 export type WarehouseDispatchStatus = 'pending' | 'done' | 'cancelled';
 export type WarehouseDispatchMode = 'clipboard';
-/** Tujuan pencatatan WH: `order` = keluar ke satu SO (bawaan), `ready` = hanya mencapai target barang ready (tanpa SO). */
-export type WarehouseSubmitMode = 'order' | 'ready';
+/**
+ * Tujuan pencatatan WH: `note` = catatan saja (satu-satunya tujuan yang ditawarkan web sejak 2026-11-28; tanpa SO dan
+ * customer, serial yang sama boleh dicatat ulang), `order` = keluar ke satu SO dan `ready` = hanya mencapai target barang
+ * ready (keduanya tetap diterima server demi kompatibilitas).
+ */
+export type WarehouseSubmitMode = 'order' | 'ready' | 'note';
 
 /** Nilai `data.source` pada kejadian `recorded` serial yang dibuat dari Keluar Gudang. */
 export const WAREHOUSE_SOURCE = 'warehouse';
@@ -66,6 +71,9 @@ export function clipboardText(serials: readonly string[]): string {
 /** Pesan kejadian serial yang dibuat dari Keluar Gudang mode ready. */
 export const WAREHOUSE_READY_NOTE = 'Dicatat Gudang · Ready';
 
+/** Pesan kejadian serial yang dibuat dari Catat Serial WH mode catatan. */
+export const WAREHOUSE_NOTE_NOTE = 'Dicatat Gudang';
+
 /** Pesan kejadian serial baru dari Penjualan tanpa No SO. */
 export const WAREHOUSE_SALE_NOTE = 'Dicatat Gudang · Penjualan';
 
@@ -74,22 +82,27 @@ export function warehouseRecordedNote(orderNumber: string): string {
   return `Dicatat Gudang · SO ${orderNumber}`;
 }
 
-/** Jenis pengeluaran Gudang: `order` = Penjualan (keluar ke SO), `ready` = Ready Stock (tanpa SO). */
-export type WarehouseDispatchKind = 'order' | 'ready';
+/**
+ * Jenis pengeluaran Gudang: `order` = Penjualan (keluar ke SO), `ready` = Ready Stock (tanpa SO), `note` = catatan saja
+ * (sejak 2026-11-28; tanpa SO, customer, dan stok).
+ */
+export type WarehouseDispatchKind = 'order' | 'ready' | 'note';
 
 export const WAREHOUSE_KIND_LABEL: Record<WarehouseDispatchKind, string> = {
   order: 'Penjualan',
   ready: 'Ready Stock',
+  note: 'Catatan',
 };
 
-/** Awalan nomor riwayat: `OUT` (Penjualan) dan `RS` (Ready Stock). */
-export function dispatchNumberPrefix(kind: WarehouseDispatchKind): 'OUT' | 'RS' {
-  return kind === 'ready' ? 'RS' : 'OUT';
+/** Awalan nomor riwayat: `OUT` (Penjualan), `RS` (Ready Stock), dan `WH` (catatan). */
+export function dispatchNumberPrefix(kind: WarehouseDispatchKind): 'OUT' | 'RS' | 'WH' {
+  return kind === 'note' ? 'WH' : kind === 'ready' ? 'RS' : 'OUT';
 }
 
 /**
- * Nomor riwayat Gudang `<OUT|RS>/<kode BU>/<YYMM>-<urutan>`: urutan per (awalan, BU, bulan WIB hari dibuat), minimal 4
- * digit (lebih dari 9999 menjadi lebih panjang). Kode BU tak dapat diubah dan berpola `^[A-Z0-9-]+$`.
+ * Nomor riwayat Gudang `<OUT|RS|WH>/<kode BU>/<YYMM>-<urutan>` (`WH` = catatan): urutan per awalan, BU, dan bulan WIB hari
+ * dibuat, minimal 4 digit (lebih dari
+ * 9999 menjadi lebih panjang). Kode BU tak dapat diubah dan berpola `^[A-Z0-9-]+$`.
  */
 export function dispatchNumber(
   kind: WarehouseDispatchKind,
@@ -97,7 +110,8 @@ export function dispatchNumber(
   period: string,
   sequence: number,
 ): string {
-  return `${dispatchNumberPrefix(kind)}/${buCode}/${period}-${String(sequence).padStart(4, '0')}`;
+  const seq = String(sequence).padStart(4, '0');
+  return `${dispatchNumberPrefix(kind)}/${buCode}/${period}-${seq}`;
 }
 
 /** Batas Stok Ready per kardus: pcs per kardus (`items.box_size`) dan nomor kardus. */

@@ -30,7 +30,6 @@ import { useIsDesktop } from '@/hooks/use-is-desktop';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useStackNavigation } from '@/hooks/use-stack-navigation';
 import { api } from '@/lib/api';
-import { isDesktop } from '@/lib/platform';
 import { canReadWarehouse, warehouseBuIds } from '@/modules/auth/permissions';
 import { useMe } from '@/modules/auth/use-me';
 import { useOptionalActiveLocations } from '@/modules/location/active-locations-context';
@@ -69,7 +68,7 @@ import {
   warehouseSerialsQueryOptions,
 } from '../queries';
 import { ClipboardResultDialog } from './clipboard-result-dialog';
-import { ConfirmDialog, type ConfirmValues, type WarehousePurpose } from './confirm-dialog';
+import { ConfirmDialog, type ConfirmValues } from './confirm-dialog';
 import { type DispatchFilters, DispatchHeader } from './dispatch-header';
 import { DispatchTable } from './dispatch-table';
 import { ScanBar, type ScanLine } from './scan-bar';
@@ -159,10 +158,6 @@ export function DispatchPage({ handoverId, onCancel }: DispatchPageProps) {
   );
 
   const [skipped, setSkipped] = useState<readonly WarehouseSkippedRowDto[]>(initial?.skipped ?? []);
-  // Tujuan pengeluaran (dipilih di dialog simpan); kiriman yang dilanjutkan memakai mode headernya.
-  const [purpose, setPurpose] = useState<WarehousePurpose>(
-    initial?.submission?.header.mode === 'ready' ? 'ready' : 'order',
-  );
 
   // Nilai terkini yang dibaca antrean scan (berjalan setelah render ulang) dan penulis draf.
   const live = useRef({ itemId, filters, rows, submission, skipped });
@@ -191,7 +186,7 @@ export function DispatchPage({ handoverId, onCancel }: DispatchPageProps) {
       // Kuota penyimpanan penuh atau diblokir: draf hanya di memori, hilang bila halaman dimuat ulang.
       writeFailedRef.current = true;
       toast.warning(
-        'Draf tidak dapat disimpan di perangkat ini. Selesaikan pengeluaran sebelum menutup halaman.',
+        'Draf tidak dapat disimpan di perangkat ini. Selesaikan catatan sebelum menutup halaman.',
       );
     }
   }, []);
@@ -267,7 +262,7 @@ export function DispatchPage({ handoverId, onCancel }: DispatchPageProps) {
       ...(filters.testDate !== '' ? { testDate: filters.testDate } : {}),
       ...(queryText !== '' ? { query: queryText } : {}),
       ...(filters.hideRecorded && filters.buId !== '' ? { hideRecordedBuId: filters.buId } : {}),
-      ...(purpose === 'ready' ? { forMode: 'ready' as const } : {}),
+      forMode: 'note' as const,
     }),
   );
   const candidates = useMemo(
@@ -603,7 +598,7 @@ export function DispatchPage({ handoverId, onCancel }: DispatchPageProps) {
             });
             return;
           }
-          rejectText(new Error('Pengeluaran belum selesai'));
+          rejectText(new Error('Catatan belum selesai'));
           if (outcome.status === 'paused') {
             setProgress({ phase: 'paused', sent: outcome.sentChunks, chunkCount });
             return;
@@ -663,18 +658,13 @@ export function DispatchPage({ handoverId, onCancel }: DispatchPageProps) {
       );
     }
     const sub = freezeSubmission(live.current.rows, {
-      ...(values.mode === 'ready'
-        ? {
-            mode: 'ready' as const,
-            ...(values.boxStart !== undefined ? { boxStart: values.boxStart } : {}),
-            ...(values.boxSize !== undefined ? { boxSize: values.boxSize } : {}),
-          }
-        : {}),
+      mode: 'note' as const,
+      boxStart: values.boxStart,
+      boxSize: values.boxSize,
       dispatchedOn: values.dispatchedOn,
-      ...(values.orderId ? { orderId: values.orderId } : {}),
-      orderNumber: values.orderNumber,
+      orderNumber: '',
       buId: values.buId,
-      customerName: values.customerName,
+      customerName: '',
       itemId: live.current.itemId,
       note: values.note,
       handoverIds: values.handoverIds,
@@ -817,7 +807,7 @@ export function DispatchPage({ handoverId, onCancel }: DispatchPageProps) {
             <Alert color="info">
               <AlertDescription className="flex flex-wrap items-center justify-between gap-2">
                 <span>
-                  Pengeluaran belum selesai dikirim ({submission.sentChunks} dari{' '}
+                  Catatan belum selesai dikirim ({submission.sentChunks} dari{' '}
                   {Math.ceil(submission.header.total / submission.chunkSize)} potongan). Pilihan
                   dikunci sampai selesai.
                 </span>
@@ -934,13 +924,8 @@ export function DispatchPage({ handoverId, onCancel }: DispatchPageProps) {
         locationOptions={locationOptions}
         defaultLocationId={filters.locationId}
         activeLocationIds={activeLocationIds}
-        options={options.data}
         handoverContext={handoverContext}
-        historyLinkable={canReadWarehouse(me) && !isDesktop()}
         originHandoverId={handoverId}
-        purpose={purpose}
-        onPurposeChange={setPurpose}
-        onRemoveRows={(ids) => removeKeys(ids)}
         onConfirm={startSubmit}
         boxStartError={boxStartError}
       />

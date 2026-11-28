@@ -201,11 +201,10 @@ describe('pelepasan stok ready', () => {
     const a = await orderChunk('SO-P1', stock.slice(0, 1), 2, 1, clientA, 0);
     expect(a.data?.status).toBe('pending');
     const b = await orderChunk('SO-P2', stock.slice(0, 1), 1, 200);
-    expect(b.ok).toBe(true);
-    const skipped = (b.data?.skipped ?? []) as { reason: string }[];
-    expect(skipped.map((r) => r.reason)).toEqual([
-      'Sudah ada di pengeluaran lain yang belum selesai',
-    ]);
+    expect(b.ok).toBe(false);
+    expect(b.error?.message).toBe(
+      'Tidak ada serial yang dapat dicatat. Dilewati: Sudah ada di pengeluaran lain yang belum selesai (1)',
+    );
     expect(await releasedCount()).toBe(0);
     // Potongan terakhir Penjualan pertama: selesai dan melepas kedua serialnya.
     const done = await orderChunk('SO-P1', stock.slice(1, 2), 2, 1, clientA, 1);
@@ -255,9 +254,10 @@ describe('pelepasan stok ready', () => {
     await seedReady();
     const target = await pendingReadySerial();
     const out = await orderChunk('SO-PR', [target], 1, 200);
-    expect(out.ok).toBe(true);
-    const skipped = (out.data?.skipped ?? []) as { reason: string }[];
-    expect(skipped.map((r) => r.reason)).toEqual(['Sudah tercatat WH']);
+    expect(out.ok).toBe(false);
+    expect(out.error?.message).toBe(
+      'Tidak ada serial yang dapat dicatat. Dilewati: Sudah tercatat WH (1)',
+    );
     expect(await releasedCount()).toBe(0);
   });
 
@@ -353,9 +353,10 @@ describe('pelepasan stok ready', () => {
         serial: row.serial,
       })),
     })) as Out;
-    expect(out.ok).toBe(true);
-    const skipped = (out.data?.skipped ?? []) as { reason: string }[];
-    expect(skipped.map((r) => r.reason)).toEqual(['Serial tidak ditemukan']);
+    expect(out.ok).toBe(false);
+    expect(out.error?.message).toBe(
+      'Tidak ada serial yang dapat dicatat. Dilewati: Serial tidak ditemukan (1)',
+    );
     expect(await releasedCount()).toBe(0);
   });
 });

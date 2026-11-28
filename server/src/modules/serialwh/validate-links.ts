@@ -9,7 +9,7 @@ import { WAREHOUSE_LIMITS } from '@shared/serial-warehouse';
 
 /**
  * Kursor kandidat task: `<peringkat status>~<created_at>~<id>` (buram bagi klien; peringkat 0 = Baru, 1 = Sedang
- * dikerjakan, 2 = Selesai). Kursor format lama `<created_at>~<id>` ditolak (`VALIDATION`).
+ * dikerjakan, 2 = Selesai). Dengan `itemId` kursornya posisi `o~<n>` (divalidasi di pemanggil). Kursor format lama `<created_at>~<id>` ditolak (`VALIDATION`).
  */
 export function parseCandidateCursor(
   cursor: string,
@@ -31,7 +31,7 @@ export function validateWarehouseHandoverCandidates(
   const orderId = reader.str('orderId', { max: 100 });
   const itemId = reader.str('itemId', { max: 100 });
   const cursor = reader.str('cursor', { max: 200 });
-  if (cursor !== '' && parseCandidateCursor(cursor) === null) {
+  if (cursor !== '' && parseCandidateCursor(cursor) === null && !/^o~\d{1,4}$/.test(cursor)) {
     reader.fail('cursor', 'Kursor tidak valid');
   }
   const includeFinished = reader.raw('includeFinished');
