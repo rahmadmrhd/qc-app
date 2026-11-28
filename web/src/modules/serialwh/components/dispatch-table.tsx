@@ -94,8 +94,15 @@ function priorDetailOf(dto: WarehouseSerialDto | null, formBuId: string): string
     dto.dispatches.find((dispatch) => dispatch.buId !== undefined && dispatch.buId === formBuId) ??
     dto.dispatches[0];
   if (!ref) return '';
-  // Rujukan BU tak terbaca tanpa nomor SO: cukup kode BU dan tanggal.
-  return `${ref.orderNumber ?? `BU ${ref.buCode}`}, ${formatDay(ref.dispatchedOn)}`;
+  // Rujukan BU tak terbaca tanpa nomor SO: cukup kode BU dan tanggal. Penjualan tanpa No SO (nomor kosong, SO terbaca):
+  // ditulis "Tanpa No SO".
+  const label =
+    ref.orderNumber === undefined
+      ? `BU ${ref.buCode}`
+      : ref.orderNumber === ''
+        ? 'Tanpa No SO'
+        : ref.orderNumber;
+  return `${label}, ${formatDay(ref.dispatchedOn)}`;
 }
 
 function RowBadges({ row }: { row: TableRow }) {

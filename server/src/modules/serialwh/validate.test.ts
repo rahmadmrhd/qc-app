@@ -70,10 +70,7 @@ describe('validateWarehouseSubmit', () => {
     ).toThrow();
   });
 
-  test('menolak No SO kosong, kepanjangan, atau ber-karakter kontrol; task ganda atau lebih dari 20', () => {
-    expect(() =>
-      validateWarehouseSubmit(submit({ header: header({ orderNumber: '  ' }) })),
-    ).toThrow();
+  test('menolak No SO kepanjangan, atau ber-karakter kontrol; task ganda atau lebih dari 20', () => {
     expect(() =>
       validateWarehouseSubmit(submit({ header: header({ orderNumber: 'x'.repeat(41) }) })),
     ).toThrow();
@@ -86,6 +83,21 @@ describe('validateWarehouseSubmit', () => {
     expect(() =>
       validateWarehouseSubmit(
         submit({ header: header({ handoverIds: Array.from({ length: 21 }, (_, i) => `h${i}`) }) }),
+      ),
+    ).toThrow();
+  });
+});
+
+describe('Penjualan tanpa No SO', () => {
+  test('No SO kosong diterima; customer opsional; orderId ditolak', () => {
+    const out = validateWarehouseSubmit(
+      submit({ header: header({ orderNumber: '  ', customerName: '' }) }),
+    );
+    expect(out.header.orderNumber).toBe('');
+    expect(out.header.customerName).toBe('');
+    expect(() =>
+      validateWarehouseSubmit(
+        submit({ header: header({ orderNumber: '', orderId: 'o1', customerName: '' }) }),
       ),
     ).toThrow();
   });

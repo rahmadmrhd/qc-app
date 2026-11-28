@@ -1579,6 +1579,11 @@ export interface WarehouseOrderOptionDto {
   customerId: string;
   customerName: string;
   lastDispatchedOn: string;
+  /**
+   * Lokasi SO: lokasi bersama semua task hidup (bukan Dibatalkan) yang tertaut ke SO, hanya bila semuanya satu lokasi
+   * DAN lokasi itu terbaca pemanggil. Tanpa tautan, lokasi berbeda-beda, atau tak terbaca = tidak diisi.
+   */
+  locationId?: string;
 }
 export interface ListWarehouseOrderOptionsInput {
   query?: string;
@@ -1593,8 +1598,10 @@ export interface WarehouseOrderOptionsPageDto {
 }
 export interface WarehouseSubmitHeader {
   /**
-   * `order` (bawaan bila tiada) = keluar ke SO; `ready` = catat ready tanpa SO: `orderId` harus tiada, `orderNumber` dan
+   * `order` (bawaan bila tiada) = Penjualan; `ready` = catat ready tanpa SO: `orderId` harus tiada, `orderNumber` dan
    * `customerName` kosong (`''`), `handoverIds` kosong (`[]`); selain itu `VALIDATION`. `buId` wajib (BU `serialwh: edit`).
+   * Penjualan boleh TANPA No SO (`orderNumber: ''`, tanpa `orderId`): tidak membuat catatan SO, customer opsional
+   * (hanya dicatat pada pengeluaran), tautan task boleh terisi. Dengan No SO, customer tetap wajib.
    */
   mode?: WarehouseSubmitMode;
   dispatchedOn: string;
@@ -1779,7 +1786,7 @@ export interface WarehouseDispatchListItemDto {
   /** Nomor riwayat `OUT|RS/<kode BU>/<YYMM>-<urutan>`. */
   number: string;
   kind: WarehouseDispatchKind;
-  /** Kosong pada Ready Stock. */
+  /** Kosong pada Ready Stock dan pada Penjualan tanpa No SO. */
   orderId: string;
   orderNumber: string;
   buId: string;
@@ -1842,6 +1849,11 @@ export interface ListWarehouseDispatchSerialsInput {
   limit?: number;
 }
 export interface WarehouseDispatchSerialDto {
+  /** Kardus (hanya pencatatan ready): id, nomor, kapasitas, dan isi kardus pada pencatatan ini. */
+  boxId?: string;
+  boxNumber?: number;
+  capacity?: number;
+  boxCount?: number;
   seq: number;
   serialId: string;
   serial: string;
@@ -1863,7 +1875,10 @@ export interface ListWarehouseHandoverCandidatesInput {
   customerId?: string;
   customerName?: string;
   query?: string;
+  /** Diterima demi klien lama; tidak berpengaruh lagi (Selesai selalu tampil, Dibatalkan selalu disembunyikan). */
   includeFinished?: boolean;
+  /** Lokasi task; di luar lokasi terbaca pemanggil = daftar kosong. Tanpa ini = semua lokasi terbaca. */
+  locationId?: string;
   orderId?: string;
   itemId?: string;
   cursor?: string;
@@ -1877,6 +1892,13 @@ export interface WarehouseHandoverCandidateDto {
   status: HandoverStatus;
   linked: boolean;
   mentionsItem: boolean;
+  /** Catatan penuh dan checklist (untuk render hanya-baca dengan centang). */
+  note: string;
+  checklist: HandoverChecklistItemDto[];
+  /** Teks polos baris catatan yang menyebut Item terpilih (`itemId`); kosong bila `itemId` tiada. */
+  matchedLines: string[];
+  /** Teks polos baris yang menyebut Item LAIN dan tidak menyebut Item terpilih (maks. 10); kosong bila `itemId` tiada. */
+  mismatchLines: string[];
 }
 export interface WarehouseHandoverCandidatesDto {
   /** Tertaut ke `orderId` (terbaca), selalu di depan. */
@@ -1895,6 +1917,23 @@ export interface ItemDetectionDto extends ItemDetection {
 export interface WarehouseHandoverContextInput {
   handoverId: string;
 }
+/** Penjualan tanpa No SO yang menaut task ini (hanya baca; tidak dapat diubah dari sisi task). */
+export interface WarehouseTaskSaleDto {
+  /** Id pengeluaran. */
+  dispatchId: string;
+  /** Nomor riwayat `OUT/<kode BU>/<YYMM>-<urutan>`. */
+  number: string;
+  /** Label tampil: `Penjualan <tanggal keluar> <nomor riwayat>`. */
+  label: string;
+  dispatchedOn: string;
+  /** `pending` atau `done` (yang dibatalkan tidak tampil). */
+  status: WarehouseDispatchStatus;
+  buId: string;
+  buCode: string;
+  buName?: string;
+  /** Selalu kosong: tak ada catatan SO. */
+  orderId: string;
+}
 export interface WarehouseHandoverContextDto {
   handover: {
     id: string;
@@ -1905,6 +1944,8 @@ export interface WarehouseHandoverContextDto {
   };
   /** SO tertaut task ini pada BU ber-`serialwh: edit`. */
   orders: WarehouseOrderOptionDto[];
+  /** Penjualan tanpa No SO tertaut task ini (BU ber-`serialwh: edit`, tidak dibatalkan), terbaru dulu. */
+  sales: WarehouseTaskSaleDto[];
   /** Item hidup aktif pada BU ber-`serialwh: edit`. */
   detected: ItemDetectionDto[];
 }

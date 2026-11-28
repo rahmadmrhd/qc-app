@@ -9,7 +9,7 @@ export interface OrderNumberComboboxProps {
   id: string;
   value: string;
   onChange: (text: string) => void;
-  /** Saran SO yang sudah ada (cocok awalan dengan teks; BU form lebih dulu, lalu terbaru). */
+  /** Saran SO yang sudah ada (cocok awalan dengan teks; cocok di bagian mana pun dari nomor; urutan dari server). */
   orders: readonly WarehouseOrderOptionDto[];
   /** SO yang cocok persis dengan teks (tanpa beda huruf besar/kecil), bila ada. */
   matched: WarehouseOrderOptionDto | null;
@@ -28,7 +28,7 @@ export function findMatchingOrder(
 }
 
 /**
- * Isian No SO dengan saran (pola `CustomerCombobox`): daftar saran langsung di bawah field, juga di ponsel. Teks yang
+ * Isian No SO (opsional) dengan saran (pola `CustomerCombobox`): daftar saran langsung di bawah field, juga di ponsel. Teks yang
  * cocok persis dengan SO yang ada = memilih SO itu; teks lain = SO baru ("Dibuat saat disimpan"). Pengecualian aturan
  * "field relasi wajib LinkField": teks bebas yang membuat record otomatis, seperti customer di Serah Terima.
  */
@@ -58,9 +58,7 @@ export function OrderNumberCombobox({
   return (
     <div className="relative space-y-1.5">
       <div className="flex items-center justify-between gap-2">
-        <Label htmlFor={id} required>
-          No SO
-        </Label>
+        <Label htmlFor={id}>No SO</Label>
         {typed !== '' ? (
           matched ? (
             <Badge color="info" variant="soft">
@@ -77,7 +75,6 @@ export function OrderNumberCombobox({
         id={id}
         autoComplete="off"
         role="combobox"
-        aria-required="true"
         aria-expanded={visible}
         aria-controls={listId}
         aria-invalid={error ? true : undefined}

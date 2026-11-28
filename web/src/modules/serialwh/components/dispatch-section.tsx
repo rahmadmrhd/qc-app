@@ -17,6 +17,7 @@ import { copyLines } from '../lib/clipboard';
 import { draftDispatchId } from '../lib/draft-store';
 import { fetchWarehouseCopyText, warehouseDispatchSerialsQueryOptions } from '../queries';
 import { ClipboardResultDialog } from './clipboard-result-dialog';
+import { DispatchBoxTable, hasBoxes, SerialFlags } from './dispatch-box-table';
 
 export const DISPATCH_STATUS = {
   pending: { label: 'Belum selesai', color: 'warning' },
@@ -36,20 +37,7 @@ const SERIAL_COLUMNS: DataColumn<WarehouseDispatchSerialDto>[] = [
     id: 'flags',
     header: 'Keterangan',
     mobile: 'badge',
-    cell: (row) => (
-      <span className="flex flex-wrap gap-1">
-        {row.createdNew ? (
-          <Badge variant="soft" color="info">
-            Dibuat saat keluar
-          </Badge>
-        ) : null}
-        {row.deleted ? (
-          <Badge variant="soft" color="destructive">
-            Terhapus
-          </Badge>
-        ) : null}
-      </span>
-    ),
+    cell: (row) => <SerialFlags row={row} />,
   },
 ];
 
@@ -57,6 +45,21 @@ const SERIAL_COLUMNS: DataColumn<WarehouseDispatchSerialDto>[] = [
 export function DispatchSerials({ dispatchId }: { dispatchId: string }) {
   const list = useInfiniteQuery(warehouseDispatchSerialsQueryOptions(dispatchId));
   const rows = list.data?.pages.flatMap((page) => page.items) ?? [];
+  // Pencatatan Ready: tabel per kardus (selang-seling warna per kardus).
+  if (hasBoxes(rows)) {
+    return (
+      <DispatchBoxTable
+        rows={rows}
+        isLoading={list.isPending}
+        isError={list.isLoadingError}
+        onRetry={() => void list.refetch()}
+        hasMore={list.hasNextPage}
+        loadingMore={list.isFetchingNextPage}
+        loadMoreError={list.isFetchNextPageError}
+        onLoadMore={() => void list.fetchNextPage()}
+      />
+    );
+  }
   return (
     <DataTable
       rows={rows}

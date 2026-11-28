@@ -71,4 +71,53 @@ describe('serialWarehouse.handoverContext', () => {
     const other = await call(WH_USERS.otherBu, 't1');
     expect(other.data.orders.map((o: Json) => o.id)).toEqual(['o-b']);
   });
+  test('Penjualan tanpa No SO tertaut tampil hanya baca; yang dibatalkan dan BU lain tidak', async () => {
+    await seedTask(env, { id: 't1' });
+    const sale = async (serial: string, buId: string, itemId: string): Promise<string> => {
+      const out = (await restCall(env, WH_USERS.wh, 'serialWarehouse.submit', {
+        clientId: crypto.randomUUID(),
+        chunkIndex: 0,
+        header: {
+          dispatchedOn: '2026-01-05',
+          orderNumber: '',
+          buId,
+          customerName: '',
+          itemId,
+          note: '',
+          handoverIds: ['t1'],
+          total: 1,
+          chunkSize: 200,
+        },
+        rows: [
+          {
+            kind: 'new',
+            clientId: crypto.randomUUID(),
+            serial,
+            locationId: ENV.locA,
+            testDate: '2026-01-05',
+          },
+        ],
+      })) as Json;
+      expect(out.ok).toBe(true);
+      return out.data.dispatchId as string;
+    };
+    const done = await sale('CTX-1', 'bu-a', 'i-ax300');
+    const cancelled = await sale('CTX-2', 'bu-a', 'i-ax300');
+    await env.DB.prepare("UPDATE warehouse_dispatches SET status = 'cancelled' WHERE id = ?")
+      .bind(cancelled)
+      .run();
+    const res = await call(WH_USERS.wh, 't1');
+    expect(res.data.sales.map((x: Json) => x.dispatchId)).toEqual([done]);
+    expect(res.data.sales[0]).toMatchObject({
+      status: 'done',
+      orderId: '',
+      buCode: 'A',
+      dispatchedOn: '2026-01-05',
+    });
+    expect(res.data.sales[0].label).toBe(`Penjualan 2026-01-05 ${res.data.sales[0].number}`);
+    expect(res.data.sales[0].number).toMatch(/^OUT\/A\//);
+    expect(res.data.orders).toEqual([]);
+    const other = await call(WH_USERS.otherBu, 't1');
+    expect(other.data.sales).toEqual([]);
+  });
 });

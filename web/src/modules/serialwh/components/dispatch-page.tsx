@@ -30,8 +30,10 @@ import { useIsDesktop } from '@/hooks/use-is-desktop';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useStackNavigation } from '@/hooks/use-stack-navigation';
 import { api } from '@/lib/api';
+import { isDesktop } from '@/lib/platform';
 import { canReadWarehouse, warehouseBuIds } from '@/modules/auth/permissions';
 import { useMe } from '@/modules/auth/use-me';
+import { useOptionalActiveLocations } from '@/modules/location/active-locations-context';
 import { useScanFeedback } from '@/modules/serial/lib/scan-feedback';
 import { beginWarehouseSubmit } from '../lib/active-submission';
 import { copyLines } from '../lib/clipboard';
@@ -126,6 +128,9 @@ export function DispatchPage({ handoverId, onCancel }: DispatchPageProps) {
   );
   const buCodeOf = useCallback((id: string) => buCodes.get(id) ?? '', [buCodes]);
 
+  // Lokasi aktif pengguna (cadangan Lokasi di dialog simpan); tanpa penyedia (mis. tes) = tidak ada.
+  const activeLocations = useOptionalActiveLocations();
+  const activeLocationIds = useMemo(() => activeLocations?.selectedIds ?? [], [activeLocations]);
   const options = useQuery(warehouseOptionsQueryOptions());
   const locationOptions = useMemo<LinkOption[]>(
     () => (options.data?.locations ?? []).map((l) => ({ id: l.id, label: l.name })),
@@ -634,19 +639,24 @@ export function DispatchPage({ handoverId, onCancel }: DispatchPageProps) {
     // Kiriman baru: tanda "dilewati" dari kiriman sebelumnya tidak berlaku lagi.
     commitSkipped([]);
     setBoxStartError(undefined);
-    // Serial baru yang belum punya lokasi/tanggal uji (chip filter kosong saat scan) dilengkapi dari isian dialog.
-    const needsFill = live.current.rows.some(
-      (row) => row.kind === 'new' && (row.locationId === '' || row.testDate === ''),
-    );
-    if (needsFill) {
+    // Lokasi dialog menjadi lokasi SEMUA serial baru (menimpa lokasi chip saat scan); tanggal uji hanya mengisi yang
+    // kosong: chip Tanggal uji bila terisi, selain itu tanggal keluar. Urutan baris TIDAK diubah (= urutan masuk ke
+    // pilihan = urutan `seq` dan penomoran kardus).
+    if (live.current.rows.some((row) => row.kind === 'new')) {
+      const chipTestDate = live.current.filters.testDate;
       commitRows(
         live.current.rows.map((row) =>
           row.kind === 'new'
             ? {
                 ...row,
                 buId: row.buId === '' ? values.buId : row.buId,
-                locationId: row.locationId === '' ? (values.newLocationId ?? '') : row.locationId,
-                testDate: row.testDate === '' ? (values.newTestDate ?? '') : row.testDate,
+                locationId: values.locationId,
+                testDate:
+                  row.testDate === ''
+                    ? chipTestDate !== ''
+                      ? chipTestDate
+                      : values.dispatchedOn
+                    : row.testDate,
               }
             : row,
         ),
@@ -923,9 +933,10 @@ export function DispatchPage({ handoverId, onCancel }: DispatchPageProps) {
         buOptions={buOptions}
         locationOptions={locationOptions}
         defaultLocationId={filters.locationId}
-        defaultTestDate={filters.testDate}
+        activeLocationIds={activeLocationIds}
         options={options.data}
         handoverContext={handoverContext}
+        historyLinkable={canReadWarehouse(me) && !isDesktop()}
         originHandoverId={handoverId}
         purpose={purpose}
         onPurposeChange={setPurpose}
