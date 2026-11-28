@@ -411,7 +411,8 @@
     "verb": "POST",
     "path": "/countrylock/files/{id}/revert",
     "status": 200,
-    "etag": "updatedAt"
+    "etag": "updatedAt",
+    "ifMatch": "expectedUpdatedAt"
   },
   {
     "id": "clFiles.revision",

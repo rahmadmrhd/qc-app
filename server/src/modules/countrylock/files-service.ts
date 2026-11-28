@@ -300,6 +300,13 @@ export async function revertClFile(
 ): Promise<ClFileDetailDto> {
   const current = await requireLive(env, input.id);
   const { file } = current;
+  // Kunci versi sungguhan (seperti simpan): revisi terbaru dan `updatedAt` yang dilihat pemanggil harus masih berlaku.
+  if (
+    input.baseSeq !== file.headRev ||
+    (input.expectedUpdatedAt !== undefined && input.expectedUpdatedAt !== file.updatedAt)
+  ) {
+    throw staleError(STALE_MESSAGE);
+  }
   if (file.kind !== 'text') {
     throw appError('VALIDATION', 'Berkas biner tidak dapat dikembalikan dari revisi teks');
   }

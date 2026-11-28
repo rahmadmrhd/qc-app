@@ -636,7 +636,13 @@ const EXAMPLES: { [M in ApiId]: ApiInput<M> } = {
   'clFiles.remove': { id: 'f1' },
   'clFiles.history': { id: 'f1' },
   'clFiles.revision': { id: 'f1', seq: '2' },
-  'clFiles.revert': { id: 'f1', seq: 1, message: 'balik' },
+  'clFiles.revert': {
+    id: 'f1',
+    seq: 1,
+    baseSeq: 3,
+    expectedUpdatedAt: '2026-11-28T00:00:00.000Z',
+    message: 'balik',
+  },
   'clFirmwares.list': null,
   'clFirmwares.options': { brand: 'mikrotik' },
   'clFirmwares.save': {

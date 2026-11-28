@@ -899,7 +899,7 @@ export interface ItemDto extends ItemSummaryDto {
   attachments: string[];
   /** Detail Markdown. */
   detail: string;
-  /** Kode firmware Country Lock (`shared/firmware.ts`); '' = belum diisi atau bukan item Country lock. */
+  /** Kode firmware Country Lock (daftar dinamis `cl_firmwares`); '' = belum diisi atau bukan item Country lock. */
   firmware: string;
   /** Item wajib foto bukti pada Catat Serial (spek 2026-11-18); `proofMin` selalu 1 bila tidak wajib. */
   proofRequired: boolean;
@@ -920,7 +920,7 @@ export interface SaveItemInput {
   model: string;
   isCountryLock: boolean;
   /**
-   * Kode firmware Country Lock; harus salah satu kode merk itu (`shared/firmware.ts`) atau '' dan hanya untuk item
+   * Kode firmware Country Lock; harus kode firmware HIDUP milik merk itu (`cl_firmwares`) atau '' dan hanya untuk item
    * Country lock (selain itu ditolak). Tidak dikirim = tak diubah (klien lama), dan dikosongkan bila item bukan Country
    * lock atau kodenya tak berlaku bagi merk baru.
    */
@@ -1992,6 +1992,10 @@ export interface RevertClFileInput {
   id: string;
   /** Revisi lama yang isinya dijadikan revisi BARU. */
   seq: number;
+  /** Revisi terbaru yang dilihat pemanggil; WAJIB. Tak sama dengan revisi terbaru sekarang = 412 (basi). */
+  baseSeq: number;
+  /** `updatedAt` berkas yang dilihat pemanggil (header `If-Match`); bila ada dan tak sama = 412. */
+  expectedUpdatedAt?: string;
   message?: string;
 }
 

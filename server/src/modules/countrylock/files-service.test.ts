@@ -187,16 +187,20 @@ describe('saveClFile', () => {
     expect((await getClFile(env, { id: first.id })).removed).toBe(true);
     // berkas terhapus tidak dapat dihapus atau dikembalikan lagi
     expect((await errorOf(removeClFile(env, { id: first.id }, ACTOR))).code).toBe('NOT_FOUND');
-    expect((await errorOf(revertClFile(env, { id: first.id, seq: 1 }, ACTOR))).code).toBe(
-      'NOT_FOUND',
-    );
+    expect(
+      (await errorOf(revertClFile(env, { id: first.id, seq: 1, baseSeq: 1 }, ACTOR))).code,
+    ).toBe('NOT_FOUND');
     expect(await auditActions()).toContain('countrylock.file_remove');
   });
 
   test('revert ke seq 1 membuat revisi baru ber-sha256 sama; riwayat tidak ditulis ulang', async () => {
     const first = await save({ path: 'v.rsc', text: 'satu' });
     await save({ path: 'v.rsc', text: 'dua', baseSeq: 1 });
-    const reverted = await revertClFile(env, { id: first.id, seq: 1, message: 'balik' }, ACTOR);
+    const reverted = await revertClFile(
+      env,
+      { id: first.id, seq: 1, baseSeq: 2, message: 'balik' },
+      ACTOR,
+    );
     expect(reverted.headRev).toBe(3);
     expect(reverted.text).toBe('satu');
     const history = await clFileHistory(env, { id: first.id });
@@ -205,12 +209,38 @@ describe('saveClFile', () => {
     expect(history[0]?.message).toBe('balik');
     expect((await getClRevision(env, { id: first.id, seq: '2' })).text).toBe('dua');
     // revert ke isi yang sama dengan terbaru = no-op
-    const noop = await revertClFile(env, { id: first.id, seq: 3 }, ACTOR);
+    const noop = await revertClFile(env, { id: first.id, seq: 3, baseSeq: 3 }, ACTOR);
     expect(noop.headRev).toBe(3);
     expect(await auditActions()).toContain('countrylock.file_revert');
-    expect((await errorOf(revertClFile(env, { id: first.id, seq: 99 }, ACTOR))).code).toBe(
-      'NOT_FOUND',
+    expect(
+      (await errorOf(revertClFile(env, { id: first.id, seq: 99, baseSeq: 3 }, ACTOR))).code,
+    ).toBe('NOT_FOUND');
+  });
+
+  test('revert dengan versi basi: baseSeq atau expectedUpdatedAt tak cocok = stale (412) dan tidak menulis', async () => {
+    const first = await save({ path: 'basi.rsc', text: 'satu' });
+    const second = await save({ path: 'basi.rsc', text: 'dua', baseSeq: 1 });
+    env.clock.advance(1000);
+    // Editor lain menyimpan revisi 3 sementara pemanggil masih melihat revisi 2.
+    await save({ path: 'basi.rsc', text: 'tiga', baseSeq: 2 }, OTHER);
+    const stale = await errorOf(revertClFile(env, { id: first.id, seq: 1, baseSeq: 2 }, ACTOR));
+    expect(stale.stale).toBe(true);
+    const staleStamp = await errorOf(
+      revertClFile(
+        env,
+        { id: first.id, seq: 1, baseSeq: 3, expectedUpdatedAt: second.updatedAt },
+        ACTOR,
+      ),
     );
+    expect(staleStamp.stale).toBe(true);
+    expect((await clFileHistory(env, { id: first.id })).map((row) => row.seq)).toEqual([3, 2, 1]);
+    const current = await getClFile(env, { id: first.id });
+    const ok = await revertClFile(
+      env,
+      { id: first.id, seq: 1, baseSeq: 3, expectedUpdatedAt: current.updatedAt },
+      ACTOR,
+    );
+    expect(ok.headRev).toBe(4);
   });
 
   test('getClRevision dan getClFile: tak ada = NOT_FOUND', async () => {

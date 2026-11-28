@@ -39,7 +39,7 @@ describe('clFiles.*', () => {
       ['clFiles.remove', { id: 'x' }],
       ['clFiles.history', { id: 'x' }],
       ['clFiles.revision', { id: 'x', seq: '1' }],
-      ['clFiles.revert', { id: 'x', seq: 1 }],
+      ['clFiles.revert', { id: 'x', seq: 1, baseSeq: 1 }],
     ];
     for (const [id, input] of inputs) {
       const result = await call(VIEWER, id, input);
@@ -63,7 +63,12 @@ describe('clFiles.*', () => {
     expect(second.data.headRev).toBe(2);
     expect((await call(EDITOR, 'clFiles.history', { id })).data).toHaveLength(2);
     expect((await call(EDITOR, 'clFiles.revision', { id, seq: '1' })).data.text).toBe(SAVE.text);
-    const reverted = await call(EDITOR, 'clFiles.revert', { id, seq: 1 });
+    const reverted = await call(EDITOR, 'clFiles.revert', {
+      id,
+      seq: 1,
+      baseSeq: 2,
+      expectedUpdatedAt: second.data.updatedAt,
+    });
     expect(reverted.data.headRev).toBe(3);
     expect((await call(EDITOR, 'clFiles.get', { id })).data.text).toBe(SAVE.text);
     expect((await call(EDITOR, 'clFiles.remove', { id })).ok).toBe(true);

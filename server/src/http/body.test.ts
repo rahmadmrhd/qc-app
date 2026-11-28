@@ -74,7 +74,13 @@ const WORST: Inputs = {
     baseSeq: 999_999_999,
     expectedUpdatedAt: STAMP,
   },
-  'clFiles.revert': { id: UUID, seq: 999_999_999, message: text(200) },
+  'clFiles.revert': {
+    id: UUID,
+    seq: 999_999_999,
+    baseSeq: 999_999_999,
+    expectedUpdatedAt: STAMP,
+    message: text(200),
+  },
   'clUploads.start': {
     path: 'p'.repeat(CL_PATH_MAX),
     role: 'router',

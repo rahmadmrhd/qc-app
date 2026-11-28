@@ -94,9 +94,17 @@ export function validateRevertClFile(raw: unknown): RevertClFileInput {
   const reader = readObject(raw);
   const id = reader.str('id', { required: true, max: MAX_ID_LENGTH });
   const seq = readSeq(reader, 'seq');
+  const baseSeq = readSeq(reader, 'baseSeq');
+  const expectedUpdatedAt = reader.str('expectedUpdatedAt', { max: 40 });
   const message = reader.str('message', { max: MESSAGE_MAX });
   reader.done();
-  return { id, seq, ...(message === '' ? {} : { message }) };
+  return {
+    id,
+    seq,
+    baseSeq,
+    ...(expectedUpdatedAt === '' ? {} : { expectedUpdatedAt }),
+    ...(message === '' ? {} : { message }),
+  };
 }
 
 /** Aturan peran/jalur dokumen pengaturan: `settings.json` hanya berperan `settings`, dan sebaliknya. */

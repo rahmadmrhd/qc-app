@@ -854,7 +854,12 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
   'clFiles.remove': { verb: 'DELETE', path: '/countrylock/files/{id}' },
   'clFiles.history': { verb: 'GET', path: '/countrylock/files/{id}/history' },
   'clFiles.revision': { verb: 'GET', path: '/countrylock/files/{id}/revisions/{seq}' },
-  'clFiles.revert': { verb: 'POST', path: '/countrylock/files/{id}/revert', etag: 'updatedAt' },
+  'clFiles.revert': {
+    verb: 'POST',
+    path: '/countrylock/files/{id}/revert',
+    ifMatch: 'expectedUpdatedAt',
+    etag: 'updatedAt',
+  },
   'clFirmwares.list': { verb: 'GET', path: '/countrylock/firmwares' },
   'clFirmwares.options': {
     verb: 'GET',
