@@ -19,6 +19,8 @@ export interface BinaryUploadDialogProps {
   onOpenChange: (open: boolean) => void;
   /** Jalur tetap (unggah versi baru berkas yang ada); kosong = nama dari pengguna (berkas baru). */
   fixedPath?: string;
+  /** Judul dialog; bawaan menurut `fixedPath`. */
+  title?: string;
   onUploaded: (file: ClFileDto) => void;
 }
 
@@ -30,6 +32,7 @@ export function BinaryUploadDialog({
   open,
   onOpenChange,
   fixedPath,
+  title,
   onUploaded,
 }: BinaryUploadDialogProps) {
   const [path, setPath] = useState(fixedPath ?? '');
@@ -113,7 +116,7 @@ export function BinaryUploadDialog({
       open={open}
       onOpenChange={onOpenChange}
       formId={FORM_ID}
-      title={fixedPath === undefined ? 'Unggah berkas biner' : 'Unggah versi baru'}
+      title={title ?? (fixedPath === undefined ? 'Unggah berkas biner' : 'Unggah versi baru')}
       description="Berkas diunggah ke Drive dan diteruskan ke router jump saat inject. Maksimal 64 MB."
       submitting={uploading}
       submitLabel="Unggah"

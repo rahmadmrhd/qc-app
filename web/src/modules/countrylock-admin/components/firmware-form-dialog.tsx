@@ -14,6 +14,8 @@ import { Label } from '@/components/ui/label';
 import { describeError } from '@/lib/api/describe-error';
 import { BRAND_OPTIONS } from '../lib/labels';
 import { filesQueryOptions, useSaveFirmware } from '../queries';
+import { BinaryUploadDialog } from './binary-upload';
+import { ScriptRefs } from './script-refs';
 
 const FORM_ID = 'cl-firmware-form';
 const LABEL_MAX = 120;
@@ -47,6 +49,7 @@ export function FirmwareFormDialog({
   const [parallel, setParallel] = useState(false);
   const [sort, setSort] = useState('10');
   const [error, setError] = useState<string | null>(null);
+  const [uploadName, setUploadName] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -57,6 +60,7 @@ export function FirmwareFormDialog({
     setParallel(firmware?.parallel ?? false);
     setSort(String(firmware?.sort ?? nextSort));
     setError(null);
+    setUploadName(null);
   }, [open, firmware, nextSort]);
 
   const scriptOptions = useMemo(
@@ -114,92 +118,105 @@ export function FirmwareFormDialog({
   };
 
   return (
-    <FormDialogShell
-      open={open}
-      onOpenChange={onOpenChange}
-      formId={FORM_ID}
-      title={firmware ? `Ubah firmware ${firmware.code}` : 'Tambah firmware'}
-      description="Firmware yang terdaftar muncul sebagai pilihan di form Item; perubahan masuk draf dan baru dipakai desktop setelah bundel diterbitkan."
-      submitting={save.isPending}
-      submitLabel="Simpan"
-    >
-      <form id={FORM_ID} onSubmit={submit} className="space-y-4">
-        <Select
-          id="cl-fw-brand"
-          label="Merk"
-          required
-          disabled={identityLocked}
-          options={BRAND_OPTIONS}
-          value={brand}
-          onValueChange={(value) => setBrand(value as 'mikrotik' | 'ubiquiti')}
-        />
-        <div className="space-y-1.5">
-          <Label htmlFor="cl-fw-code" required>
-            Kode
-          </Label>
-          <Input
-            id="cl-fw-code"
-            value={code}
+    <>
+      <FormDialogShell
+        open={open}
+        onOpenChange={onOpenChange}
+        formId={FORM_ID}
+        title={firmware ? `Ubah firmware ${firmware.code}` : 'Tambah firmware'}
+        description="Firmware yang terdaftar muncul sebagai pilihan di form Item; perubahan masuk draf dan baru dipakai desktop setelah bundel diterbitkan."
+        submitting={save.isPending}
+        submitLabel="Simpan"
+      >
+        <form id={FORM_ID} onSubmit={submit} className="space-y-4">
+          <Select
+            id="cl-fw-brand"
+            label="Merk"
             required
-            aria-required="true"
             disabled={identityLocked}
-            maxLength={FIRMWARE_CODE_MAX}
-            onChange={(event) => setCode(event.target.value)}
+            options={BRAND_OPTIONS}
+            value={brand}
+            onValueChange={(value) => setBrand(value as 'mikrotik' | 'ubiquiti')}
           />
-          {identityLocked ? (
-            <p className="text-xs text-muted-foreground">
-              Merk dan kode terkunci selama masih dipakai {firmware?.inUseCount} item.
-            </p>
-          ) : null}
-        </div>
-        <div className="space-y-1.5">
-          <Label htmlFor="cl-fw-label" required>
-            Label
-          </Label>
-          <Input
-            id="cl-fw-label"
-            value={label}
-            required
-            aria-required="true"
-            maxLength={LABEL_MAX}
-            onChange={(event) => setLabel(event.target.value)}
+          <div className="space-y-1.5">
+            <Label htmlFor="cl-fw-code" required>
+              Kode
+            </Label>
+            <Input
+              id="cl-fw-code"
+              value={code}
+              required
+              aria-required="true"
+              disabled={identityLocked}
+              maxLength={FIRMWARE_CODE_MAX}
+              onChange={(event) => setCode(event.target.value)}
+            />
+            {identityLocked ? (
+              <p className="text-xs text-muted-foreground">
+                Merk dan kode terkunci selama masih dipakai {firmware?.inUseCount} item.
+              </p>
+            ) : null}
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="cl-fw-label" required>
+              Label
+            </Label>
+            <Input
+              id="cl-fw-label"
+              value={label}
+              required
+              aria-required="true"
+              maxLength={LABEL_MAX}
+              onChange={(event) => setLabel(event.target.value)}
+            />
+          </div>
+          <LinkField
+            id="cl-fw-script"
+            label="Skrip"
+            options={scriptOptions}
+            value={scriptPath}
+            onChange={setScriptPath}
+            localFilter
+            loading={files.isPending}
+            placeholder="Pilih berkas skrip (boleh dikosongkan)"
           />
-        </div>
-        <LinkField
-          id="cl-fw-script"
-          label="Skrip"
-          options={scriptOptions}
-          value={scriptPath}
-          onChange={setScriptPath}
-          localFilter
-          loading={files.isPending}
-          placeholder="Pilih berkas skrip (boleh dikosongkan)"
-        />
-        <div className="flex items-center gap-2">
-          <Checkbox
-            id="cl-fw-parallel"
-            checked={parallel}
-            onCheckedChange={(checked) => setParallel(checked === true)}
-          />
-          <Label htmlFor="cl-fw-parallel">Jalankan paralel</Label>
-        </div>
-        <div className="space-y-1.5">
-          <Label htmlFor="cl-fw-sort">Urutan</Label>
-          <Input
-            id="cl-fw-sort"
-            type="number"
-            inputMode="numeric"
-            min={0}
-            value={sort}
-            onChange={(event) => setSort(event.target.value)}
-          />
-        </div>
-        {error === null ? null : (
-          <Alert color="destructive">
-            <AlertDescription>{error}</AlertDescription>
-          </Alert>
-        )}
-      </form>
-    </FormDialogShell>
+          <ScriptRefs scriptPath={scriptPath} canUpload onUpload={setUploadName} />
+          <div className="flex items-center gap-2">
+            <Checkbox
+              id="cl-fw-parallel"
+              checked={parallel}
+              onCheckedChange={(checked) => setParallel(checked === true)}
+            />
+            <Label htmlFor="cl-fw-parallel">Jalankan paralel</Label>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="cl-fw-sort">Urutan</Label>
+            <Input
+              id="cl-fw-sort"
+              type="number"
+              inputMode="numeric"
+              min={0}
+              value={sort}
+              onChange={(event) => setSort(event.target.value)}
+            />
+          </div>
+          {error === null ? null : (
+            <Alert color="destructive">
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
+        </form>
+      </FormDialogShell>
+      {/* Di luar <form>: dialog bersarang tidak boleh meneruskan submit ke form firmware. */}
+      <BinaryUploadDialog
+        open={uploadName !== null}
+        onOpenChange={(next) => {
+          if (!next) setUploadName(null);
+        }}
+        {...(uploadName === null ? {} : { fixedPath: uploadName })}
+        title="Unggah berkas router"
+        onUploaded={() => setUploadName(null)}
+      />
+    </>
   );
 }

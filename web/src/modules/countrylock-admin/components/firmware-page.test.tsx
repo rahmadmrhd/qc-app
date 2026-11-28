@@ -66,6 +66,19 @@ beforeEach(() => {
         file('st', 'settings.json', 'settings'),
       ];
     }
+    if (id === 'clFiles.get') {
+      if (input.id === 's2') {
+        return {
+          ...file('s2', 'MIKROTIK/baru.txt'),
+          text: [
+            '/tool fetch url="{ipServer}" src-path=/temp/system.npk',
+            '/import file-name=/temp/belum.cfg',
+            ':put "{ipTarget} {bogus}"',
+          ].join('\n'),
+        };
+      }
+      return { ...file(String(input.id), 'MIKROTIK/AC.txt'), text: '# kosong' };
+    }
     if (id === 'clFirmwares.save') return { ...firmware('fn', String(input.code)), ...input };
     if (id === 'clFirmwares.remove') return null;
     throw new Error(`api tak terduga: ${id}`);
@@ -184,5 +197,23 @@ describe('FirmwarePage', () => {
         expect.objectContaining({ code: 'K'.repeat(40) }),
       ),
     );
+  });
+
+  test('memilih skrip menampilkan placeholder dan berkas /temp yang dirujuk; yang belum ada dapat diunggah', async () => {
+    await page();
+    await userEvent.click(await screen.findByRole('button', { name: 'Tambah firmware' }));
+    const dialog = await screen.findByRole('alertdialog');
+    await userEvent.click(within(dialog).getByRole('combobox', { name: 'Skrip' }));
+    await userEvent.click(await screen.findByRole('option', { name: 'MIKROTIK/baru.txt' }));
+    const refs = await within(dialog).findByRole('region', { name: 'Isi skrip yang dirujuk' });
+    expect(await within(refs).findByText('/temp/system.npk')).toBeTruthy();
+    expect(within(refs).getByText(/Ada: firmware\/system\.npk/)).toBeTruthy();
+    expect(within(refs).getByText('/temp/belum.cfg')).toBeTruthy();
+    expect(within(refs).getByText('Belum ada di bundel')).toBeTruthy();
+    expect(within(refs).getByText('{ipTarget}')).toBeTruthy();
+    expect(within(refs).getByText(/\{bogus\} tidak dikenal/)).toBeTruthy();
+    await userEvent.click(within(refs).getByRole('button', { name: 'Unggah belum.cfg' }));
+    const upload = await screen.findByLabelText(/Nama berkas di bundel/);
+    expect((upload as HTMLInputElement).value).toBe('belum.cfg');
   });
 });
