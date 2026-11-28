@@ -1,27 +1,39 @@
 import type { StagingRow } from './draft';
 
+/** Satu nilai isian beserta jumlah serial yang memakainya (ditampilkan "nilai (n)"). */
+export interface CountedValue {
+  label: string;
+  count: number;
+}
+
 /** Ringkasan isian yang ditampilkan di konfirmasi sebelum Simpan (langkah konfirmasi, sama dengan Catat WH). */
 export interface SaveConfirmSummary {
   total: number;
   newCount: number;
-  buLabels: string[];
-  itemLabels: string[];
-  locationLabels: string[];
-  testDateFrom: string;
-  testDateTo: string;
+  bu: CountedValue[];
+  item: CountedValue[];
+  location: CountedValue[];
+  testDate: CountedValue[];
   /** Baris yang pilihan stikernya sudah dimuat: jumlah jenis dan total qty. Baris lain memakai bawaan saat Simpan. */
   stickerKinds: number;
   stickerQty: number;
   stickerPending: number;
 }
 
+/** Hitung kemunculan tiap nilai (urut nilai); nilai kosong dilewati. */
+function countBy(values: readonly string[]): CountedValue[] {
+  const counts = new Map<string, number>();
+  for (const value of values) {
+    if (value === '') continue;
+    counts.set(value, (counts.get(value) ?? 0) + 1);
+  }
+  return [...counts]
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+    .map(([label, count]) => ({ label, count }));
+}
+
 /** Ringkasan baris draf yang akan dikirim (hanya baris yang dikirim: `rows` sudah disaring pemanggil). */
 export function saveConfirmSummaryOf(rows: readonly StagingRow[]): SaveConfirmSummary {
-  const dates = rows
-    .map((row) => row.testDate)
-    .filter((date) => date !== '')
-    .sort();
-  const distinct = (values: string[]) => [...new Set(values.filter((value) => value !== ''))];
   let stickerKinds = 0;
   let stickerQty = 0;
   let stickerPending = 0;
@@ -40,13 +52,18 @@ export function saveConfirmSummaryOf(rows: readonly StagingRow[]): SaveConfirmSu
   return {
     total: rows.length,
     newCount: rows.filter((row) => row.existing === undefined).length,
-    buLabels: distinct(rows.map((row) => row.buLabel)),
-    itemLabels: distinct(rows.map((row) => row.itemLabel)),
-    locationLabels: distinct(rows.map((row) => row.locationLabel)),
-    testDateFrom: dates[0] ?? '',
-    testDateTo: dates[dates.length - 1] ?? '',
+    bu: countBy(rows.map((row) => row.buLabel)),
+    item: countBy(rows.map((row) => row.itemLabel)),
+    location: countBy(rows.map((row) => row.locationLabel)),
+    testDate: countBy(rows.map((row) => row.testDate)),
     stickerKinds,
     stickerQty,
     stickerPending,
   };
+}
+
+/** Teks "nilai (n), nilai (n)"; kosong bila tak ada nilai. */
+export function formatCounted(values: readonly CountedValue[]): string {
+  if (values.length === 0) return '-';
+  return values.map((value) => `${value.label} (${value.count})`).join(', ');
 }

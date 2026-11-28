@@ -9,7 +9,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { formatStamp } from '@/lib/format-stamp';
 import { RESCAN_LIST_MAX, type RescanWarning } from '../lib/rescan';
-import type { SaveConfirmSummary } from '../lib/save-confirm';
+import { formatCounted, type SaveConfirmSummary } from '../lib/save-confirm';
 
 export interface RescanWarningDialogProps {
   open: boolean;
@@ -21,27 +21,22 @@ export interface RescanWarningDialogProps {
 }
 
 function summaryLines(summary: SaveConfirmSummary): { label: string; value: string }[] {
-  const join = (values: string[]) => (values.length > 0 ? values.join(', ') : '-');
-  const date =
-    summary.testDateFrom === ''
-      ? '-'
-      : summary.testDateFrom === summary.testDateTo
-        ? summary.testDateFrom
-        : `${summary.testDateFrom} s.d. ${summary.testDateTo}`;
+  let stickers = 'Tidak ada';
   const parts: string[] = [];
   if (summary.stickerKinds > 0)
     parts.push(`${summary.stickerKinds} jenis, ${summary.stickerQty} pcs`);
   if (summary.stickerPending > 0) parts.push(`${summary.stickerPending} baris bawaan`);
+  if (parts.length > 0) stickers = parts.join('; ');
   return [
     {
       label: 'Serial Number',
       value: `${summary.total}${summary.newCount > 0 ? ` (${summary.newCount} baru)` : ''}`,
     },
-    { label: 'BU', value: join(summary.buLabels) },
-    { label: 'Item', value: join(summary.itemLabels) },
-    { label: 'Lokasi', value: join(summary.locationLabels) },
-    { label: 'Tanggal uji', value: date },
-    { label: 'Stiker', value: parts.length > 0 ? parts.join('; ') : 'Tidak ada' },
+    { label: 'BU', value: formatCounted(summary.bu) },
+    { label: 'Item', value: formatCounted(summary.item) },
+    { label: 'Lokasi', value: formatCounted(summary.location) },
+    { label: 'Tanggal uji', value: formatCounted(summary.testDate) },
+    { label: 'Stiker', value: stickers },
   ];
 }
 
