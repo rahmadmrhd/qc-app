@@ -16,6 +16,8 @@ export interface FakeFile {
   shared: boolean;
   trashed: boolean;
   appProperties?: Record<string, string>;
+  /** ISO; tak diisi `uploadFile` (tes yang butuh umur berkas mengisinya sendiri). */
+  createdTime?: string;
 }
 
 export interface FakeBridgeState {
@@ -224,6 +226,7 @@ export function createFakeBridge(): FakeBridge {
             size: bytes.length,
             md5Checksum: createHash('md5').update(bytes).digest('hex'),
             appProperties: file.appProperties ?? {},
+            ...(file.createdTime === undefined ? {} : { createdTime: file.createdTime }),
           };
         })
         .sort((a, b) => a.name.localeCompare(b.name));

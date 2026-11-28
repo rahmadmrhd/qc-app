@@ -22,10 +22,11 @@ import {
 } from '@shared/countrylock-bundle';
 import { clFileSnapshot } from './audit';
 import { storeBlob } from './blob-store';
-import { loadClFileDto } from './files-service';
+import { assertRoomForNewFile, loadClFileDto } from './files-service';
 import { sha256Hex } from './hash';
 import {
   advanceHeadStmt,
+  blobGuardStmt,
   CL_CONFLICTS,
   type ClRevisionRecord,
   getFileByPath,
@@ -154,6 +155,7 @@ export async function startClUpload(
       path: 'Berkas teks tidak dapat diganti dengan biner',
     });
   }
+  if (existing === null) await assertRoomForNewFile(env, 'path');
   const chunkBytes = options.chunkBytes ?? CL_CHUNK_BYTES;
   const now = nowIso(env);
   const id = newId();
@@ -310,6 +312,7 @@ export async function finishClUpload(
     return loadClFileDto(env, existing.id);
   }
 
+  if (existing === null) await assertRoomForNewFile(env, 'path');
   // Biner disimpan LEBIH DULU: baris yang merujuknya tak pernah ada tanpa blob di Drive.
   await storeBlob(env, { sha256, bytes });
 
@@ -325,7 +328,7 @@ export async function finishClUpload(
     author: actor.email,
     createdAt: now,
   };
-  const statements = [...closeSessionStmts(env, session.id, now)];
+  const statements = [blobGuardStmt(env.DB, sha256), ...closeSessionStmts(env, session.id, now)];
   let audit: ReturnType<typeof writeAudit>;
   if (existing === null) {
     const file = {

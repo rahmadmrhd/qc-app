@@ -200,6 +200,26 @@ function toHead(row: Row): ClFileHead {
   };
 }
 
+/**
+ * Penjaga: baris katalog biner `sha256` HARUS ada, dan dikunci (`FOR UPDATE`) sampai transaksi selesai agar penyapu
+ * biner yatim (`DELETE` bersyarat) menunggu revisi yang merujuknya tersimpan; hilang = `CAS_FAIL_SQL` membatalkan batch.
+ */
+export function blobGuardStmt(db: Preparer, sha256: string): DbStatement {
+  return db
+    .prepare(
+      `SELECT CASE WHEN COUNT(*) = 1 THEN 1 ELSE ${CAS_FAIL_SQL} END AS guard_ok FROM cl_blobs WHERE sha256 = ? FOR UPDATE`,
+    )
+    .bind(sha256);
+}
+
+/** Jumlah berkas hidup (batas `CL_FILES_MAX` per draf). */
+export async function countLiveFiles(db: Preparer): Promise<number> {
+  const row = await db
+    .prepare("SELECT COUNT(*) AS n FROM cl_files WHERE removed_at = ''")
+    .first<Row>();
+  return Number(row?.n ?? 0);
+}
+
 /** Berkas hidup (opsional termasuk terhapus) dengan metadata revisi terbaru, urut nama jalur. */
 export async function listFileHeads(
   db: Preparer,

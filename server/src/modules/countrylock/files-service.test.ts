@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
+import { CL_FILES_MAX } from '@shared/countrylock-bundle';
 import {
   clFileHistory,
   getClFile,
@@ -40,6 +41,30 @@ async function auditActions(): Promise<string[]> {
   }>();
   return rows.results.map((row) => row.action);
 }
+
+async function fillLiveFiles(count: number): Promise<void> {
+  const now = '2026-11-28T00:00:00.000Z';
+  const rows = Array.from({ length: count }, (_, index) => ({
+    id: `01ARZ3NDEKTSV4RRFFQ69G${String(index).padStart(4, '0')}`,
+    path: `isi/${index}.rsc`,
+  }));
+  await env.DB.prepare(
+    `INSERT INTO cl_files (id, path, path_key, role, kind, head_rev, removed_at, created_at, updated_at) VALUES ${rows
+      .map(() => "(?, ?, ?, 'script', 'text', 1, '', ?, ?)")
+      .join(', ')}`,
+  )
+    .bind(...rows.flatMap((row) => [row.id, row.path, row.path.toLowerCase(), now, now]))
+    .run();
+}
+
+describe('batas jumlah berkas (CL_FILES_MAX) pada jalur simpan', () => {
+  test('simpan berkas teks BARU saat draf penuh = VALIDATION; berkas yang dihapus tak dihitung', async () => {
+    await fillLiveFiles(CL_FILES_MAX);
+    const error = await errorOf(save({ path: 'baru.rsc' }));
+    expect(error.code).toBe('VALIDATION');
+    expect((await listClFiles(env)).some((file) => file.path === 'baru.rsc')).toBe(false);
+  });
+});
 
 describe('saveClFile', () => {
   test('simpan pertama = revisi 1, simpan teks beda = revisi 2 dengan riwayat berurut', async () => {

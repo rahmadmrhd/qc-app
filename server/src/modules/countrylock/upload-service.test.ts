@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
-import { CL_BINARY_MAX_BYTES, CL_CHUNK_BYTES } from '@shared/countrylock-bundle';
+import { CL_BINARY_MAX_BYTES, CL_CHUNK_BYTES, CL_FILES_MAX } from '@shared/countrylock-bundle';
 import { openBlob } from './blob-store';
 import { clFileHistory, listClFiles } from './files-service';
 import { sha256Hex } from './hash';
@@ -117,9 +117,9 @@ describe('unggah biner bertahap', () => {
     expect((await finish(again.uploadId)).headRev).toBe(1);
   });
 
-  test('sha256 salah di finish menolak, lalu finish yang benar pada sesi yang sama berhasil', async () => {
-    // Deklarasi sha256 milik DATA2 tetapi potongan mengirim DATA: gagal, sesi tetap terbuka; tidak ada yang dapat dibetulkan
-    // selain mengulang sesi, jadi di sini yang dijaga: tidak ada berkas dan tidak ada unggahan Drive.
+  test('sha256 hasil unggahan salah: finish ditolak, sesi tetap open tanpa berkas/unggahan Drive; pemulihan = sesi BARU yang benar', async () => {
+    // Potongan tak dapat diganti isinya (CONFLICT), jadi finish ulang pada sesi yang sama mustahil; jalur pulihnya sesi
+    // baru untuk path yang sama (sesi lama dibuang penyapu setelah 24 jam).
     const declared = await sha256Hex(Uint8Array.from([1, 2, 3, 4]));
     const session = await startClUpload(
       env,
@@ -135,6 +135,38 @@ describe('unggah biner bertahap', () => {
       .bind(session.uploadId)
       .first<{ state: string }>();
     expect(row?.state).toBe('open');
+    const retry = await startClUpload(
+      env,
+      validateStartClUpload({ path: 'c.bin', role: 'router', size: 4, sha256: declared }),
+      OWNER,
+      { chunkBytes: 4 },
+    );
+    await chunk(retry.uploadId, 0, Uint8Array.from([1, 2, 3, 4]));
+    expect((await finish(retry.uploadId)).path).toBe('c.bin');
+    expect(driveUploads()).toHaveLength(1);
+  });
+
+  test('unggah biner BARU saat draf penuh (CL_FILES_MAX) = VALIDATION di start dan di finish', async () => {
+    const session = await start('lama.bin', DATA); // sesi dibuka SEBELUM draf penuh
+    const count = CL_FILES_MAX;
+    const now = '2026-11-28T00:00:00.000Z';
+    const rows = Array.from({ length: count }, (_, index) => ({
+      id: `01ARZ3NDEKTSV4RRFFQ69G${String(index).padStart(4, '0')}`,
+      path: `isi/${index}.rsc`,
+    }));
+    await env.DB.prepare(
+      `INSERT INTO cl_files (id, path, path_key, role, kind, head_rev, removed_at, created_at, updated_at) VALUES ${rows
+        .map(() => "(?, ?, ?, 'script', 'text', 1, '', ?, ?)")
+        .join(', ')}`,
+    )
+      .bind(...rows.flatMap((row) => [row.id, row.path, row.path.toLowerCase(), now, now]))
+      .run();
+    expect((await errorOf(start('baru.bin', DATA))).code).toBe('VALIDATION');
+    for (const [idx, part] of [DATA.slice(0, 4), DATA.slice(4, 8), DATA.slice(8)].entries()) {
+      await chunk(session.uploadId, idx, part);
+    }
+    expect((await errorOf(finish(session.uploadId))).code).toBe('VALIDATION');
+    expect(driveUploads()).toHaveLength(0);
   });
 
   test('unggah ulang isi yang sama tidak mengunggah ke Drive lagi; isi sama dengan revisi terbaru = no-op', async () => {

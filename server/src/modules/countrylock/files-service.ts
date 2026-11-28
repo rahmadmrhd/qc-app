@@ -15,7 +15,7 @@ import type {
   RevertClFileInput,
   SaveClFileInput,
 } from '@shared/contract';
-import { parseSettingsFile } from '@shared/countrylock-bundle';
+import { CL_FILES_MAX, parseSettingsFile } from '@shared/countrylock-bundle';
 import { clFileSnapshot } from './audit';
 import { sha256Hex } from './hash';
 import {
@@ -23,6 +23,7 @@ import {
   CL_CONFLICTS,
   type ClFileHead,
   type ClRevisionRecord,
+  countLiveFiles,
   getFileById,
   getFileByPath,
   getFileHead,
@@ -134,6 +135,19 @@ export async function getClRevision(
  * Teks yang sama dengan revisi terbaru = no-op. Nomor revisi = `head_rev + 1`, dijaga CAS `head_rev` yang digabung ke
  * pernyataan UPDATE PERTAMA di `batch()` (menguncinya) sehingga penulis serentak dari dasar yang sama gagal, bukan menimpa.
  */
+/**
+ * Batas `CL_FILES_MAX` berkas hidup per draf, ditegakkan di setiap jalur yang MEMBUAT berkas baru (simpan teks, unggah
+ * biner, impor). Pemeriksaan ini tidak atomik terhadap pembuatan serentak (selisih paling banyak beberapa berkas): batas
+ * ini pelindung ukuran draf, bukan batas keamanan.
+ */
+export async function assertRoomForNewFile(env: Env, field: string): Promise<void> {
+  if ((await countLiveFiles(env.DB)) >= CL_FILES_MAX) {
+    throw appError('VALIDATION', `Draf maksimal ${CL_FILES_MAX} berkas`, {
+      [field]: `Draf maksimal ${CL_FILES_MAX} berkas`,
+    });
+  }
+}
+
 export async function saveClFile(
   env: Env,
   input: SaveClFileInput,
@@ -148,6 +162,7 @@ export async function saveClFile(
   if (existing === null) {
     if (input.baseSeq !== undefined)
       throw staleError('Berkas sudah dihapus. Muat ulang daftar berkas.');
+    await assertRoomForNewFile(env, 'path');
     const now = nowIso(env);
     const id = newId();
     const revision: ClRevisionRecord = {

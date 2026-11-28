@@ -46,9 +46,13 @@ export async function getBlob(env: Env, sha256: string): Promise<BlobRef | null>
 
 /**
  * Menyimpan biner ke Drive bila belum ada (idempoten): blob yang sudah tercatat tidak diunggah ulang; berkas Drive
- * bernama sama yang MD5 dan ukurannya cocok (sisa percobaan yang gagal setelah unggah) dipakai ulang, yang tak cocok
- * dibuang; setelah unggah, MD5 dan ukuran dari Drive HARUS sama dengan hitungan lokal, kalau tidak berkas Drive dibuang
- * dan galat dilempar (pemanggil tidak menulis baris apa pun yang merujuk blob ini).
+ * bernama sama yang MD5 dan ukurannya cocok (sisa percobaan yang gagal setelah unggah) dipakai ulang; yang tak cocok
+ * (cacat) dibuang; setelah unggah, MD5 dan ukuran dari Drive HARUS sama dengan hitungan lokal, kalau tidak berkas Drive
+ * dibuang dan galat dilempar (pemanggil tidak menulis baris apa pun yang merujuk blob ini).
+ *
+ * Berkas kembar yang SEHAT (MD5 cocok) TIDAK pernah dibuang di sini: bisa jadi salah satunya sudah dirujuk `cl_blobs`
+ * oleh unggahan serentak yang baru menyisip barisnya (balapan tiga arah, review akhir M4). Kembaran itu hanya
+ * membuang ruang dan disapu `sweepOrphanBlobs` setelah masa tenggang.
  */
 export async function storeBlob(
   env: Env,
@@ -74,10 +78,16 @@ export async function storeBlob(
     pageToken = page.nextPageToken;
   } while (pageToken !== undefined);
 
-  const reusable = existing.find((entry) => entry.md5Checksum === md5 && entry.size === size);
+  const healthy = (entry: { md5Checksum?: string; size: number }) =>
+    entry.md5Checksum === md5 && entry.size === size;
+  // Hanya berkas CACAT (MD5/ukuran tak cocok) yang dibuang; barisnya tak mungkin ada karena baris hanya ditulis setelah
+  // verifikasi MD5, jadi menghapusnya tak dapat memutus rujukan yang sah.
   for (const entry of existing) {
-    if (entry !== reusable) await viaBridge(() => bridge.deleteFile(entry.id));
+    if (!healthy(entry)) await viaBridge(() => bridge.deleteFile(entry.id));
   }
+  // Unggahan serentak mungkin sudah mencatat blob ini selagi kita membaca isi folder: pakai catatan itu.
+  if ((await getBlob(env, blob.sha256)) !== null) return;
+  const reusable = existing.find(healthy);
   let driveFileId = reusable?.id;
   if (driveFileId === undefined) {
     const result = await viaBridge(() =>
