@@ -29,13 +29,16 @@ function revision(seq: number, overrides: Partial<ClRevisionDto> = {}): ClRevisi
 }
 
 let history: ClRevisionDto[];
+let detail: { id: string; headRev: number; updatedAt: string };
 
 beforeEach(() => {
   installIntersectionObserver();
   history = [revision(3), revision(2), revision(1)];
+  detail = { id: 'f1', headRev: 3, updatedAt: UPDATED_AT };
   apiMock.mockReset();
   apiMock.mockImplementation(async (id: string) => {
     if (id === 'clFiles.history') return history;
+    if (id === 'clFiles.get') return detail;
     if (id === 'clFiles.revert') {
       return { id: 'f1', headRev: 4, text: 'x', updatedAt: '2026-11-28T02:00:00.000Z' };
     }
@@ -44,9 +47,7 @@ beforeEach(() => {
 });
 
 const panel = (kind: 'text' | 'binary' = 'text') =>
-  renderInRouter(
-    <HistoryPanel fileId="f1" kind={kind} language="rsc" canEdit updatedAt={UPDATED_AT} />,
-  );
+  renderInRouter(<HistoryPanel fileId="f1" kind={kind} language="rsc" canEdit />);
 const revertCalls = () => apiMock.mock.calls.filter((call) => call[0] === 'clFiles.revert');
 
 describe('HistoryPanel', () => {
@@ -85,6 +86,7 @@ describe('HistoryPanel', () => {
     const { ApiError } = await import('@/lib/api/api-error');
     apiMock.mockImplementation(async (id: string) => {
       if (id === 'clFiles.history') return history;
+      if (id === 'clFiles.get') return detail;
       if (id === 'clFiles.revert') {
         throw new ApiError('CONFLICT', 'Data sudah diubah', '-', undefined, { status: 412 });
       }
@@ -103,5 +105,23 @@ describe('HistoryPanel', () => {
     expect(
       (within(dialog).getByRole('button', { name: 'Kembalikan' }) as HTMLButtonElement).disabled,
     ).toBe(true);
+  });
+
+  test('dasar pengembalian dari SATU detail berkas, bukan daftar riwayat yang tak serempak', async () => {
+    // Riwayat (basi) masih berpuncak revisi 3, tetapi detail berkas menyatakan revisi 4 dengan updatedAt tertentu.
+    detail = { id: 'f1', headRev: 4, updatedAt: '2026-11-28T03:00:00.000Z' };
+    await panel();
+    await userEvent.click(await screen.findByRole('button', { name: 'Kembalikan revisi 1' }));
+    await userEvent.click(
+      within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Kembalikan' }),
+    );
+    await waitFor(() =>
+      expect(apiMock).toHaveBeenCalledWith('clFiles.revert', {
+        id: 'f1',
+        seq: 1,
+        baseSeq: 4,
+        expectedUpdatedAt: '2026-11-28T03:00:00.000Z',
+      }),
+    );
   });
 });

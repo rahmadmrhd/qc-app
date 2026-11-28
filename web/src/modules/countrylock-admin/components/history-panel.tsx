@@ -22,7 +22,13 @@ import { describeError } from '@/lib/api/describe-error';
 import { formatStamp } from '@/lib/format-stamp';
 import { isStaleSaveError } from '@/modules/sticker/lib/stale';
 import type { CodeLanguage } from '../lib/language';
-import { clKeys, historyQueryOptions, revisionQueryOptions, useRevertFile } from '../queries';
+import {
+  clKeys,
+  fileQueryOptions,
+  historyQueryOptions,
+  revisionQueryOptions,
+  useRevertFile,
+} from '../queries';
 import { DiffView } from './diff-view';
 
 export interface HistoryPanelProps {
@@ -31,8 +37,6 @@ export interface HistoryPanelProps {
   language: CodeLanguage;
   /** Boleh mengembalikan revisi (`countrylock: edit`). */
   canEdit: boolean;
-  /** `updatedAt` berkas yang sedang dilihat; dikirim sebagai `If-Match` saat mengembalikan revisi. */
-  updatedAt: string;
 }
 
 function revisionLabel(revision: ClRevisionDto): string {
@@ -90,9 +94,12 @@ function Compare({
  * "Kembalikan revisi ini" (menjadi revisi BARU berisi isi lama). Berkas biner: daftar versi (hash, ukuran, pengunggah,
  * waktu) tanpa diff; hash dapat disalin.
  */
-export function HistoryPanel({ fileId, kind, language, canEdit, updatedAt }: HistoryPanelProps) {
+export function HistoryPanel({ fileId, kind, language, canEdit }: HistoryPanelProps) {
   const client = useQueryClient();
   const history = useQuery(historyQueryOptions(fileId));
+  // Dasar pengembalian (`baseSeq` dan `If-Match`) SELALU dari satu detail berkas yang sama, bukan dari daftar riwayat:
+  // dua sumber berbeda bisa tidak serempak dan memunculkan 412 positif palsu.
+  const detail = useQuery(fileQueryOptions(fileId));
   const revert = useRevertFile();
   const revisions = useMemo(
     () => [...(history.data ?? [])].sort((a, b) => b.seq - a.seq),
@@ -103,7 +110,7 @@ export function HistoryPanel({ fileId, kind, language, canEdit, updatedAt }: His
   const [comparing, setComparing] = useState(false);
   const [revertTarget, setRevertTarget] = useState<ClRevisionDto | null>(null);
   const [revertError, setRevertError] = useState<string | null>(null);
-  // Versi yang DILIHAT pengguna saat membuka dialog; dikirim ke server agar suntingan orang lain tak tertimpa.
+  // Versi detail berkas saat revisi dipilih; dikirim ke server agar suntingan orang lain tak tertimpa.
   const [revertBase, setRevertBase] = useState<{ seq: number; updatedAt: string } | null>(null);
   const [revertStale, setRevertStale] = useState(false);
   const latest = revisions[0]?.seq;
@@ -174,13 +181,16 @@ export function HistoryPanel({ fileId, kind, language, canEdit, updatedAt }: His
       label: `Kembalikan revisi ${revision.seq}`,
       shortLabel: 'Kembalikan revisi ini',
       showLabel: true,
-      hidden: !canEdit || kind !== 'text' || revision.seq === latest,
+      hidden: !canEdit || kind !== 'text' || revision.seq === (detail.data?.headRev ?? latest),
       busy: revert.isPending && revert.variables?.seq === revision.seq,
-      disabled: revert.isPending,
+      disabled: revert.isPending || detail.data === undefined,
+      ...(detail.data === undefined ? { disabledReason: 'Memuat versi berkas…' } : {}),
       onSelect: () => {
+        const file = detail.data;
+        if (!file) return;
         setRevertError(null);
         setRevertStale(false);
-        setRevertBase(latest === undefined ? null : { seq: latest, updatedAt });
+        setRevertBase({ seq: file.headRev, updatedAt: file.updatedAt });
         setRevertTarget(revision);
       },
     },
