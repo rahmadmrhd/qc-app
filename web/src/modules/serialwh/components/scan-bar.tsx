@@ -70,8 +70,50 @@ export function ScanBar({
         sticky && 'sticky top-[var(--headroom-offset,0px)] z-10 bg-background pb-1',
       )}
     >
-      <div className="flex items-center justify-between gap-2">
-        <Label htmlFor="wh-scan">Serial Number</Label>
+      <Label htmlFor="wh-scan">Serial Number</Label>
+      <div className="flex items-center gap-2">
+        <Input
+          id="wh-scan"
+          ref={inputRef}
+          value={value}
+          disabled={disabled}
+          autoComplete="off"
+          autoCapitalize="characters"
+          spellCheck={false}
+          inputMode="text"
+          placeholder={
+            disabled && lockedPlaceholder ? lockedPlaceholder : 'Scan atau ketik untuk mencari'
+          }
+          className={cn(
+            'min-w-0 flex-1 font-mono transition-colors touch:h-12 touch:text-base',
+            flash !== null && FEEDBACK_FLASH[flash],
+          )}
+          onChange={(event) => setText(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.nativeEvent.isComposing) return;
+            if (event.key === 'Enter') {
+              event.preventDefault();
+              submitTyped();
+              return;
+            }
+            // Banyak pemindai menutup bacaan dengan Tab; pada kolom kosong Tab tetap memindahkan fokus.
+            if (event.key === 'Tab' && !event.shiftKey && value.trim() !== '') {
+              event.preventDefault();
+              submitTyped();
+            }
+          }}
+          onPaste={(event) => {
+            const pasted = event.clipboardData.getData('text');
+            if (!/[\r\n]/.test(pasted)) return;
+            event.preventDefault();
+            const field = event.currentTarget;
+            const start = field.selectionStart ?? value.length;
+            const end = field.selectionEnd ?? start;
+            const text = `${value.slice(0, start)}${pasted}${value.slice(end)}`;
+            setText('');
+            onScan(text);
+          }}
+        />
         <CameraScanButton
           onScan={(text) => {
             // Dialog kamera sudah memberi nada saat membaca; kirim senyap agar Simpan tidak membunyikan N kali.
@@ -82,48 +124,6 @@ export function ScanBar({
           disabled={disabled}
         />
       </div>
-      <Input
-        id="wh-scan"
-        ref={inputRef}
-        value={value}
-        disabled={disabled}
-        autoComplete="off"
-        autoCapitalize="characters"
-        spellCheck={false}
-        inputMode="text"
-        placeholder={
-          disabled && lockedPlaceholder ? lockedPlaceholder : 'Scan atau ketik untuk mencari'
-        }
-        className={cn(
-          'font-mono transition-colors touch:h-12 touch:text-base',
-          flash !== null && FEEDBACK_FLASH[flash],
-        )}
-        onChange={(event) => setText(event.target.value)}
-        onKeyDown={(event) => {
-          if (event.nativeEvent.isComposing) return;
-          if (event.key === 'Enter') {
-            event.preventDefault();
-            submitTyped();
-            return;
-          }
-          // Banyak pemindai menutup bacaan dengan Tab; pada kolom kosong Tab tetap memindahkan fokus.
-          if (event.key === 'Tab' && !event.shiftKey && value.trim() !== '') {
-            event.preventDefault();
-            submitTyped();
-          }
-        }}
-        onPaste={(event) => {
-          const pasted = event.clipboardData.getData('text');
-          if (!/[\r\n]/.test(pasted)) return;
-          event.preventDefault();
-          const field = event.currentTarget;
-          const start = field.selectionStart ?? value.length;
-          const end = field.selectionEnd ?? start;
-          const text = `${value.slice(0, start)}${pasted}${value.slice(end)}`;
-          setText('');
-          onScan(text);
-        }}
-      />
       <p
         aria-live="polite"
         className={cn('min-h-4 text-xs', line ? FEEDBACK_TEXT_COLOR[line.tone] : '')}

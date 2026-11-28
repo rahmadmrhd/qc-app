@@ -191,7 +191,7 @@ export function useLongPressSelect(
     setManual(false);
     selectionRef.current?.clear();
   }, []);
-  // Mode pilih adalah "layar" di atas daftar: back keluar dari mode pilih (butir 41b).
-  useBackToClose(selecting, exit);
+  // Mode pilih adalah "layar" di atas daftar: back keluar dari mode pilih (butir 41b), kecuali `backToClose === false`.
+  useBackToClose(selecting && selection?.backToClose !== false, exit);
   return { selecting, bind, enter, exit };
 }

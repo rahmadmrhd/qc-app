@@ -668,6 +668,8 @@ export function DispatchPage({ handoverId, onCancel }: DispatchPageProps) {
       itemId: live.current.itemId,
       note: values.note,
       handoverIds: values.handoverIds,
+      locationId: values.locationId,
+      ...(values.stickers !== undefined ? { stickers: values.stickers } : {}),
     });
     live.current.submission = sub;
     setSubmission(sub);
@@ -747,7 +749,7 @@ export function DispatchPage({ handoverId, onCancel }: DispatchPageProps) {
         formId="warehouse-dispatch-form"
         title="Catat Serial WH"
         onCancel={onCancel}
-        submitLabel={`Salin ke clipboard (${selectedCount})`}
+        submitLabel={`Simpan (${selectedCount})`}
         submitDisabled={selectedCount === 0 || frozen}
         {...(phone && selectedCount > 0
           ? {

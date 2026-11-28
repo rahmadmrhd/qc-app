@@ -155,7 +155,7 @@ async function scan(text: string) {
 test('tabel kosong sebelum Item terisi', async () => {
   await renderPage();
   expect(await screen.findByText('Pilih Item atau scan serial untuk mulai')).toBeInTheDocument();
-  expect(screen.getByRole('button', { name: /Salin ke clipboard \(0\)/ })).toBeDisabled();
+  expect(screen.getByRole('button', { name: /Simpan \(0\)/ })).toBeDisabled();
 });
 
 test('scan serial yang ada: dipilih, lalu Item terkunci dengan pesan', async () => {
@@ -164,7 +164,7 @@ test('scan serial yang ada: dipilih, lalu Item terkunci dengan pesan', async () 
   await renderPage();
   await scan('sn1');
   expect(await screen.findByText(/Terkunci karena 1 serial sudah dipilih/)).toBeInTheDocument();
-  expect(screen.getByRole('button', { name: /Salin ke clipboard \(1\)/ })).toBeEnabled();
+  expect(screen.getByRole('button', { name: /Simpan \(1\)/ })).toBeEnabled();
 });
 
 test('scan beda Tipe tanpa pilihan: tawaran Ganti Item', async () => {
@@ -181,9 +181,7 @@ test('scan beda Tipe dengan pilihan: dialog error, tidak dipilih', async () => {
   await renderPage();
   await scan('sn9');
   expect(await screen.findByText('Beda Tipe')).toBeInTheDocument();
-  expect(
-    screen.getByRole('button', { name: /Salin ke clipboard \(1\)/, hidden: true }),
-  ).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /Simpan \(1\)/, hidden: true })).toBeInTheDocument();
 });
 
 test('scan belum ada tanpa BU, Lokasi, Tanggal uji: tetap jadi draf baru', async () => {
@@ -195,7 +193,7 @@ test('scan belum ada tanpa BU, Lokasi, Tanggal uji: tetap jadi draf baru', async
   await renderPage();
   await scan('baru1');
   expect(await screen.findByText('Draf baru')).toBeInTheDocument();
-  expect(screen.getByRole('button', { name: /Salin ke clipboard \(1\)/ })).toBeEnabled();
+  expect(screen.getByRole('button', { name: /Simpan \(1\)/ })).toBeEnabled();
 });
 
 test('kolom Serial Number terkunci sampai Item terisi', async () => {
@@ -211,7 +209,7 @@ test('scan belum ada dengan isian lengkap: jadi draf baru', async () => {
   await renderPage();
   await scan('baru1');
   expect(await screen.findByText('Draf baru')).toBeInTheDocument();
-  expect(screen.getByRole('button', { name: /Salin ke clipboard \(1\)/ })).toBeEnabled();
+  expect(screen.getByRole('button', { name: /Simpan \(1\)/ })).toBeEnabled();
 });
 
 test('dua scan cepat satu SN tidak menjadi dua draf', async () => {
@@ -220,7 +218,7 @@ test('dua scan cepat satu SN tidak menjadi dua draf', async () => {
   const input = await screen.findByRole('textbox', { name: 'Serial Number' });
   await userEvent.type(input, 'baru1{Enter}baru1{Enter}');
   await waitFor(() =>
-    expect(screen.getByRole('button', { name: /Salin ke clipboard \(1\)/ })).toBeInTheDocument(),
+    expect(screen.getByRole('button', { name: /Simpan \(1\)/ })).toBeInTheDocument(),
   );
 });
 
@@ -233,9 +231,7 @@ test('draf tahan muat ulang', async () => {
   // Tulis tertunda ~300 ms; lepas halaman juga menguras tulisan.
   first.unmount();
   await renderPage();
-  expect(
-    await screen.findByRole('button', { name: /Salin ke clipboard \(1\)/ }),
-  ).toBeInTheDocument();
+  expect(await screen.findByRole('button', { name: /Simpan \(1\)/ })).toBeInTheDocument();
 });
 
 test('pemangkasan pilihan kit tidak menghapus draf yang tidak ditampilkan', async () => {
@@ -251,13 +247,13 @@ test('pemangkasan pilihan kit tidak menghapus draf yang tidak ditampilkan', asyn
   );
   seedDraft({ itemId: 'item1', rows });
   await renderPage();
-  expect(await screen.findByRole('button', { name: /Salin ke clipboard \(250\)/ })).toBeEnabled();
+  expect(await screen.findByRole('button', { name: /Simpan \(250\)/ })).toBeEnabled();
   expect(
     screen.getByRole('button', { name: /Tampilkan lebih banyak \(50 lebih lama\)/ }),
   ).toBeInTheDocument();
   // Beri waktu efek pemangkasan kit berjalan; jumlah tetap.
   await new Promise((resolve) => setTimeout(resolve, 50));
-  expect(screen.getByRole('button', { name: /Salin ke clipboard \(250\)/ })).toBeEnabled();
+  expect(screen.getByRole('button', { name: /Simpan \(250\)/ })).toBeEnabled();
 });
 
 test('urutan draf tetap urutan scan walau ponsel menampilkan yang terbaru di atas', async () => {
@@ -285,7 +281,7 @@ test('urutan draf tetap urutan scan walau ponsel menampilkan yang terbaru di ata
   await renderPage();
   const titles = await screen.findAllByText(/^(AAA|BBB)$/);
   expect(titles.map((node) => node.textContent)).toEqual(['BBB', 'AAA']);
-  await userEvent.click(screen.getByRole('button', { name: /Salin ke clipboard \(2\)/ }));
+  await userEvent.click(screen.getByRole('button', { name: /Simpan \(2\)/ }));
   await userEvent.click(screen.getByRole('button', { name: 'Simpan & salin' }));
   await waitFor(() => expect(submitCalls).toHaveLength(1));
   // Urutan kiriman (= seq = clipboard) tetap urutan scan.
@@ -319,7 +315,7 @@ test('clipboard gagal: dialog Salin lagi muncul tanpa mengirim ulang', async () 
       ],
     });
     await renderPage();
-    await userEvent.click(await screen.findByRole('button', { name: /Salin ke clipboard \(1\)/ }));
+    await userEvent.click(await screen.findByRole('button', { name: /Simpan \(1\)/ }));
     await userEvent.click(screen.getByRole('button', { name: 'Simpan & salin' }));
     expect(await screen.findByRole('button', { name: 'Salin lagi' })).toBeInTheDocument();
     expect(screen.getByRole('textbox', { name: 'Daftar Serial Number' })).toHaveValue('AAA');
@@ -344,7 +340,7 @@ test('header catatan: mode note tanpa SO, customer, dan orderId; kardus awal 1',
     ],
   });
   await renderPage();
-  await userEvent.click(await screen.findByRole('button', { name: /Salin ke clipboard \(1\)/ }));
+  await userEvent.click(await screen.findByRole('button', { name: /Simpan \(1\)/ }));
   await userEvent.click(await screen.findByRole('button', { name: 'Simpan & salin' }));
   await waitFor(() => expect(submitCalls).toHaveLength(1));
   const header = submitCalls[0]?.header;
@@ -360,7 +356,7 @@ test('serial baru tanpa lokasi dan tanggal uji: memakai Lokasi dialog dan tangga
   });
   await renderPage();
   await scan('baru1');
-  await userEvent.click(await screen.findByRole('button', { name: /Salin ke clipboard \(1\)/ }));
+  await userEvent.click(await screen.findByRole('button', { name: /Simpan \(1\)/ }));
   await pickLink(screen, 'Lokasi', 'Gudang 1');
   await userEvent.click(screen.getByRole('button', { name: 'Simpan & salin' }));
   await waitFor(() => expect(submitCalls).toHaveLength(1));
@@ -388,7 +384,7 @@ test('Lokasi dialog menjadi lokasi semua serial baru, menimpa lokasi chip saat s
     filters: { buId: 'bu1', locationId: 'loc1', testDate: '2026-11-20', hideRecorded: true },
   });
   await renderPage();
-  await userEvent.click(await screen.findByRole('button', { name: /Salin ke clipboard \(1\)/ }));
+  await userEvent.click(await screen.findByRole('button', { name: /Simpan \(1\)/ }));
   await pickLink(screen, 'Lokasi', 'Gudang 2');
   await userEvent.click(screen.getByRole('button', { name: 'Simpan & salin' }));
   await waitFor(() => expect(submitCalls).toHaveLength(1));
@@ -404,7 +400,7 @@ test('chip Tanggal uji yang terisi menang atas tanggal keluar untuk serial baru'
     filters: { buId: 'bu1', locationId: 'loc1', testDate: '2026-11-18', hideRecorded: true },
   });
   await renderPage();
-  await userEvent.click(await screen.findByRole('button', { name: /Salin ke clipboard \(1\)/ }));
+  await userEvent.click(await screen.findByRole('button', { name: /Simpan \(1\)/ }));
   await userEvent.click(await screen.findByRole('button', { name: 'Simpan & salin' }));
   await waitFor(() => expect(submitCalls).toHaveLength(1));
   expect(submitCalls[0]?.rows[0]).toMatchObject({ kind: 'new', testDate: '2026-11-18' });
@@ -420,7 +416,7 @@ test('urutan kiriman mengikuti urutan serial dipilih dari tabel, bukan urutan ta
   await renderPage();
   await userEvent.click(await screen.findByRole('checkbox', { name: 'Pilih S3' }));
   await userEvent.click(await screen.findByRole('checkbox', { name: 'Pilih S1' }));
-  await userEvent.click(await screen.findByRole('button', { name: /Salin ke clipboard \(2\)/ }));
+  await userEvent.click(await screen.findByRole('button', { name: /Simpan \(2\)/ }));
   await userEvent.click(await screen.findByRole('button', { name: 'Simpan & salin' }));
   await waitFor(() => expect(submitCalls).toHaveLength(1));
   expect(submitCalls[0]?.rows.map((row) => row.serial)).toEqual(['S3', 'S1']);
@@ -436,7 +432,7 @@ function usePhone() {
 
 const copyButton = (count: number) =>
   screen.getByRole('button', {
-    name: new RegExp(`Salin ke clipboard \\(${count}\\)`),
+    name: new RegExp(`Simpan \\(${count}\\)`),
     hidden: true,
   });
 
@@ -515,7 +511,7 @@ test('setelah potongan terkirim, cache serialwh ditandai basi lewat mutasi bersa
   seedDraft({ itemId: 'item1', rows: [draftRow('AAA')] });
   const { queryClient } = await renderPage();
   const spy = vi.spyOn(queryClient, 'invalidateQueries');
-  await userEvent.click(await screen.findByRole('button', { name: /Salin ke clipboard \(1\)/ }));
+  await userEvent.click(await screen.findByRole('button', { name: /Simpan \(1\)/ }));
   await userEvent.click(screen.getByRole('button', { name: 'Simpan & salin' }));
   await waitFor(() => expect(submitCalls).toHaveLength(1));
   await waitFor(() => {
@@ -539,7 +535,7 @@ test('klip dimulai sinkron dari klik Simpan & salin (sebelum menunggu server)', 
   try {
     seedDraft({ itemId: 'item1', rows: [draftRow('AAA')] });
     await renderPage();
-    await userEvent.click(await screen.findByRole('button', { name: /Salin ke clipboard \(1\)/ }));
+    await userEvent.click(await screen.findByRole('button', { name: /Simpan \(1\)/ }));
     const save = screen.getByRole('button', { name: 'Simpan & salin' });
     // Klik mentah: pemeriksaan tepat setelah handler sinkron, sebelum mikrotask lain berjalan.
     act(() => {
@@ -581,7 +577,7 @@ test('banner peringatan dapat dibuka untuk melihat serialnya; baris menyebut SO 
 });
 
 async function sendDraft() {
-  await userEvent.click(await screen.findByRole('button', { name: /Salin ke clipboard \(\d+\)/ }));
+  await userEvent.click(await screen.findByRole('button', { name: /Simpan \(\d+\)/ }));
   await userEvent.click(screen.getByRole('button', { name: 'Simpan & salin' }));
 }
 
@@ -617,7 +613,7 @@ test('kiriman campuran: yang berhasil keluar dari draf, yang dilewati tetap dita
     expect(await screen.findByText('BBB')).toBeInTheDocument();
     expect(screen.queryByText('AAA')).toBeNull();
     expect(screen.getByText('Tipe berbeda')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Salin ke clipboard \(1\)/ })).toBeEnabled();
+    expect(screen.getByRole('button', { name: /Simpan \(1\)/ })).toBeEnabled();
   } finally {
     unstubClipboard();
   }
@@ -660,7 +656,7 @@ test('penanda kiriman berjalan menyala selama potongan dikirim dan padam setelah
 test('logout saat halaman terpasang: draf tidak tertulis lagi saat halaman dilepas', async () => {
   seedDraft({ itemId: 'item1', rows: [draftRow('AAA')] });
   const view = await renderPage();
-  await screen.findByRole('button', { name: /Salin ke clipboard \(1\)/ });
+  await screen.findByRole('button', { name: /Simpan \(1\)/ });
   clearAllWarehouseDrafts();
   expect(readWarehouseDraft('wh@x.com')).toBeNull();
   view.unmount();
@@ -757,7 +753,7 @@ function seedOneNewRow() {
 test('catatan: isi per kardus bawaan dari Item; hasil membuka detail riwayat', async () => {
   seedOneNewRow();
   const { router } = await renderPage();
-  await userEvent.click(await screen.findByRole('button', { name: /Salin ke clipboard \(1\)/ }));
+  await userEvent.click(await screen.findByRole('button', { name: /Simpan \(1\)/ }));
   await waitFor(() => expect(screen.getByLabelText('Isi per kardus')).toHaveValue(12));
   await userEvent.click(screen.getByRole('button', { name: 'Simpan & salin' }));
   await waitFor(() => expect(submitCalls).toHaveLength(1));
@@ -806,5 +802,5 @@ test('ponsel: satu bar bawah berisi ✕, kotak centang, N dipilih, Batal, dan Si
   expect(screen.queryByRole('region', { name: 'Aksi massal' })).toBeNull();
   expect(document.querySelector('[data-slot="selection-bar"]')).toBeNull();
   expect(screen.getByRole('button', { name: 'Batal' })).toBeInTheDocument();
-  expect(screen.getByRole('button', { name: /Salin ke clipboard \(1\)/ })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /Simpan \(1\)/ })).toBeInTheDocument();
 });

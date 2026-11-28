@@ -7,6 +7,7 @@ import type {
   ListWarehouseOrderOptionsInput,
   ListWarehouseSerialsInput,
   SetWarehouseOrderLinksInput,
+  UpdateWarehouseDispatchInput,
   WarehouseLookupInput,
   WarehouseSubmitInput,
 } from '@shared/contract';
@@ -197,6 +198,23 @@ export function useSetWarehouseOrderLinks() {
         queryClient,
         ['serialwh', 'dispatches'],
         ['serialwh', 'dispatch'],
+        ['serialwh', 'candidates'],
+      );
+    },
+  });
+}
+
+export function useUpdateWarehouseDispatch() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: UpdateWarehouseDispatchInput) =>
+      api('serialWarehouse.dispatchUpdate', input),
+    onSuccess: (detail) => {
+      queryClient.setQueryData(serialwhKeys.dispatch(detail.id), detail);
+      markStale(
+        queryClient,
+        ['serialwh', 'dispatches'],
+        ['serialwh', 'dispatch-serials'],
         ['serialwh', 'candidates'],
       );
     },

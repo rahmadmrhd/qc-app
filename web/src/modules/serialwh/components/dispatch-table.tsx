@@ -1,4 +1,5 @@
 import type { WarehouseItemOptionDto, WarehouseSerialDto } from '@shared/contract';
+import type { SerialStatus } from '@shared/serials';
 import { type MutableRefObject, useEffect, useMemo, useRef, useState } from 'react';
 import { type DataColumn, DataTable } from '@/components/data-table';
 import type { RowSelection } from '@/components/data-table/use-row-selection';
@@ -15,6 +16,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { SerialStatusBadge } from '@/modules/serial/components/serial-status-badge';
 import { CUSTODY_LABEL, formatDay, STATUS_LABEL } from '@/modules/serial/lib/labels';
 import { rowKey } from '../lib/draft';
 import type { WarehouseDraftRow } from '../lib/draft-store';
@@ -38,15 +40,18 @@ interface TableRow {
   buCode: string;
   locationName: string;
   testDate: string;
-  statusLabel: string;
+  status: SerialStatus | null;
   selected: boolean;
   selectable: boolean;
   isNew: boolean;
   recorded: boolean;
+  recordedNumbers: string[];
   needsProof: boolean;
   warnings: RowWarning[];
-  /** "SO-1, 12 Nov 2026" dari pengeluaran sebelumnya (untuk peringatan "Pernah keluar"). */
-  priorDetail: string;
+  /** "SO-1, 12 Nov 2026" dari pengeluaran sebelumnya di BU sama. */
+  priorSameDetail: string;
+  /** Daftar BU lain tempat serial pernah keluar, mis. "BU B, 12 Nov 2026; BU C, 13 Nov 2026". */
+  priorOtherDetail: string;
   reason: string | null;
   dto: WarehouseSerialDto | null;
 }
@@ -88,14 +93,12 @@ function ineligibleReason(dto: WarehouseSerialDto): string {
   return `Tidak bisa dipilih: ${parts.join(', ')}`;
 }
 
-function priorDetailOf(dto: WarehouseSerialDto | null, formBuId: string): string {
+function priorSameDetailOf(dto: WarehouseSerialDto | null, formBuId: string): string {
   if (!dto || dto.dispatches.length === 0) return '';
   const ref =
     dto.dispatches.find((dispatch) => dispatch.buId !== undefined && dispatch.buId === formBuId) ??
     dto.dispatches[0];
   if (!ref) return '';
-  // Rujukan BU tak terbaca tanpa nomor SO: cukup kode BU dan tanggal. Penjualan tanpa No SO (nomor kosong, SO terbaca):
-  // ditulis "Tanpa No SO".
   const label =
     ref.orderNumber === undefined
       ? `BU ${ref.buCode}`
@@ -105,10 +108,30 @@ function priorDetailOf(dto: WarehouseSerialDto | null, formBuId: string): string
   return `${label}, ${formatDay(ref.dispatchedOn)}`;
 }
 
+function priorOtherDetailOf(dto: WarehouseSerialDto | null, formBuId: string): string {
+  if (!dto || dto.dispatches.length === 0) return '';
+  const seen = new Set<string>();
+  const parts: string[] = [];
+  for (const dispatch of dto.dispatches) {
+    if (dispatch.buId !== undefined && dispatch.buId === formBuId) continue;
+    const code = dispatch.buCode.trim();
+    if (code === '' || seen.has(code)) continue;
+    seen.add(code);
+    parts.push(`BU ${code}, ${formatDay(dispatch.dispatchedOn)}`);
+  }
+  return parts.join('; ');
+}
+
 function RowBadges({ row }: { row: TableRow }) {
   return (
     <div className="flex flex-wrap items-center gap-1">
-      <span className="text-sm">{row.statusLabel}</span>
+      {row.status !== null ? (
+        <SerialStatusBadge status={row.status} />
+      ) : (
+        <Badge color="info" variant="soft">
+          Baru
+        </Badge>
+      )}
       {row.isNew ? (
         <Badge color="success" variant="soft">
           Draf baru
@@ -116,7 +139,9 @@ function RowBadges({ row }: { row: TableRow }) {
       ) : null}
       {row.recorded ? (
         <Badge color="info" variant="soft">
-          Tercatat WH
+          {row.recordedNumbers.length > 0
+            ? `Tercatat WH (${row.recordedNumbers.join(', ')})`
+            : 'Tercatat WH'}
         </Badge>
       ) : null}
       {row.needsProof ? (
@@ -124,18 +149,24 @@ function RowBadges({ row }: { row: TableRow }) {
           Butuh foto
         </Badge>
       ) : null}
-      {row.warnings.map((warning) => (
-        <Badge
-          key={warning}
-          color={warning === 'prior_other_bu' ? 'info' : 'warning'}
-          variant="outline"
-        >
-          {WARNING_LABEL[warning]}
-          {(warning === 'prior_same_bu' || warning === 'prior_other_bu') && row.priorDetail
-            ? ` (${row.priorDetail})`
-            : ''}
-        </Badge>
-      ))}
+      {row.warnings.map((warning) => {
+        const detail =
+          warning === 'prior_same_bu'
+            ? row.priorSameDetail
+            : warning === 'prior_other_bu'
+              ? row.priorOtherDetail
+              : '';
+        return (
+          <Badge
+            key={warning}
+            color={warning === 'prior_other_bu' ? 'info' : 'warning'}
+            variant="outline"
+          >
+            {WARNING_LABEL[warning]}
+            {detail ? ` (${detail})` : ''}
+          </Badge>
+        );
+      })}
       {row.reason ? (
         <Badge color="destructive" variant="soft">
           {row.reason}
@@ -175,13 +206,7 @@ export function DispatchTable({
 }: DispatchTableProps) {
   const phone = useIsMobile();
   const [visible, setVisible] = useState(DRAFT_PAGE);
-  // Mode pilih kartu ponsel dipegang di sini, bukan diturunkan dari isi draf: draf selalu "terpilih", jadi mode pilih
-  // otomatis akan menyala terus dan menjebak tombol kembali. Keluar dari mode = hanya menutup mode, draf tetap utuh.
-  const [selectMode, setSelectMode] = useState(false);
   const [pendingRemove, setPendingRemove] = useState<readonly string[] | null>(null);
-  useEffect(() => {
-    if (!phone) setSelectMode(false);
-  }, [phone]);
   const selectedKeys = useMemo(() => new Set(draftRows.map(rowKey)), [draftRows]);
   const reference = useMemo(() => referenceTestDate(draftRows.map(rowTestDate)), [draftRows]);
 
@@ -198,14 +223,16 @@ export function DispatchTable({
           buCode: buCodeOf(formBuId || row.buId),
           locationName: locationNameOf(row.locationId),
           testDate: row.testDate,
-          statusLabel: 'Baru',
+          status: null,
           selected: true,
           selectable: true,
           isNew: true,
           recorded: false,
+          recordedNumbers: [],
           needsProof: item?.proofRequired === true,
           warnings: rowWarnings(row, context),
-          priorDetail: '',
+          priorSameDetail: '',
+          priorOtherDetail: '',
           reason: skippedReasons?.get(row.serial) ?? null,
           dto: null,
         };
@@ -218,14 +245,16 @@ export function DispatchTable({
         buCode: snapshot.buCode,
         locationName: snapshot.locationName,
         testDate: snapshot.testDate,
-        statusLabel: STATUS_LABEL[snapshot.status],
+        status: snapshot.status,
         selected: true,
         selectable: true,
         isNew: false,
         recorded: snapshot.recorded,
+        recordedNumbers: snapshot.recordedNumbers ?? [],
         needsProof: snapshot.needsProof,
         warnings: rowWarnings(row, context),
-        priorDetail: priorDetailOf(snapshot, formBuId),
+        priorSameDetail: priorSameDetailOf(snapshot, formBuId),
+        priorOtherDetail: priorOtherDetailOf(snapshot, formBuId),
         reason: skippedReasons?.get(row.serial) ?? null,
         dto: snapshot,
       };
@@ -241,14 +270,16 @@ export function DispatchTable({
           buCode: dto.buCode,
           locationName: dto.locationName,
           testDate: dto.testDate,
-          statusLabel: STATUS_LABEL[dto.status],
+          status: dto.status,
           selected: false,
           selectable: eligible,
           isNew: false,
           recorded: dto.recorded,
+          recordedNumbers: dto.recordedNumbers ?? [],
           needsProof: dto.needsProof,
           warnings: eligible ? snapshotWarnings(dto, context) : [],
-          priorDetail: priorDetailOf(dto, formBuId),
+          priorSameDetail: priorSameDetailOf(dto, formBuId),
+          priorOtherDetail: priorOtherDetailOf(dto, formBuId),
           reason: eligible ? null : ineligibleReason(dto),
           dto,
         };
@@ -288,13 +319,10 @@ export function DispatchTable({
     return {
       selected: selectedKeys,
       count: selectedKeys.size,
-      modeCount: selectMode ? 1 : 0,
+      // Di ponsel checkbox selalu tampil (mode pilih aktif terus); tombol kembali membatalkan halaman, bukan keluar mode pilih.
+      modeCount: phone ? 1 : 0,
+      backToClose: false,
       toggle: (key) => {
-        if (phone && !selectMode) {
-          // Tekan lama / "Pilih" pada baris yang sudah di draf hanya MASUK mode pilih; tidak mengeluarkannya.
-          setSelectMode(true);
-          if (selectedKeys.has(key)) return;
-        }
         if (selectedKeys.has(key)) onRemove([key]);
         else addByKeys([key]);
       },
@@ -311,10 +339,9 @@ export function DispatchTable({
       },
       // Pemangkasan kit (id yang tak ada di baris dimuat) diabaikan: draf tidak boleh hilang diam-diam.
       remove: () => undefined,
-      // Keluar dari mode pilih (tombol X, kembali): hanya menutup mode, TIDAK menghapus draf.
-      clear: () => setSelectMode(false),
+      clear: () => undefined,
     };
-  }, [byKey, selectedKeys, onAdd, onRemove, phone, selectMode, item]);
+  }, [byKey, selectedKeys, onAdd, onRemove, phone, item]);
 
   // Kotak centang bar bawah ponsel: semua baris yang boleh dipilih sudah terpilih = centang; selain itu mengklik memilih
   // semuanya (setAll hanya menambah yang belum terpilih dan memuat Item yang sama).
@@ -351,6 +378,9 @@ export function DispatchTable({
 
   return (
     <div className="space-y-2">
+      <p className="hidden text-xs text-muted-foreground wide:block">
+        Tips: Shift+klik pada kotak centang memilih satu rentang sekaligus.
+      </p>
       <DataTable
         rows={tableRows}
         rowKey={(row) => row.key}
@@ -359,6 +389,9 @@ export function DispatchTable({
         selection={selection}
         selectLabel={(row) => row.serial}
         rowSelectable={(row) => !frozen && row.selectable}
+        onOpen={(row) => {
+          if (!frozen && row.selectable) selection.toggle(row.key);
+        }}
         isLoading={isLoading}
         isError={isError}
         onRetry={onRetry}
@@ -367,7 +400,7 @@ export function DispatchTable({
         onLoadMore={onLoadMore}
         filtered={filtered}
         empty={empty}
-        fit="content"
+        fit="viewport"
         rowHighlighted={(row) => highlighted?.has(row.key) ?? false}
       />
       {draftRows.length > visible ? (
@@ -409,9 +442,6 @@ export function DispatchTable({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-      <p className="hidden text-xs text-muted-foreground wide:block">
-        Tips: Shift+klik pada kotak centang memilih satu rentang sekaligus.
-      </p>
     </div>
   );
 }

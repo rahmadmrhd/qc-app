@@ -29,7 +29,7 @@ import {
 async function toDtos(env: Env, user: UserContext, rows: readonly WhSerialRow[], orderId?: string) {
   const readable = new Set(whBuIds(user, 'view'));
   const ids = rows.map((row) => row.id.trim());
-  const { refs, recorded } = await loadDispatchRefs(env.DB, ids, readable);
+  const { refs, recorded, recordedNumbers } = await loadDispatchRefs(env.DB, ids, readable);
   const inOrder = orderId === undefined ? null : await serialsInOrder(env.DB, orderId, ids);
   return rows.map((row) =>
     toWarehouseSerial(
@@ -38,6 +38,7 @@ async function toDtos(env: Env, user: UserContext, rows: readonly WhSerialRow[],
       inOrder === null ? undefined : inOrder.has(row.id.trim()),
       readable.has(row.bu_id.trim()),
       recorded.has(row.id.trim()),
+      recordedNumbers.get(row.id.trim()),
     ),
   );
 }

@@ -17,7 +17,6 @@ import {
   liveBuIdsWithLevelOf,
   locationsWith,
   serialActorModules,
-  warehouseCancelTarget,
 } from './permissions';
 
 const me: MeDto = {
@@ -301,25 +300,4 @@ test('canManageAnyItem: manage pada minimal satu BU (juga nonaktif)', () => {
   expect(canManageAnyItem(meWithBus([bu('a', 'view'), bu('b', 'manage')]))).toBe(true);
   expect(canManageAnyItem(meWithBus([]))).toBe(false);
   expect(canManageAnyItem(null)).toBe(false);
-});
-
-test('warehouseCancelTarget: tujuan Batal menurut izin, pemegang serialwh saja tidak ke /serial', () => {
-  const whBu = {
-    ...bu('a', 'none'),
-    permissions: { ...bu('a', 'none').permissions, serialwh: 'edit' as const },
-  };
-  const whOnly = {
-    ...meWithBus([whBu]),
-    permissions: { ...me.permissions, serialwh: 'edit' as const },
-  };
-  expect(warehouseCancelTarget(whOnly)).toBe('/serial/gudang/riwayat');
-  const withSerial = { ...whOnly, permissions: { ...whOnly.permissions, serial: 'view' as const } };
-  expect(warehouseCancelTarget(withSerial)).toBe('/serial');
-  const serviceOnly = {
-    ...whOnly,
-    permissions: { ...whOnly.permissions, serialservice: 'view' as const },
-  };
-  expect(warehouseCancelTarget(serviceOnly)).toBe('/serial');
-  expect(warehouseCancelTarget(meWithBus([bu('a', 'none')]))).toBe('/');
-  expect(warehouseCancelTarget(null)).toBe('/');
 });

@@ -68,6 +68,9 @@ beforeEach(() => {
     if (id === 'serialWarehouse.orderOptions') {
       return Promise.resolve({ items: orders, nextCursor: null });
     }
+    if (id === 'serials.stickerOptions') {
+      return Promise.resolve({ stickers: [] });
+    }
     if (id === 'serialWarehouse.readyStock') {
       return Promise.resolve({
         boxes: [],
@@ -170,14 +173,14 @@ test('serial baru pada Item yang bukan milik BU tujuan ditolak di dialog', async
 test('banner foto muncul hanya bila ada serial baru milik item wajib foto', async () => {
   setup([newRow('N1')], { item: whItem({ proofRequired: true, proofMin: 2 }) });
   expect(
-    await screen.findByText(/Serial baru untuk item wajib foto dicatat tanpa foto bukti/),
+    await screen.findByText(/Serial baru untuk item tersebut wajib foto bukti/),
   ).toBeInTheDocument();
 });
 
 test('tanpa serial baru tidak ada banner foto', async () => {
   setup([makeExistingRow(whSerial())], { item: whItem({ proofRequired: true }) });
   await screen.findByLabelText('Nomor kardus awal');
-  expect(screen.queryByText(/dicatat tanpa foto bukti/)).toBeNull();
+  expect(screen.queryByText(/wajib foto bukti/)).toBeNull();
 });
 
 test('serial baru tanpa lokasi: Lokasi dialog wajib dan dipakai; tidak ada isian tanggal uji', async () => {
@@ -187,7 +190,9 @@ test('serial baru tanpa lokasi: Lokasi dialog wajib dan dipakai; tidak ada isian
   );
   expect(screen.queryByLabelText('Tanggal uji serial baru')).toBeNull();
   expect(screen.queryByLabelText('Lokasi serial baru')).toBeNull();
-  expect(screen.getByText('Dipakai juga untuk serial baru.')).toBeInTheDocument();
+  expect(
+    screen.getByText('Dipakai untuk serial baru dan pengurangan stok stiker yang belum tertempel.'),
+  ).toBeInTheDocument();
   await userEvent.click(screen.getByRole('button', { name: 'Simpan & salin' }));
   expect(props.onConfirm).not.toHaveBeenCalled();
   expect(await screen.findByText('Lokasi wajib dipilih')).toBeInTheDocument();
@@ -202,7 +207,9 @@ test('serial baru tanpa lokasi: Lokasi dialog wajib dan dipakai; tidak ada isian
 test('serial baru yang sudah berlokasi: Lokasi dialog tetap wajib dan dipakai untuk semua serial baru', async () => {
   const props = setup([newRow('N2')], { defaultLocationId: '' });
   await screen.findByLabelText('Nomor kardus awal');
-  expect(screen.getByText('Dipakai juga untuk serial baru.')).toBeInTheDocument();
+  expect(
+    screen.getByText('Dipakai untuk serial baru dan pengurangan stok stiker yang belum tertempel.'),
+  ).toBeInTheDocument();
   await userEvent.click(screen.getByRole('button', { name: 'Simpan & salin' }));
   expect(props.onConfirm).not.toHaveBeenCalled();
   expect(await screen.findByText('Lokasi wajib dipilih')).toBeInTheDocument();
@@ -405,6 +412,7 @@ test('simpan mengirim mode note dengan catatan Markdown, kardus awal 1, dan isi 
     locationId: 'loc1',
     boxStart: 1,
     boxSize: 10,
+    stickers: [],
   });
 });
 

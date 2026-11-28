@@ -1538,6 +1538,8 @@ export interface WarehouseSerialDto {
   needsProof: boolean;
   /** Ada pengeluaran SELESAI serial ini di BU MANA PUN (dihitung server; sumber lencana "Tercatat WH"). */
   recorded: boolean;
+  /** Nomor riwayat pengeluaran selesai yang mencatat serial ini pada BU terbaca pemanggil. */
+  recordedNumbers?: string[];
   /** Maks. 20 terbaru untuk BU terbaca (lengkap) + maks. 20 untuk BU tak terbaca (hanya `buCode` dan `dispatchedOn`). */
   dispatches: WarehouseDispatchRefDto[];
   /** Hanya bila input `orderId` dikirim: serial sudah ada di SO itu (pengeluaran pending atau selesai). */
@@ -1621,6 +1623,10 @@ export interface WarehouseSubmitHeader {
   /** Mode ready dan note: nomor kardus pertama dan pcs per kardus (wajib bersama); ditolak pada mode `order`. */
   boxStart?: number;
   boxSize?: number;
+  /** Lokasi dialog konfirmasi (dipakai memotong stok stiker yang belum tertempel pada serial yang sudah ada). */
+  locationId?: string;
+  /** Checklist stiker dari dialog konfirmasi; tiada = perilaku bawaan (stiker bawaan untuk serial baru saja). */
+  stickers?: SerialStickerPick[];
 }
 export type WarehouseSubmitRow =
   | { kind: 'existing'; serialId: string; serial: string }
@@ -1817,8 +1823,20 @@ export interface WarehouseDispatchDetailDto extends WarehouseDispatchListItemDto
   chunkCount: number;
   chunksReceived: number;
   createdCount: number;
+  /** Nomor kardus awal dan isi per kardus (mode `note`). */
+  boxStart?: number;
+  boxSize?: number;
   /** `serialwh: edit` pada BU pengeluaran. */
   canEdit: boolean;
+}
+export interface UpdateWarehouseDispatchInput {
+  id: string;
+  dispatchedOn: string;
+  buId: string;
+  boxStart: number;
+  boxSize: number;
+  note: string;
+  handoverIds: string[];
 }
 export interface ListWarehouseDispatchesInput {
   /** Cari nomor riwayat, No SO, atau nama customer. */
@@ -2441,6 +2459,10 @@ export interface ApiContract {
   'serialWarehouse.readyStock': { input: ListReadyStockInput; output: ReadyStockPageDto };
   'serialWarehouse.dispatchGet': {
     input: GetWarehouseDispatchInput;
+    output: WarehouseDispatchDetailDto;
+  };
+  'serialWarehouse.dispatchUpdate': {
+    input: UpdateWarehouseDispatchInput;
     output: WarehouseDispatchDetailDto;
   };
   'serialProofs.upload': { input: UploadSerialProofInput; output: SerialProofPhotoDto };

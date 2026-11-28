@@ -188,6 +188,22 @@ export async function queryItemOptions(
   };
 }
 
+/** Jalur Catat Serial WH: pemegang `serialwh: edit` pada BU itu, item aktif, hidup, dan terpasang pada BU tersebut. */
+async function activeItemInBuForWarehouse(
+  env: Env,
+  user: UserContext,
+  itemId: string,
+  buId: string,
+): Promise<boolean> {
+  if (!buIdsWithLevel(user.businessUnits, 'serialwh', 'edit').includes(buId)) return false;
+  const hit = await env.DB.prepare(
+    `SELECT 1 AS ok FROM items i WHERE ${liveWhere('i')} AND i.id = ? AND i.status = 'active' AND EXISTS (SELECT 1 FROM item_business_units l WHERE l.item_id = i.id AND l.bu_id = ?)`,
+  )
+    .bind(itemId, buId)
+    .first<{ ok: number }>();
+  return hit !== null;
+}
+
 /**
  * Stiker yang berlaku bagi item pada BU tertentu; BU di luar hak tulis user, BU nonaktif, atau item yang tidak terlihat
  * bagi user = `NOT_FOUND`. BU serial tidak lagi dibatasi pada BU item (spek 2026-11-18 butir N).
@@ -202,7 +218,11 @@ export async function stickerOptions(
   const viaSerial =
     input.serialId !== undefined &&
     (await recheckStickerTargetAllowed(env, user, input.serialId, input.itemId, input.buId));
-  if (!viaSerial && !(await activeItemWritableForBu(env.DB, input.itemId, input.buId, user))) {
+  if (
+    !viaSerial &&
+    !(await activeItemWritableForBu(env.DB, input.itemId, input.buId, user)) &&
+    !(await activeItemInBuForWarehouse(env, user, input.itemId, input.buId))
+  ) {
     throw appError('NOT_FOUND', 'Item tidak ditemukan');
   }
   return { stickers: await applicableStickersOf(env, input.itemId, input.buId) };

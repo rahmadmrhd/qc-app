@@ -1,6 +1,10 @@
 import type { RouteTable } from '@server/core/router';
 import { expectNull } from '@server/core/validate';
-import { getWarehouseDispatch, listWarehouseDispatches } from './dispatches';
+import {
+  getWarehouseDispatch,
+  listWarehouseDispatches,
+  updateWarehouseDispatch,
+} from './dispatches';
 import { handoverCandidates } from './handover-candidates';
 import { handoverContext, setOrderLinks } from './handover-links';
 import { warehouseItemOptions, warehouseOptions, warehouseOrderOptions } from './options';
@@ -29,6 +33,7 @@ import {
   validateWarehouseOrderOptions,
   validateWarehouseSerials,
   validateWarehouseSubmit,
+  validateWarehouseUpdateDispatch,
 } from './validate';
 import {
   validateWarehouseHandoverCandidates,
@@ -54,6 +59,7 @@ type WarehouseMethod =
   | 'serialWarehouse.ready'
   | 'serialWarehouse.dispatchList'
   | 'serialWarehouse.dispatchGet'
+  | 'serialWarehouse.dispatchUpdate'
   | 'serialWarehouse.readyStock';
 
 const EDIT = { module: 'serialwh', level: 'edit' } as const;
@@ -149,6 +155,11 @@ export function serialwhRoutes(): Pick<RouteTable, WarehouseMethod> {
       permission: VIEW,
       validate: validateWarehouseGetDispatch,
       handler: (input, ctx) => getWarehouseDispatch(ctx.env, ctx.user, input),
+    },
+    'serialWarehouse.dispatchUpdate': {
+      permission: EDIT,
+      validate: validateWarehouseUpdateDispatch,
+      handler: (input, ctx) => updateWarehouseDispatch(ctx.env, ctx.user, input),
     },
     'serialWarehouse.readyStock': {
       permission: VIEW,

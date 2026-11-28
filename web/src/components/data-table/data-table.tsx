@@ -77,6 +77,8 @@ interface DataTableBase<T> {
    * Ditulis ke atribut `data-box-tone` baris; hanya tampilan tabel desktop.
    */
   rowTone?: (row: T) => 'a' | 'b' | undefined;
+  /** Kelas tambahan per baris tabel desktop (mis. batas lebih tegas saat pergantian kardus). */
+  rowClassName?: (row: T) => string | undefined;
   /**
    * Desktop: `viewport` = pembungkus gulir dua sumbu setinggi sisa layar (header tetap menempel, scrollbar horizontal
    * selalu terlihat di dasar layar); `content` = hanya gulir horizontal tanpa batas tinggi (tabel yang tertanam di View
@@ -165,6 +167,7 @@ function DataTableImpl<T>({
   onOpen,
   rowHighlighted,
   rowTone,
+  rowClassName,
   fit: fitProp,
 }: DataTableProps<T>) {
   const desktop = useIsDesktop();
@@ -300,6 +303,7 @@ function DataTableImpl<T>({
                   className={cn(
                     'group/row transition-colors data-[box-tone=b]:bg-foreground/9 data-[highlight]:bg-success-text/15 data-[state=selected]:bg-info-text/8',
                     openRow && 'cursor-pointer',
+                    rowClassName?.(row),
                   )}
                   {...(openRow
                     ? {

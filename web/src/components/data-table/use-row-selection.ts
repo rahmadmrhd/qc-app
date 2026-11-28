@@ -13,6 +13,8 @@ export interface RowSelection {
    * (selalu ada) mengisinya sendiri agar mode pilih tidak menyala dan menjebak tombol kembali.
    */
   modeCount?: number;
+  /** Bawaan `true`: tombol kembali di ponsel keluar dari mode pilih. `false` membiarkan tombol kembali membatalkan halaman. */
+  backToClose?: boolean;
 }
 
 /**

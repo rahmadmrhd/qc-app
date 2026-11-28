@@ -183,18 +183,33 @@ export async function loadDispatchRefs(
   serialIds: readonly string[],
   /** BU terbaca pemanggil (`serialwh: view`). */
   readableBuIds: ReadonlySet<string>,
-): Promise<{ refs: Map<string, WarehouseDispatchRefDto[]>; recorded: Set<string> }> {
+): Promise<{
+  refs: Map<string, WarehouseDispatchRefDto[]>;
+  recorded: Set<string>;
+  recordedNumbers: Map<string, string[]>;
+}> {
   const map = new Map<string, WarehouseDispatchRefDto[]>();
   const recorded = new Set<string>();
-  if (serialIds.length === 0) return { refs: map, recorded };
-  // `recorded` = pengeluaran selesai mode APA PUN (juga ready, yang tak punya SO dan tak masuk `refs`).
+  const recordedNumbers = new Map<string, string[]>();
+  if (serialIds.length === 0) return { refs: map, recorded, recordedNumbers };
+  // `recorded` = pengeluaran selesai mode APA PUN (juga ready/note); nomor riwayat hanya untuk BU terbaca.
   const recordedRows = await db
     .prepare(
-      `SELECT DISTINCT wds.serial_id FROM warehouse_dispatch_serials wds JOIN warehouse_dispatches d ON d.id = wds.dispatch_id WHERE d.status = 'done' AND wds.serial_id IN (${placeholders(serialIds.length)})`,
+      `SELECT wds.serial_id, d.number, IF(d.bu_id <> '', d.bu_id, COALESCE(o.bu_id, '')) AS bu_id FROM warehouse_dispatch_serials wds JOIN warehouse_dispatches d ON d.id = wds.dispatch_id LEFT JOIN warehouse_orders o ON o.id = wds.order_id WHERE d.status = 'done' AND wds.serial_id IN (${placeholders(serialIds.length)}) ORDER BY d.dispatched_on DESC, d.created_at DESC`,
     )
     .bind(...serialIds)
-    .all<{ serial_id: string }>();
-  for (const row of recordedRows.results) recorded.add(row.serial_id.trim());
+    .all<{ serial_id: string; number: string; bu_id: string }>();
+  for (const row of recordedRows.results) {
+    const sid = row.serial_id.trim();
+    recorded.add(sid);
+    if (readableBuIds.has(row.bu_id.trim()) && row.number !== '') {
+      const list = recordedNumbers.get(sid) ?? [];
+      if (!list.includes(row.number) && list.length < DISPATCH_REFS_MAX) {
+        list.push(row.number);
+        recordedNumbers.set(sid, list);
+      }
+    }
+  }
   // `refs` = Penjualan (ber-SO atau tanpa SO; Ready tak dihitung). Tanpa SO: `orderId`/`orderNumber` kosong, BU dari pengeluaran.
   const rows = await db
     .prepare(
@@ -232,7 +247,7 @@ export async function loadDispatchRefs(
     );
     map.set(serialId, list);
   }
-  return { refs: map, recorded };
+  return { refs: map, recorded, recordedNumbers };
 }
 
 /** Serial-serial ini yang sudah tercatat selesai pada pengeluaran mode apa pun (pencegah mencatat ready ganda). */
@@ -288,6 +303,7 @@ export function toWarehouseSerial(
   inOrder?: boolean,
   showBuName = true,
   recorded = false,
+  recordedNumbers?: string[],
 ): WarehouseSerialDto {
   const status = row.status.trim();
   const custody = row.custody.trim();
@@ -307,6 +323,7 @@ export function toWarehouseSerial(
     whCreated: Number(row.wh_created) === 1,
     needsProof: Number(row.needs_proof) === 1,
     recorded,
+    ...(recordedNumbers && recordedNumbers.length > 0 ? { recordedNumbers } : {}),
     dispatches,
     ...(inOrder === undefined ? {} : { inOrder }),
   };

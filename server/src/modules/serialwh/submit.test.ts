@@ -437,4 +437,35 @@ describe('submit Keluar Gudang', () => {
     expect(Number(serial?.wh_created)).toBe(1);
     expect(await count('SELECT COUNT(*) AS n FROM serial_proof_photos')).toBe(0);
   });
+
+  test('checklist stiker di dialog: serial yang sudah tertempel tidak memotong stok, yang belum memotong stok', async () => {
+    // Seed 2 serial lama: ST-HAVE sudah punya s1 (tidak ada s2), ST-NONE belum punya stiker sama sekali.
+    await seedSerial(env, { id: 'sn-have', serial: 'ST-HAVE' });
+    await env.DB.prepare(
+      'INSERT INTO serial_stickers (serial_id, sticker_id, qty) VALUES (?, ?, ?)',
+    )
+      .bind('sn-have', 's1', 1)
+      .run();
+    await seedSerial(env, { id: 'sn-none', serial: 'ST-NONE' });
+    const beforeS1 = await stock('s1');
+
+    const out = await submit(
+      E,
+      [existing('sn-have', 'ST-HAVE'), existing('sn-none', 'ST-NONE'), fresh('ST-NEW')],
+      {
+        header: {
+          mode: 'note',
+          boxStart: 1,
+          boxSize: 10,
+          orderNumber: '',
+          customerName: '',
+          locationId: 'loc-sby',
+          stickers: [{ stickerId: 's1', qty: 1 }],
+        },
+      },
+    );
+    expect(out.ok).toBe(true);
+    // s1 dipotong hanya untuk ST-NONE dan ST-NEW (2x), TIDAK untuk ST-HAVE yang sudah tertempel.
+    expect(await stock('s1')).toBe(beforeS1 - 2);
+  });
 });

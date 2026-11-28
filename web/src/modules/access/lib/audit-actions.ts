@@ -93,6 +93,7 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   'serial.proof_retention': 'Foto bukti gagal dibuang otomatis',
   'serialwh.dispatch_create': 'Penjualan Gudang dicatat',
   'serialwh.dispatch_done': 'Penjualan Gudang selesai',
+  'serialwh.dispatch_update': 'Catatan Gudang diubah',
   'serialwh.dispatch_cancel': 'Penjualan Gudang dibatalkan otomatis',
   'serialwh.ready_create': 'Ready Stock dicatat',
   'serialwh.ready_done': 'Ready Stock selesai',

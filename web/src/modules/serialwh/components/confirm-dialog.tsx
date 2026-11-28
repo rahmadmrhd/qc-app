@@ -1,10 +1,12 @@
 import type {
+  SerialStickerPick,
   WarehouseHandoverCandidateDto,
   WarehouseHandoverContextDto,
   WarehouseItemOptionDto,
 } from '@shared/contract';
 import { WAREHOUSE_BOX_LIMITS, WAREHOUSE_LIMITS } from '@shared/serial-warehouse';
 import { isIsoDate } from '@shared/serials';
+import { useQuery } from '@tanstack/react-query';
 import { useRef, useState } from 'react';
 import { LinkField, type LinkOption } from '@/components/link-field';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -22,7 +24,13 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { HandoverStatusBadge } from '@/modules/handover/components/handover-status-badge';
 import { WysiwygEditor } from '@/modules/markdown/wysiwyg-editor';
+import {
+  defaultStickerChoice,
+  StickerChecklist,
+  type StickerListState,
+} from '@/modules/serial/components/sticker-checklist';
 import { todayWib } from '@/modules/serial/lib/locations';
+import { serialStickerOptionsQueryOptions } from '@/modules/serial/queries';
 import {
   defaultBuId as pickDefaultBu,
   defaultLocationId as pickDefaultLocation,
@@ -44,12 +52,13 @@ export interface ConfirmValues {
   note: string;
   handoverIds: string[];
   /**
-   * Lokasi dialog: melengkapi serial baru yang belum berlokasi dan membatasi daftar task Serah Terima. Serial baru yang
-   * belum punya tanggal uji memakai tanggal catat (diisi halaman; chip Tanggal uji menang bila terisi).
+   * Lokasi dialog: wajib selalu; melengkapi serial baru dan memotong stok stiker yang belum tertempel pada serial
+   * yang sudah ada.
    */
   locationId: string;
   boxStart: number;
   boxSize: number;
+  stickers?: SerialStickerPick[];
 }
 
 export interface ConfirmDialogProps {
@@ -78,7 +87,7 @@ export interface ConfirmDialogProps {
 export function ConfirmDialog(props: ConfirmDialogProps) {
   return (
     <Dialog open={props.open} onOpenChange={props.onOpenChange}>
-      <DialogContent size="full-on-phone" className="sm:max-w-xl">
+      <DialogContent size="full-on-phone" className="sm:max-w-3xl md:max-w-4xl">
         {props.open ? <ConfirmBody {...props} /> : null}
       </DialogContent>
     </Dialog>
@@ -125,8 +134,21 @@ function ConfirmBody({
     }),
   );
   const buId = pickedBuId;
-  // Lokasi dialog ini menjadi lokasi SEMUA serial baru (juga yang sudah berlokasi dari chip saat scan).
-  const fillLocation = rows.some((row) => row.kind === 'new');
+  const itemId = item?.id ?? '';
+  const stickerQuery = useQuery(serialStickerOptionsQueryOptions(itemId, buId));
+  const stickerOptions = stickerQuery.data?.stickers ?? [];
+  const stickerState: StickerListState =
+    itemId === '' || buId === ''
+      ? 'none'
+      : stickerQuery.isError
+        ? 'error'
+        : stickerQuery.isFetching && stickerQuery.data === undefined
+          ? 'loading'
+          : stickerOptions.length === 0
+            ? 'empty'
+            : 'ready';
+  const [stickerChoice, setStickerChoice] = useState<Map<string, number> | null>(null);
+  const chosenStickers = stickerChoice ?? defaultStickerChoice(stickerOptions);
   // Task tertaut yang pernah dimuat pemilih (untuk konfirmasi kecocokan sebelum simpan).
   const candidateRegistry = useRef(new Map<string, WarehouseHandoverCandidateDto>());
   const [mismatch, setMismatch] = useState<WarehouseHandoverCandidateDto[] | null>(null);
@@ -160,7 +182,7 @@ function ConfirmBody({
         : needsItemBu && item && item.buIds.length > 0 && !item.buIds.includes(buId)
           ? 'Item ini bukan milik BU tersebut; serial baru tidak dapat dibuat'
           : undefined,
-    location: fillLocation && pickedLocationId === '' ? 'Lokasi wajib dipilih' : undefined,
+    location: pickedLocationId === '' ? 'Lokasi wajib dipilih' : undefined,
     boxStart:
       boxStart === null || boxStart > WAREHOUSE_BOX_LIMITS.numberMax
         ? `Nomor kardus awal harus 1 sampai ${WAREHOUSE_BOX_LIMITS.numberMax}`
@@ -200,6 +222,10 @@ function ConfirmBody({
   /** Memanggil `onConfirm` SINKRON dari klik (tombol Simpan, atau tombol konfirmasi kecocokan). */
   function proceed() {
     if (boxStart === null || boxSize === null) return;
+    const stickers =
+      stickerQuery.data !== undefined
+        ? [...chosenStickers.entries()].map(([stickerId, qty]) => ({ stickerId, qty }))
+        : undefined;
     onConfirm({
       mode: 'note',
       dispatchedOn,
@@ -209,6 +235,7 @@ function ConfirmBody({
       boxStart,
       boxSize,
       locationId: pickedLocationId,
+      ...(stickers !== undefined ? { stickers } : {}),
     });
   }
 
@@ -229,178 +256,205 @@ function ConfirmBody({
       </DialogHeader>
       <form
         id="warehouse-confirm-form"
-        className="space-y-4"
+        className="grid grid-cols-1 gap-6 md:grid-cols-2"
         onSubmit={(event) => {
           event.preventDefault();
           submit();
         }}
       >
-        <div className="space-y-1.5">
-          <Label htmlFor="wh-dispatched-on" required>
-            Tanggal catat
-          </Label>
-          <Input
-            id="wh-dispatched-on"
-            type="date"
-            max={today}
-            aria-required="true"
-            value={dispatchedOn}
-            onChange={(event) => setDispatchedOn(event.target.value)}
-          />
-          {touched && errors.date ? (
-            <p role="alert" className="text-xs text-destructive-text">
-              {errors.date}
+        {(needsPhotoBanner || Object.values(counts).some((n) => n > 0) || summary.newCount > 0) && (
+          <div className="space-y-3 md:col-span-2">
+            {needsPhotoBanner ? (
+              <Alert color="warning">
+                <AlertDescription>
+                  Serial baru untuk item tersebut wajib foto bukti. Ingatkan tim QC untuk
+                  melampirkan foto bukti QC.
+                </AlertDescription>
+              </Alert>
+            ) : null}
+            <WarningBanners counts={counts} />
+            {summary.newCount > 0 ? (
+              <p className="text-xs text-muted-foreground">
+                <Badge color="info" variant="soft">
+                  {summary.newCount} baru
+                </Badge>{' '}
+                Serial baru dibuat saat disimpan dan stok stiker bawaannya terpotong sekali.
+              </p>
+            ) : null}
+          </div>
+        )}
+        <div className="space-y-4">
+          <div className="space-y-1.5">
+            <Label htmlFor="wh-dispatched-on" required>
+              Tanggal catat
+            </Label>
+            <Input
+              id="wh-dispatched-on"
+              type="date"
+              max={today}
+              aria-required="true"
+              value={dispatchedOn}
+              onChange={(event) => setDispatchedOn(event.target.value)}
+            />
+            {touched && errors.date ? (
+              <p role="alert" className="text-xs text-destructive-text">
+                {errors.date}
+              </p>
+            ) : null}
+          </div>
+
+          <div className="space-y-1.5">
+            <LinkField
+              id="wh-bu"
+              label="BU"
+              required
+              value={buId === '' ? null : buId}
+              onChange={(next) => {
+                setPickedBuId(next ?? '');
+                setStickerChoice(null);
+              }}
+              options={buOptions}
+              localFilter
+              highlight
+              keyboardless
+              placeholder="Pilih BU"
+              {...(touched && errors.bu ? { error: errors.bu } : {})}
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <LinkField
+              id="wh-location"
+              label="Lokasi"
+              required
+              value={pickedLocationId === '' ? null : pickedLocationId}
+              onChange={(next) => setPickedLocationId(next ?? '')}
+              options={locationOptions}
+              localFilter
+              highlight
+              keyboardless
+              placeholder="Pilih lokasi"
+              {...(touched && errors.location ? { error: errors.location } : {})}
+            />
+            <p className="text-xs text-muted-foreground">
+              Dipakai untuk serial baru dan pengurangan stok stiker yang belum tertempel.
             </p>
-          ) : null}
-        </div>
+          </div>
 
-        <div className="space-y-1.5">
-          <LinkField
-            id="wh-bu"
-            label="BU"
-            required
-            value={buId === '' ? null : buId}
-            onChange={(next) => setPickedBuId(next ?? '')}
-            options={buOptions}
-            localFilter
-            highlight
-            keyboardless
-            placeholder="Pilih BU"
-            {...(touched && errors.bu ? { error: errors.bu } : {})}
-          />
-        </div>
+          <div className="space-y-1.5">
+            <StickerChecklist
+              idPrefix="wh-confirm"
+              state={stickerState}
+              options={stickerOptions}
+              chosen={chosenStickers}
+              onChange={setStickerChoice}
+            />
+            {stickerState === 'ready' ? (
+              <p className="text-xs text-muted-foreground">
+                Jika stiker sudah tertempel pada serial, stok tidak dikurangi lagi.
+              </p>
+            ) : null}
+          </div>
 
-        <div className="space-y-1.5">
-          <LinkField
-            id="wh-location"
-            label="Lokasi"
-            required={fillLocation}
-            value={pickedLocationId === '' ? null : pickedLocationId}
-            onChange={(next) => setPickedLocationId(next ?? '')}
-            options={locationOptions}
-            localFilter
-            highlight
-            keyboardless
-            placeholder="Pilih lokasi"
-            {...(touched && errors.location ? { error: errors.location } : {})}
-          />
-          {fillLocation ? (
-            <p className="text-xs text-muted-foreground">Dipakai juga untuk serial baru.</p>
-          ) : null}
-        </div>
-
-        <div className="space-y-3">
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label htmlFor="wh-box-start" required>
-                Nomor kardus awal
-              </Label>
-              <Input
-                id="wh-box-start"
-                type="number"
-                inputMode="numeric"
-                min={1}
-                max={WAREHOUSE_BOX_LIMITS.numberMax}
-                aria-required="true"
-                value={boxStartShown}
-                onChange={(event) => setBoxStartText(event.target.value)}
-              />
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="wh-box-start" required>
+                  Nomor kardus awal
+                </Label>
+                <Input
+                  id="wh-box-start"
+                  type="number"
+                  inputMode="numeric"
+                  min={1}
+                  max={WAREHOUSE_BOX_LIMITS.numberMax}
+                  aria-required="true"
+                  value={boxStartShown}
+                  onChange={(event) => setBoxStartText(event.target.value)}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="wh-box-size" required>
+                  Isi per kardus
+                </Label>
+                <Input
+                  id="wh-box-size"
+                  type="number"
+                  inputMode="numeric"
+                  min={1}
+                  max={WAREHOUSE_BOX_LIMITS.sizeMax}
+                  aria-required="true"
+                  value={boxSizeShown}
+                  onChange={(event) => setBoxSizeText(event.target.value)}
+                />
+              </div>
             </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="wh-box-size" required>
-                Isi per kardus
-              </Label>
-              <Input
-                id="wh-box-size"
-                type="number"
-                inputMode="numeric"
-                min={1}
-                max={WAREHOUSE_BOX_LIMITS.sizeMax}
-                aria-required="true"
-                value={boxSizeShown}
-                onChange={(event) => setBoxSizeText(event.target.value)}
+            {boxStartError && boxStartText === null ? (
+              <p role="alert" className="text-xs text-destructive-text">
+                {boxStartError}
+              </p>
+            ) : null}
+            {touched && errors.boxStart ? (
+              <p role="alert" className="text-xs text-destructive-text">
+                {errors.boxStart}
+              </p>
+            ) : null}
+            {touched && errors.boxSize ? (
+              <p role="alert" className="text-xs text-destructive-text">
+                {errors.boxSize}
+              </p>
+            ) : null}
+            {boxSummary ? (
+              <p className="text-xs text-muted-foreground" role="status">
+                {boxSummary}
+              </p>
+            ) : null}
+          </div>
+
+          <div className="space-y-1.5">
+            <Label id="wh-note-label">Catatan</Label>
+            <WysiwygEditor
+              id="wh-note"
+              mode="note"
+              value={note}
+              onChange={setNote}
+              labelledBy="wh-note-label"
+              maxLength={WAREHOUSE_LIMITS.noteMax}
+            />
+            {touched && errors.note ? (
+              <p role="alert" className="text-xs text-destructive-text">
+                {errors.note}
+              </p>
+            ) : null}
+          </div>
+        </div>
+
+        <div className="flex flex-col md:relative md:min-h-0">
+          <div className="space-y-2 md:absolute md:inset-0 md:flex md:flex-col md:overflow-hidden">
+            <Label className="shrink-0">Link Serah Terima (opsional)</Label>
+            <div className="min-h-0 flex-1 space-y-2 md:overflow-y-auto md:pr-1">
+              <HandoverLinkPicker
+                locationId={pickedLocationId}
+                registry={candidateRegistry}
+                onRegistryChange={() => bumpRegistry((n) => n + 1)}
+                {...(item ? { itemId: item.id } : {})}
+                value={handoverIds}
+                onChange={setHandoverIds}
+                {...(originHandoverId ? { lockedIds: [originHandoverId] } : {})}
               />
+              {uncheckedIds.length > 0 ? (
+                <p className="text-xs text-warning-text" role="status">
+                  Task asal belum diperiksa kecocokannya dengan Item (daftar belum memuat task ini).
+                </p>
+              ) : null}
+              {originHandoverId && handoverContext ? (
+                <p className="text-xs text-muted-foreground">
+                  Catatan ini akan ditautkan ke task {handoverContext.handover.number}.
+                </p>
+              ) : null}
             </div>
           </div>
-          {boxStartError && boxStartText === null ? (
-            <p role="alert" className="text-xs text-destructive-text">
-              {boxStartError}
-            </p>
-          ) : null}
-          {touched && errors.boxStart ? (
-            <p role="alert" className="text-xs text-destructive-text">
-              {errors.boxStart}
-            </p>
-          ) : null}
-          {touched && errors.boxSize ? (
-            <p role="alert" className="text-xs text-destructive-text">
-              {errors.boxSize}
-            </p>
-          ) : null}
-          {boxSummary ? (
-            <p className="text-xs text-muted-foreground" role="status">
-              {boxSummary}
-            </p>
-          ) : null}
         </div>
-
-        <div className="space-y-1.5">
-          <Label id="wh-note-label">Catatan</Label>
-          <WysiwygEditor
-            id="wh-note"
-            mode="note"
-            value={note}
-            onChange={setNote}
-            labelledBy="wh-note-label"
-            maxLength={WAREHOUSE_LIMITS.noteMax}
-          />
-          {touched && errors.note ? (
-            <p role="alert" className="text-xs text-destructive-text">
-              {errors.note}
-            </p>
-          ) : null}
-        </div>
-
-        <div className="space-y-2">
-          <Label>Link Serah Terima (opsional)</Label>
-          <HandoverLinkPicker
-            locationId={pickedLocationId}
-            registry={candidateRegistry}
-            onRegistryChange={() => bumpRegistry((n) => n + 1)}
-            {...(item ? { itemId: item.id } : {})}
-            value={handoverIds}
-            onChange={setHandoverIds}
-            {...(originHandoverId ? { lockedIds: [originHandoverId] } : {})}
-          />
-          {uncheckedIds.length > 0 ? (
-            <p className="text-xs text-warning-text" role="status">
-              Task asal belum diperiksa kecocokannya dengan Item (daftar belum memuat task ini).
-            </p>
-          ) : null}
-          {originHandoverId && handoverContext ? (
-            <p className="text-xs text-muted-foreground">
-              Catatan ini akan ditautkan ke task {handoverContext.handover.number}.
-            </p>
-          ) : null}
-        </div>
-
-        {needsPhotoBanner ? (
-          <Alert color="warning">
-            <AlertDescription>
-              Serial baru untuk item wajib foto dicatat tanpa foto bukti. Ingatkan tim QC untuk
-              melampirkan foto bukti QC.
-            </AlertDescription>
-          </Alert>
-        ) : null}
-        <WarningBanners counts={counts} />
-        {summary.newCount > 0 ? (
-          <p className="text-xs text-muted-foreground">
-            <Badge color="info" variant="soft">
-              {summary.newCount} baru
-            </Badge>{' '}
-            Serial baru dibuat saat disimpan dan stok stiker bawaannya terpotong sekali.
-          </p>
-        ) : null}
       </form>
       <DialogFooter>
         <Button

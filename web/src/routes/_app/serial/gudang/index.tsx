@@ -1,8 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { z } from 'zod';
 import { useStackNavigation } from '@/hooks/use-stack-navigation';
-import { requirePermission, warehouseCancelTarget } from '@/modules/auth/permissions';
-import { useMe } from '@/modules/auth/use-me';
+import { requirePermission } from '@/modules/auth/permissions';
 import { DispatchPage } from '@/modules/serialwh/components/dispatch-page';
 
 const searchSchema = z.object({
@@ -20,12 +19,10 @@ export const Route = createFileRoute('/_app/serial/gudang/')({
 function DispatchRoute() {
   const search = Route.useSearch();
   const stack = useStackNavigation();
-  const me = useMe();
-  const fallback = warehouseCancelTarget(me);
   return (
     <DispatchPage
       {...(search.handover ? { handoverId: search.handover } : {})}
-      onCancel={() => stack.pop({ to: fallback })}
+      onCancel={() => stack.pop({ to: '/serial/gudang/riwayat' })}
     />
   );
 }
