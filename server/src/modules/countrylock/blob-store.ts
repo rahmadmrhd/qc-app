@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import type { DriveRange } from '@server/core/bridge-client';
 import { getBridge, viaBridge } from '@server/core/bridge-client';
 import type { Env } from '@server/core/env';
-import { nowIso } from '@server/core/env';
+import { nowIso, nowOf } from '@server/core/env';
 import { appError } from '@server/core/errors';
 import { ensureNamedFolder } from '@server/modules/files/service';
 
@@ -16,6 +16,13 @@ export const BLOB_FOLDER_SETTING = 'COUNTRYLOCK_FOLDER_ID';
 export const BLOB_FOLDER_NAME = 'QC App Country Lock';
 export const BLOB_MIME = 'application/octet-stream';
 const LIST_PAGE_SIZE = 50;
+/**
+ * Berkas Drive sehat hanya dipakai ulang bila `createdTime`-nya lebih muda dari ini. HARUS di bawah masa tenggang
+ * penyapu (`BLOB_ORPHAN_GRACE_MS` = 7 hari, `sweep.ts`): penyapu hanya menghapus berkas lebih tua dari itu, jadi berkas
+ * yang kita pakai ulang tak pernah sedang dihapus penyapu (review perbaikan m1). Berkas lebih tua atau tanpa
+ * `createdTime` dianggap tak ada: berkas baru diunggah dan yang lama dibiarkan untuk penyapu.
+ */
+export const BLOB_REUSE_MAX_AGE_MS = 6 * 24 * 60 * 60 * 1000;
 
 export function ensureBlobFolder(env: Env): Promise<string> {
   return ensureNamedFolder(env, BLOB_FOLDER_SETTING, BLOB_FOLDER_NAME);
@@ -87,7 +94,13 @@ export async function storeBlob(
   }
   // Unggahan serentak mungkin sudah mencatat blob ini selagi kita membaca isi folder: pakai catatan itu.
   if ((await getBlob(env, blob.sha256)) !== null) return;
-  const reusable = existing.find(healthy);
+  const now = nowOf(env);
+  const reusable = existing.find(
+    (entry) =>
+      healthy(entry) &&
+      entry.createdTime !== undefined &&
+      now - Date.parse(entry.createdTime) < BLOB_REUSE_MAX_AGE_MS,
+  );
   let driveFileId = reusable?.id;
   if (driveFileId === undefined) {
     const result = await viaBridge(() =>

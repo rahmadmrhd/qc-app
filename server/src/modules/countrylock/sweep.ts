@@ -1,7 +1,7 @@
 import { getBridge, viaBridge } from '@server/core/bridge-client';
 import type { Env } from '@server/core/env';
 import { nowOf } from '@server/core/env';
-import { BLOB_FOLDER_SETTING, getBlob } from './blob-store';
+import { BLOB_FOLDER_SETTING } from './blob-store';
 
 /** Sesi unggah biner yang tak disentuh selama ini dibuang (sesi `open` yang ditinggalkan, juga `done`/`aborted` lama). */
 export const UPLOAD_MAX_AGE_MS = 24 * 60 * 60 * 1000;
@@ -26,7 +26,11 @@ export async function sweepCountryLockUploads(env: Env): Promise<{ removed: numb
 export const BLOB_ORPHAN_GRACE_MS = 7 * 24 * 60 * 60 * 1000;
 const BLOB_SWEEP_BATCH = 50;
 const BLOB_LIST_PAGE = 100;
-const BLOB_LIST_MAX_PAGES = 10;
+// Tahap 2 menelusuri SELURUH folder (pageToken sampai habis) dalam satu putaran, dibatasi jumlah halaman dan waktu agar
+// putaran jam-an tak menggantung pada folder yang sangat besar; sisanya diteruskan putaran berikutnya (Drive mengurutkan
+// tetap, jadi yang dihapus tak muncul lagi dan penelusuran maju).
+const BLOB_LIST_MAX_PAGES = 100;
+export const BLOB_SWEEP_BUDGET_MS = 60_000;
 const SHA256_NAME = /^[0-9a-f]{64}$/;
 
 // Biner dirujuk bila sha256-nya ada di revisi mana pun (termasuk revisi lama dan berkas yang sudah dihapus) atau di
@@ -41,8 +45,8 @@ const UNREFERENCED_SQL =
  *     revisi menguncinya lewat penjaga di `finishClUpload`), baru berkas Drive-nya dihapus.
  *  2. Berkas di folder biner Drive yang bernama sha256, berumur > 7 hari (`createdTime` tak dikenal = dilewati), dan
  *     tidak ditunjuk baris `cl_blobs` mana pun (kembaran unggahan serentak, sisa gagal hapus tahap 1).
- * Biner yang dirujuk bundel terbit atau revisi mana pun tak pernah disentuh. Paling banyak 50 baris dan 1.000 entri
- * Drive per putaran; sisanya ikut putaran berikutnya. Mengembalikan jumlah baris dan berkas Drive yang dibuang.
+ * Biner yang dirujuk bundel terbit atau revisi mana pun tak pernah disentuh. Paling banyak 50 baris, 100 halaman Drive (@100
+ * entri), dan 60 detik per putaran; sisanya ikut putaran berikutnya. Mengembalikan jumlah baris dan berkas Drive yang dibuang.
  */
 export async function sweepOrphanBlobs(env: Env): Promise<{ blobs: number; driveFiles: number }> {
   const cutoff = new Date(nowOf(env) - BLOB_ORPHAN_GRACE_MS).toISOString();
@@ -78,6 +82,10 @@ export async function sweepOrphanBlobs(env: Env): Promise<{ blobs: number; drive
     .bind(BLOB_FOLDER_SETTING)
     .first<{ value: string }>();
   if (folder === null) return { blobs, driveFiles };
+  const startedAt = Date.now();
+  // Fase 1: telusuri folder sampai habis (atau batas halaman/waktu) TANPA menghapus apa pun, karena menghapus saat
+  // menelusuri dapat menggeser halaman dan melewatkan entri.
+  const old: { id: string; name: string }[] = [];
   let pageToken: string | undefined;
   for (let page = 0; page < BLOB_LIST_MAX_PAGES; page++) {
     const listed = await viaBridge(() =>
@@ -87,10 +95,30 @@ export async function sweepOrphanBlobs(env: Env): Promise<{ blobs: number; drive
       }),
     );
     for (const entry of listed.files) {
-      if (!SHA256_NAME.test(entry.name)) continue;
-      if (entry.createdTime === undefined || entry.createdTime >= cutoff) continue;
-      // Dibaca tepat sebelum menghapus: baris yang baru menunjuk berkas ini menahan penghapusan.
-      if ((await getBlob(env, entry.name))?.driveFileId === entry.id) continue;
+      if (
+        SHA256_NAME.test(entry.name) &&
+        entry.createdTime !== undefined &&
+        entry.createdTime < cutoff
+      ) {
+        old.push({ id: entry.id, name: entry.name });
+      }
+    }
+    pageToken = listed.nextPageToken;
+    if (pageToken === undefined || Date.now() - startedAt > BLOB_SWEEP_BUDGET_MS) break;
+  }
+  // Fase 2: buang yang tak ditunjuk baris katalog, satu kueri per 100 entri. Aman terhadap `storeBlob` karena
+  // berkas setua ini (> 7 hari) tak pernah dipakai ulang olehnya (batas 6 hari, `BLOB_REUSE_MAX_AGE_MS`).
+  for (let from = 0; from < old.length; from += BLOB_LIST_PAGE) {
+    if (Date.now() - startedAt > 2 * BLOB_SWEEP_BUDGET_MS) break;
+    const chunk = old.slice(from, from + BLOB_LIST_PAGE);
+    const rows = await env.DB.prepare(
+      `SELECT drive_file_id FROM cl_blobs WHERE sha256 IN (${chunk.map(() => '?').join(', ')})`,
+    )
+      .bind(...chunk.map((entry) => entry.name))
+      .all<{ drive_file_id: string }>();
+    const referencedIds = new Set(rows.results.map((row) => row.drive_file_id));
+    for (const entry of chunk) {
+      if (referencedIds.has(entry.id)) continue;
       try {
         await viaBridge(() => bridge.deleteFile(entry.id));
         driveFiles++;
@@ -100,8 +128,6 @@ export async function sweepOrphanBlobs(env: Env): Promise<{ blobs: number; drive
         );
       }
     }
-    pageToken = listed.nextPageToken;
-    if (pageToken === undefined) break;
   }
   return { blobs, driveFiles };
 }

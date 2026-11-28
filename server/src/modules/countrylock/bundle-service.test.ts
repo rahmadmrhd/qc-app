@@ -281,6 +281,42 @@ describe('perbaikan review: peringatan dan validasi draf', () => {
   });
 });
 
+describe('sidik jari firmware tak terpotong dan peka terhadap A->B->A (m2)', () => {
+  test('ribuan firmware (> 1 MB teks baris): mengubah baris terakhir mengubah sidik jari; A->B->A beda updated_at tetap terdeteksi', async () => {
+    const { draftFingerprint } = await import('./repo');
+    const count = 6000;
+    const now = '2026-11-28T00:00:00.000Z';
+    const label = 'L'.repeat(120);
+    const rows = Array.from({ length: count }, (_, index) => ({
+      id: `fw${String(index).padStart(5, '0')}`,
+      code: `K${index}`,
+    }));
+    await env.DB.prepare(
+      `INSERT INTO cl_firmwares (id, brand, code, label, script_path, parallel, sort, removed_at, created_at, updated_at) VALUES ${rows
+        .map(() => "(?, 'mikrotik', ?, ?, NULL, 0, 1, '', ?, ?)")
+        .join(', ')}`,
+    )
+      .bind(...rows.flatMap((row) => [row.id, row.code, label, now, now]))
+      .run();
+    const original = await draftFingerprint(env.DB);
+    expect(await draftFingerprint(env.DB)).toEqual(original);
+    const last = rows[count - 1]?.id ?? '';
+    await env.DB.prepare(
+      "UPDATE cl_firmwares SET label = 'B', updated_at = '2026-11-28T00:00:01.000Z' WHERE id = ?",
+    )
+      .bind(last)
+      .run();
+    const changed = await draftFingerprint(env.DB);
+    expect(changed.firmwares).not.toBe(original.firmwares);
+    await env.DB.prepare('UPDATE cl_firmwares SET label = ?, updated_at = ? WHERE id = ?')
+      .bind(label, '2026-11-28T00:00:02.000Z', last)
+      .run();
+    const back = await draftFingerprint(env.DB);
+    expect(back.firmwares).not.toBe(original.firmwares);
+    expect(back.firmwares).not.toBe(changed.firmwares);
+  });
+});
+
 describe('reactivateClBundle', () => {
   test('bundel baru dengan sourceNumber dan hash persis bundel lama', async () => {
     await validDraft();

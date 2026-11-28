@@ -130,6 +130,65 @@ describe('sweepOrphanBlobs: berkas yatim di Drive', () => {
   });
 });
 
+describe('storeBlob hanya memakai ulang berkas Drive yang muda (m1)', () => {
+  test('berkas sehat tua (atau tanpa createdTime) tidak dipakai ulang: berkas baru diunggah, yang lama dibiarkan untuk penyapu', async () => {
+    const bytes = bytesOf(70);
+    const sha = await sha256Hex(bytes);
+    const folder = await ensureBlobFolder(env);
+    const put = async () =>
+      (await env.BRIDGE.uploadFile(folder, sha, 'application/octet-stream', bytes)).id;
+    const old = await put();
+    const oldFile = driveFile(old);
+    if (oldFile) oldFile.createdTime = new Date(T0 - 6.5 * DAY).toISOString();
+    const unknownAge = await put();
+    const before = env.BRIDGE.calls.filter((call) => call.action === 'uploadFile').length;
+    await storeBlob(env, { sha256: sha, bytes });
+    expect(env.BRIDGE.calls.filter((call) => call.action === 'uploadFile')).toHaveLength(
+      before + 1,
+    );
+    const row = await blobRow(sha);
+    expect([old, unknownAge]).not.toContain(row?.driveFileId ?? '');
+    expect(driveFile(old)).toBeDefined();
+    expect(driveFile(unknownAge)).toBeDefined();
+    expect(driveFile(row?.driveFileId ?? '')).toBeDefined();
+  });
+
+  test('berkas sehat muda dipakai ulang tanpa unggah', async () => {
+    const bytes = bytesOf(80);
+    const sha = await sha256Hex(bytes);
+    const folder = await ensureBlobFolder(env);
+    const id = (await env.BRIDGE.uploadFile(folder, sha, 'application/octet-stream', bytes)).id;
+    const file = driveFile(id);
+    if (file) file.createdTime = new Date(T0 - 2 * DAY).toISOString();
+    const before = env.BRIDGE.calls.filter((call) => call.action === 'uploadFile').length;
+    await storeBlob(env, { sha256: sha, bytes });
+    expect(env.BRIDGE.calls.filter((call) => call.action === 'uploadFile')).toHaveLength(before);
+    expect((await blobRow(sha))?.driveFileId).toBe(id);
+  });
+});
+
+describe('sweepOrphanBlobs: paginasi folder (m3)', () => {
+  test('lebih dari 1.000 berkas yatim tua di folder semuanya disapu dalam satu putaran', async () => {
+    const folder = await ensureBlobFolder(env);
+    const old = new Date(T0 - 30 * DAY).toISOString();
+    const total = 1100;
+    for (let index = 0; index < total; index++) {
+      env.BRIDGE.state.files.set(`orphan-${index}`, {
+        folderId: folder,
+        name: index.toString(16).padStart(64, '0'),
+        mime: 'application/octet-stream',
+        base64: 'AQID',
+        shared: false,
+        trashed: false,
+        createdTime: old,
+      });
+    }
+    const result = await sweepOrphanBlobs(env);
+    expect(result.driveFiles).toBe(total);
+    expect([...env.BRIDGE.state.files.keys()].filter((id) => id.startsWith('orphan-'))).toEqual([]);
+  });
+});
+
 describe('storeBlob dan berkas kembar (review akhir M4)', () => {
   test('hanya berkas cacat yang dibuang; kembaran sehat (yang mungkin sudah dirujuk unggahan serentak) tetap ada', async () => {
     const bytes = bytesOf(60);
@@ -140,6 +199,11 @@ describe('storeBlob dan berkas kembar (review akhir M4)', () => {
     const healthyA = await put(bytes);
     const healthyB = await put(bytes);
     const corrupt = await put(bytesOf(90));
+    const young = new Date(T0 - DAY).toISOString();
+    for (const id of [healthyA, healthyB]) {
+      const file = driveFile(id);
+      if (file) file.createdTime = young;
+    }
     await storeBlob(env, { sha256: sha, bytes });
     expect(driveFile(healthyA)).toBeDefined();
     expect(driveFile(healthyB)).toBeDefined();

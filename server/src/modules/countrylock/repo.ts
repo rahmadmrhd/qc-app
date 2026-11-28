@@ -464,14 +464,18 @@ export async function listLiveFilesWithText(db: Preparer): Promise<ClFileHeadWit
   }));
 }
 
-// Sidik jari: MD5 atas daftar `id|head_rev|sha256` (berkas hidup) dan atas isi tiap baris firmware hidup, diurut menurut id.
-// Berbeda dari jumlah/penjumlahan sederhana, hapus-B + buat-C (jumlah dan total head_rev sama) menghasilkan nilai lain.
-const FILES_FP_EXPR =
-  "MD5(COALESCE(GROUP_CONCAT(CONCAT_WS('|', f.id, f.head_rev, r.sha256) ORDER BY f.id SEPARATOR ','), ''))";
+// Sidik jari draf tanpa `GROUP_CONCAT` (yang memotong diam-diam di `group_concat_max_len`): jumlah baris + DUA jumlah potongan
+// 48-bit dari MD5 tiap baris (urutan baris tak berpengaruh karena id ikut di teks baris). Tanpa batas panjang. Teks baris
+// firmware memuat `updated_at`, jadi ubah lalu kembalikan (A->B->A) tetap menghasilkan nilai lain; berkas memuat
+// `head_rev` yang hanya naik.
+const fingerprintOf = (rowText: string): string =>
+  `CONCAT(COUNT(*), ':', COALESCE(SUM(CAST(CONV(SUBSTR(MD5(${rowText}), 1, 12), 16, 10) AS UNSIGNED)), 0), ':', COALESCE(SUM(CAST(CONV(SUBSTR(MD5(${rowText}), 13, 12), 16, 10) AS UNSIGNED)), 0))`;
+const FILES_FP_EXPR = fingerprintOf("CONCAT_WS('|', f.id, f.head_rev, r.sha256)");
 const FILES_FP_FROM =
   "FROM cl_files f JOIN cl_revisions r ON r.file_id = f.id AND r.seq = f.head_rev WHERE f.removed_at = ''";
-const FIRMWARES_FP_EXPR =
-  "MD5(COALESCE(GROUP_CONCAT(CONCAT_WS('|', id, brand, code, label, IFNULL(script_path, ''), parallel, sort) ORDER BY id SEPARATOR ','), ''))";
+const FIRMWARES_FP_EXPR = fingerprintOf(
+  "CONCAT_WS('|', id, brand, code, label, IFNULL(script_path, ''), parallel, sort, updated_at)",
+);
 const FIRMWARES_FP_FROM = "FROM cl_firmwares WHERE removed_at = ''";
 
 /** Sidik jari draf: berkas hidup (id, nomor revisi terbaru, sha256) dan firmware hidup (seluruh isi baris). */
