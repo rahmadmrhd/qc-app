@@ -1598,6 +1598,9 @@ export interface WarehouseOrderOptionsPageDto {
 }
 export interface WarehouseSubmitHeader {
   /**
+   * `note` (satu-satunya yang ditawarkan web sejak 2026-11-28) = catatan saja: sama dengan `ready` (tanpa `orderId`,
+   * `orderNumber`/`customerName` kosong, `boxStart` dan `boxSize` wajib bersama) tetapi `handoverIds` boleh terisi, `note`
+   * berisi Markdown (maks. 5.000 karakter), dan serial yang sama boleh dicatat ulang di catatan lain (tak masuk stok ready).
    * `order` (bawaan bila tiada) = Penjualan; `ready` = catat ready tanpa SO: `orderId` harus tiada, `orderNumber` dan
    * `customerName` kosong (`''`), `handoverIds` kosong (`[]`); selain itu `VALIDATION`. `buId` wajib (BU `serialwh: edit`).
    * Penjualan boleh TANPA No SO (`orderNumber: ''`, tanpa `orderId`): tidak membuat catatan SO, customer opsional
@@ -1614,7 +1617,7 @@ export interface WarehouseSubmitHeader {
   handoverIds: string[];
   total: number;
   chunkSize: number;
-  /** Mode ready: nomor kardus pertama dan pcs per kardus (wajib bersama); ditolak pada mode `order`. */
+  /** Mode ready dan note: nomor kardus pertama dan pcs per kardus (wajib bersama); ditolak pada mode `order`. */
   boxStart?: number;
   boxSize?: number;
 }
@@ -1783,7 +1786,7 @@ export interface WarehouseReadyPageDto {
 /** Satu pengeluaran Gudang pada riwayat gabungan: Penjualan (`order`, punya SO) atau Ready Stock (`ready`, tanpa SO). */
 export interface WarehouseDispatchListItemDto {
   id: string;
-  /** Nomor riwayat `OUT|RS/<kode BU>/<YYMM>-<urutan>`. */
+  /** Nomor riwayat `OUT|RS|WH/<kode BU>/<YYMM>-<urutan>` (WH = catatan). */
   number: string;
   kind: WarehouseDispatchKind;
   /** Kosong pada Ready Stock dan pada Penjualan tanpa No SO. */

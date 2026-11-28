@@ -5,7 +5,7 @@ import type { WarehouseDispatchesFilter } from '../queries';
 /** Search params Riwayat Gudang; nilai tak sah dibuang (bukan galat) agar URL lama atau rusak tetap terbuka. */
 export const ordersSearchSchema = z.object({
   q: z.string().max(100).optional().catch(undefined),
-  kind: z.enum(['order', 'ready']).optional().catch(undefined),
+  kind: z.enum(['order', 'ready', 'note']).optional().catch(undefined),
   customerIds: z.array(z.string().max(100)).max(FILTER_LIST_MAX).optional().catch(undefined),
   itemIds: z.array(z.string().max(100)).max(FILTER_LIST_MAX).optional().catch(undefined),
   buIds: z.array(z.string().max(100)).max(FILTER_LIST_MAX).optional().catch(undefined),

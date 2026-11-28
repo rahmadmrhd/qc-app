@@ -22,11 +22,21 @@ export function showsIncompleteNote(createdAt: string | null | undefined): boole
   return created.getTime() < new Date(`${ACTIVITY_TRACKED_SINCE}T00:00:00+07:00`).getTime();
 }
 
-function ActivityItem({ entry, kind }: { entry: ActivityEntryDto; kind: string }) {
+function ActivityItem({
+  entry,
+  kind,
+  labelContext,
+}: {
+  entry: ActivityEntryDto;
+  kind: string;
+  labelContext?: { note?: boolean } | undefined;
+}) {
   const fields = entry.changedFields ?? [];
   return (
     <li className="space-y-0.5">
-      <p className="font-medium break-words">{auditActionLabel(entry.action, { kind })}</p>
+      <p className="font-medium break-words">
+        {auditActionLabel(entry.action, { kind, ...labelContext })}
+      </p>
       <p className="text-xs break-words text-muted-foreground">
         {entry.actor ? `${entry.actor} · ` : ''}
         {formatStamp(entry.ts)}
@@ -43,6 +53,8 @@ function ActivityItem({ entry, kind }: { entry: ActivityEntryDto; kind: string }
 export interface ActivityLogProps extends ActivityTarget {
   /** Waktu record dibuat bila DTO-nya memuatnya; menentukan catatan riwayat lama (lihat `showsIncompleteNote`). */
   createdAt?: string | null | undefined;
+  /** Konteks label aksi untuk aksi yang kuncinya dipakai bersama (mis. catatan Gudang). */
+  labelContext?: { note?: boolean } | undefined;
 }
 
 /**
@@ -50,7 +62,7 @@ export interface ActivityLogProps extends ActivityTarget {
  * field yang berubah (nilai tak pernah ditampilkan). 10 entri per halaman lewat `activity.list`. Dipasang hanya di View
  * (halaman), bukan di dialog atau mode pustaka; log record terhapus tetap tampil.
  */
-export function ActivityLog({ kind, id, createdAt }: ActivityLogProps) {
+export function ActivityLog({ kind, id, createdAt, labelContext }: ActivityLogProps) {
   const log = useInfiniteQuery(activityQueryOptions({ kind, id }));
   const entries = log.data?.pages.flatMap((page) => page.entries) ?? [];
   return (
@@ -80,7 +92,12 @@ export function ActivityLog({ kind, id, createdAt }: ActivityLogProps) {
           ) : (
             <ol className="space-y-3">
               {entries.map((entry) => (
-                <ActivityItem key={entry.id} entry={entry} kind={kind} />
+                <ActivityItem
+                  key={entry.id}
+                  entry={entry}
+                  kind={kind}
+                  labelContext={labelContext}
+                />
               ))}
             </ol>
           )}

@@ -4,7 +4,7 @@ import type { RowWarning, WarningCounts } from '../lib/warnings';
 const TEXT: Record<RowWarning, (count: number) => string> = {
   test_date_diff: (count) =>
     `${count} serial punya tanggal uji yang berbeda dari kebanyakan pilihan.`,
-  bu_diff: (count) => `${count} serial ada di BU yang berbeda dari BU pengeluaran ini.`,
+  bu_diff: (count) => `${count} serial ada di BU yang berbeda dari BU catatan ini.`,
   prior_same_bu: (count) =>
     `${count} serial sebelumnya sudah keluar di BU ini (mungkin duplikat atau retur).`,
   prior_other_bu: (count) => `${count} serial sebelumnya keluar di BU lain.`,

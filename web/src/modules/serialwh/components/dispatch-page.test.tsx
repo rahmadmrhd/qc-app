@@ -4,7 +4,7 @@ import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { ApiError } from '@/lib/api/api-error';
-import { pickLink, pickSelect } from '@/test/link-field';
+import { pickLink } from '@/test/link-field';
 import { longPress } from '@/test/long-press';
 import { mockMatchMedia } from '@/test/match-media';
 import { renderInRouter } from '@/test/render-in-router';
@@ -24,6 +24,16 @@ const apiMock = vi.hoisted(() => vi.fn());
 vi.mock('@/lib/api', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/api')>()),
   api: apiMock,
+}));
+vi.mock('@/modules/markdown/wysiwyg-editor', () => ({
+  WysiwygEditor: (props: { id: string; value: string; onChange: (v: string) => void }) => (
+    <textarea
+      id={props.id}
+      aria-label="Isi catatan"
+      value={props.value}
+      onChange={(event) => props.onChange(event.target.value)}
+    />
+  ),
 }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), message: vi.fn() } }));
 
@@ -76,7 +86,7 @@ function api(id: string, input: Record<string, unknown>) {
       const done = body.chunkIndex + 1 === chunkCount;
       return Promise.resolve({
         dispatchId: 'd1',
-        ...(body.header.mode === 'ready'
+        ...(body.header.mode === 'note'
           ? {}
           : { orderId: 'o1', orderNumber: body.header.orderNumber }),
         status: done ? 'done' : 'pending',
@@ -276,8 +286,6 @@ test('urutan draf tetap urutan scan walau ponsel menampilkan yang terbaru di ata
   const titles = await screen.findAllByText(/^(AAA|BBB)$/);
   expect(titles.map((node) => node.textContent)).toEqual(['BBB', 'AAA']);
   await userEvent.click(screen.getByRole('button', { name: /Salin ke clipboard \(2\)/ }));
-  await userEvent.type(await screen.findByLabelText('No SO'), 'SO-1');
-  await userEvent.type(await screen.findByLabelText('Customer'), 'PT Maju');
   await userEvent.click(screen.getByRole('button', { name: 'Simpan & salin' }));
   await waitFor(() => expect(submitCalls).toHaveLength(1));
   // Urutan kiriman (= seq = clipboard) tetap urutan scan.
@@ -312,8 +320,6 @@ test('clipboard gagal: dialog Salin lagi muncul tanpa mengirim ulang', async () 
     });
     await renderPage();
     await userEvent.click(await screen.findByRole('button', { name: /Salin ke clipboard \(1\)/ }));
-    await userEvent.type(await screen.findByLabelText('No SO'), 'SO-1');
-    await userEvent.type(await screen.findByLabelText('Customer'), 'PT Maju');
     await userEvent.click(screen.getByRole('button', { name: 'Simpan & salin' }));
     expect(await screen.findByRole('button', { name: 'Salin lagi' })).toBeInTheDocument();
     expect(screen.getByRole('textbox', { name: 'Daftar Serial Number' })).toHaveValue('AAA');
@@ -324,7 +330,7 @@ test('clipboard gagal: dialog Salin lagi muncul tanpa mengirim ulang', async () 
   }
 });
 
-test('tanpa No SO: header Penjualan tanpa SO (tanpa orderId) dan customer boleh kosong', async () => {
+test('header catatan: mode note tanpa SO, customer, dan orderId; kardus awal 1', async () => {
   seedDraft({
     itemId: 'item1',
     rows: [
@@ -342,9 +348,8 @@ test('tanpa No SO: header Penjualan tanpa SO (tanpa orderId) dan customer boleh 
   await userEvent.click(await screen.findByRole('button', { name: 'Simpan & salin' }));
   await waitFor(() => expect(submitCalls).toHaveLength(1));
   const header = submitCalls[0]?.header;
-  expect(header).toMatchObject({ orderNumber: '', customerName: '', buId: 'bu1' });
+  expect(header).toMatchObject({ mode: 'note', orderNumber: '', customerName: '', buId: 'bu1' });
   expect(header).not.toHaveProperty('orderId');
-  expect(header?.mode).toBeUndefined();
 });
 
 test('serial baru tanpa lokasi dan tanggal uji: memakai Lokasi dialog dan tanggal keluar', async () => {
@@ -511,8 +516,6 @@ test('setelah potongan terkirim, cache serialwh ditandai basi lewat mutasi bersa
   const { queryClient } = await renderPage();
   const spy = vi.spyOn(queryClient, 'invalidateQueries');
   await userEvent.click(await screen.findByRole('button', { name: /Salin ke clipboard \(1\)/ }));
-  await userEvent.type(await screen.findByLabelText('No SO'), 'SO-1');
-  await userEvent.type(await screen.findByLabelText('Customer'), 'PT Maju');
   await userEvent.click(screen.getByRole('button', { name: 'Simpan & salin' }));
   await waitFor(() => expect(submitCalls).toHaveLength(1));
   await waitFor(() => {
@@ -537,8 +540,6 @@ test('klip dimulai sinkron dari klik Simpan & salin (sebelum menunggu server)', 
     seedDraft({ itemId: 'item1', rows: [draftRow('AAA')] });
     await renderPage();
     await userEvent.click(await screen.findByRole('button', { name: /Salin ke clipboard \(1\)/ }));
-    await userEvent.type(await screen.findByLabelText('No SO'), 'SO-1');
-    await userEvent.type(await screen.findByLabelText('Customer'), 'PT Maju');
     const save = screen.getByRole('button', { name: 'Simpan & salin' });
     // Klik mentah: pemeriksaan tepat setelah handler sinkron, sebelum mikrotask lain berjalan.
     act(() => {
@@ -581,8 +582,6 @@ test('banner peringatan dapat dibuka untuk melihat serialnya; baris menyebut SO 
 
 async function sendDraft() {
   await userEvent.click(await screen.findByRole('button', { name: /Salin ke clipboard \(\d+\)/ }));
-  await userEvent.type(await screen.findByLabelText('No SO'), 'SO-1');
-  await userEvent.type(await screen.findByLabelText('Customer'), 'PT Maju');
   await userEvent.click(screen.getByRole('button', { name: 'Simpan & salin' }));
 }
 
@@ -755,54 +754,32 @@ function seedOneNewRow() {
   });
 }
 
-test('Ready Stock: header tanpa SO, customer, dan task; hasil membuka detail ready', async () => {
+test('catatan: isi per kardus bawaan dari Item; hasil membuka detail riwayat', async () => {
   seedOneNewRow();
   const { router } = await renderPage();
   await userEvent.click(await screen.findByRole('button', { name: /Salin ke clipboard \(1\)/ }));
-  await pickSelect(screen, 'Tujuan', 'Ready Stock');
-  // Bawaan isi per kardus = boxSize Item terpilih (whItem: 12).
   await waitFor(() => expect(screen.getByLabelText('Isi per kardus')).toHaveValue(12));
   await userEvent.click(screen.getByRole('button', { name: 'Simpan & salin' }));
   await waitFor(() => expect(submitCalls).toHaveLength(1));
-  const header = submitCalls[0]?.header;
-  expect(header).toMatchObject({
-    mode: 'ready',
-    orderNumber: '',
-    customerName: '',
+  expect(submitCalls[0]?.header).toMatchObject({
+    mode: 'note',
     handoverIds: [],
     buId: 'bu1',
     boxStart: 1,
     boxSize: 12,
   });
-  expect(header).not.toHaveProperty('orderId');
   expect(await screen.findByRole('textbox', { name: 'Daftar Serial Number' })).toHaveValue('RDY1');
   await userEvent.click(screen.getByRole('button', { name: 'Buka riwayat' }));
   await waitFor(() => expect(router.state.location.pathname).toBe('/serial/gudang/riwayat/d1'));
 });
 
-test('Penjualan tetap mengirim header SO tanpa mode dan hasilnya membuka detail pengeluaran', async () => {
-  seedOneNewRow();
-  const { router } = await renderPage();
-  await userEvent.click(await screen.findByRole('button', { name: /Salin ke clipboard \(1\)/ }));
-  await userEvent.type(await screen.findByLabelText('No SO'), 'SO-1');
-  await userEvent.type(await screen.findByLabelText('Customer'), 'PT Maju');
-  await userEvent.click(screen.getByRole('button', { name: 'Simpan & salin' }));
-  await waitFor(() => expect(submitCalls).toHaveLength(1));
-  expect(submitCalls[0]?.header).not.toHaveProperty('mode');
-  await userEvent.click(await screen.findByRole('button', { name: 'Buka riwayat' }));
-  await waitFor(() => expect(router.state.location.pathname).toBe('/serial/gudang/riwayat/d1'));
-});
-
-test('tujuan Ready Stock mengubah arti filter Sembunyikan yang sudah tercatat (forMode)', async () => {
+test('filter Sembunyikan yang sudah tercatat memakai forMode note', async () => {
   seedOneNewRow();
   await renderPage();
   const serialsCalls = () =>
     apiMock.mock.calls.filter((call) => call[0] === 'serialWarehouse.serials');
   await waitFor(() => expect(serialsCalls().length).toBeGreaterThan(0));
-  expect(serialsCalls().at(-1)?.[1]).not.toHaveProperty('forMode');
-  await userEvent.click(await screen.findByRole('button', { name: /Salin ke clipboard \(1\)/ }));
-  await pickSelect(screen, 'Tujuan', 'Ready Stock');
-  await waitFor(() => expect(serialsCalls().at(-1)?.[1]).toMatchObject({ forMode: 'ready' }));
+  expect(serialsCalls().at(-1)?.[1]).toMatchObject({ forMode: 'note' });
 });
 
 test('desktop: bar pilihan di atas tabel (Batalkan pilihan + jumlah), tanpa menu Riwayat/Kosongkan di header', async () => {

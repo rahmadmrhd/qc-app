@@ -107,7 +107,7 @@ const HEAD_STICKY = 'sticky top-0 z-20 bg-muted';
 const CHECK_COL = 'w-10 min-w-10 max-w-10 px-0';
 /** Latar sel yang menempel harus opak agar kolom lain tak tembus; keadaan hover/terpilih dikomposit ke `--background`. */
 const STICKY_CELL_BG =
-  'bg-background group-data-[box-tone=b]/row:bg-[color-mix(in_oklab,var(--muted)_40%,var(--background))] group-hover/row:bg-[color-mix(in_oklab,var(--muted)_50%,var(--background))] group-has-aria-expanded/row:bg-[color-mix(in_oklab,var(--muted)_50%,var(--background))] group-data-[state=selected]/row:bg-[color-mix(in_oklab,var(--info-text)_8%,var(--background))] group-data-[highlight]/row:bg-[color-mix(in_oklab,var(--success-text)_15%,var(--background))]';
+  'bg-background group-data-[box-tone=b]/row:bg-[color-mix(in_oklab,var(--foreground)_9%,var(--background))] group-hover/row:bg-[color-mix(in_oklab,var(--muted)_50%,var(--background))] group-has-aria-expanded/row:bg-[color-mix(in_oklab,var(--muted)_50%,var(--background))] group-data-[state=selected]/row:bg-[color-mix(in_oklab,var(--info-text)_8%,var(--background))] group-data-[highlight]/row:bg-[color-mix(in_oklab,var(--success-text)_15%,var(--background))]';
 /**
  * Garis dan bayangan tepi kolom menempel terakhir; bayangan hanya tampil saat tabel tergulir ke kanan. Warna bayangan
  * hitam (bukan `foreground`, yang terang di mode gelap sehingga tampak seperti pita cahaya), lebih pekat di mode gelap.
@@ -298,7 +298,7 @@ function DataTableImpl<T>({
                   data-highlight={rowHighlighted?.(row) ? '' : undefined}
                   data-box-tone={rowTone?.(row)}
                   className={cn(
-                    'group/row transition-colors data-[box-tone=b]:bg-muted/40 data-[highlight]:bg-success-text/15 data-[state=selected]:bg-info-text/8',
+                    'group/row transition-colors data-[box-tone=b]:bg-foreground/9 data-[highlight]:bg-success-text/15 data-[state=selected]:bg-info-text/8',
                     openRow && 'cursor-pointer',
                   )}
                   {...(openRow

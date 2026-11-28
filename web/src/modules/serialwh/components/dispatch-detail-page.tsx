@@ -19,6 +19,7 @@ import { formatStamp } from '@/lib/format-stamp';
 import { ActivityLog } from '@/modules/activity/components/activity-log';
 import { useMe } from '@/modules/auth/use-me';
 import { HandoverStatusBadge } from '@/modules/handover/components/handover-status-badge';
+import { MarkdownView } from '@/modules/markdown/markdown-view';
 import { formatDay } from '@/modules/serial/lib/labels';
 import { draftDispatchId } from '../lib/draft-store';
 import { warehouseDispatchQueryOptions } from '../queries';
@@ -108,6 +109,7 @@ export function DispatchDetailPage({ dispatchId }: DispatchDetailPageProps) {
             ) : (
               <ActivityLog
                 kind="warehouseOrder"
+                {...(dispatch.kind === 'note' ? { labelContext: { note: true } } : {})}
                 id={dispatch.orderId !== '' ? dispatch.orderId : dispatch.id}
                 createdAt={dispatch.createdAt}
               />
@@ -122,7 +124,7 @@ export function DispatchDetailPage({ dispatchId }: DispatchDetailPageProps) {
               { label: 'Jenis', value: WAREHOUSE_KIND_LABEL[dispatch.kind] },
               {
                 label: 'No SO',
-                hidden: dispatch.kind === 'ready',
+                hidden: dispatch.kind !== 'order',
                 // Penjualan tanpa No SO: tanpa tautan (tak ada halaman SO).
                 value:
                   dispatch.orderId === '' ? (
@@ -147,7 +149,7 @@ export function DispatchDetailPage({ dispatchId }: DispatchDetailPageProps) {
               },
               {
                 label: 'Customer',
-                hidden: dispatch.kind === 'ready',
+                hidden: dispatch.kind !== 'order',
                 value: dispatch.customerName || 'Tanpa customer',
               },
               { label: 'Tipe', value: dispatch.itemLabel || '—' },
@@ -163,7 +165,16 @@ export function DispatchDetailPage({ dispatchId }: DispatchDetailPageProps) {
                 label: 'Dicatat oleh',
                 value: `${dispatch.createdBy} · ${formatStamp(dispatch.createdAt)}`,
               },
-              { label: 'Catatan', hidden: dispatch.note === '', value: dispatch.note },
+              {
+                label: 'Catatan',
+                hidden: dispatch.note === '',
+                value:
+                  dispatch.kind === 'note' ? (
+                    <MarkdownView source={dispatch.note} />
+                  ) : (
+                    dispatch.note
+                  ),
+              },
             ]}
           />
         </ViewSection>
@@ -185,19 +196,21 @@ export function DispatchDetailPage({ dispatchId }: DispatchDetailPageProps) {
                 </Button>
               ) : (
                 <p className="text-muted-foreground">
-                  Draf tidak ada di perangkat ini; pengeluaran dibatalkan otomatis setelah 7 hari.
+                  Draf tidak ada di perangkat ini;{' '}
+                  {dispatch.kind === 'note' ? 'catatan' : 'pengeluaran'} dibatalkan otomatis setelah
+                  7 hari.
                 </p>
               )}
             </div>
           </ViewSection>
         ) : null}
 
-        {dispatch.kind === 'order' ? (
+        {dispatch.kind !== 'ready' ? (
           <ViewSection title="Task Serah Terima">
             {dispatch.handovers.length === 0 ? (
               <p className="text-sm text-muted-foreground">
                 {dispatch.orderId === ''
-                  ? 'Belum ada task Serah Terima tertaut pada pengeluaran ini.'
+                  ? `Belum ada task Serah Terima tertaut pada ${dispatch.kind === 'note' ? 'catatan' : 'pengeluaran'} ini.`
                   : 'Belum ada task Serah Terima tertaut pada SO ini.'}
               </p>
             ) : (

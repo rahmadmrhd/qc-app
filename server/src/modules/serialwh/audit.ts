@@ -38,6 +38,16 @@ export const saleAuditTarget = (
   label: `Penjualan ${dispatchedOn}`,
 });
 
+/** Catatan saja: jenis `order` (log `warehouseOrder`), `target_id` = id PENGELUARAN, label `Catatan <tanggal>`. */
+export const noteAuditTarget = (
+  dispatchId: string,
+  dispatchedOn: string,
+): WarehouseAuditTarget => ({
+  kind: 'order',
+  targetId: dispatchId,
+  label: `Catatan ${dispatchedOn}`,
+});
+
 export const readyAuditTarget = (
   dispatchId: string,
   dispatchedOn: string,

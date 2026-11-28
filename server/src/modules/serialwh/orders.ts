@@ -27,6 +27,7 @@ import { loadOrderHandovers } from './handover-links';
 import {
   type DispatchRow,
   isBareSale,
+  isNoteDispatch,
   loadDispatchRow,
   loadDispatchSerialNumbers,
   loadOrderRow,
@@ -199,7 +200,9 @@ export async function assertReadableOrderTarget(
     return;
   }
   const dispatch = await loadDispatchRow(env.DB, id);
-  if (!dispatch || !isBareSale(dispatch)) throw appError('NOT_FOUND', 'Catatan SO tidak ditemukan');
+  if (!dispatch || !(isBareSale(dispatch) || isNoteDispatch(dispatch))) {
+    throw appError('NOT_FOUND', 'Catatan SO tidak ditemukan');
+  }
   assertWhBu(user, dispatch.bu_id.trim(), 'view', 'Catatan SO tidak ditemukan');
 }
 
@@ -240,7 +243,7 @@ const DISPATCH_NOT_FOUND = 'Pengeluaran tidak ditemukan';
 async function loadReadableDispatch(env: Env, user: UserContext, id: string): Promise<DispatchRow> {
   const dispatch = await loadDispatchRow(env.DB, id);
   if (!dispatch) throw appError('NOT_FOUND', DISPATCH_NOT_FOUND);
-  if (dispatch.kind.trim() === 'ready' || isBareSale(dispatch)) {
+  if (dispatch.kind.trim() === 'ready' || isNoteDispatch(dispatch) || isBareSale(dispatch)) {
     // Catat ready dan Penjualan tanpa SO: tanpa catatan SO, BU ada di baris pengeluaran.
     assertWhBu(user, dispatch.bu_id.trim(), 'view', DISPATCH_NOT_FOUND);
     return dispatch;
@@ -262,10 +265,13 @@ export async function listWarehouseDispatchSerials(
   const after = input.cursor === undefined ? -1 : Number(input.cursor);
   const rows = await env.DB.prepare(
     // Pencatatan ready: info kardus (urutan `seq` sudah berurutan menurut nomor kardus karena kardus diisi berurutan).
-    "SELECT w.seq, w.serial_id, w.serial, w.created_new, (s.id IS NULL OR s.deleted_at <> '') AS deleted, b.id AS box_id, b.number AS box_number, b.capacity AS box_capacity, (SELECT COUNT(*) FROM warehouse_ready_serials rc WHERE rc.box_id = b.id) AS box_count FROM warehouse_dispatch_serials w LEFT JOIN serials s ON s.id = w.serial_id LEFT JOIN warehouse_ready_serials r ON r.serial_id = w.serial_id AND r.dispatch_id = w.dispatch_id LEFT JOIN warehouse_ready_boxes b ON b.id = r.box_id WHERE w.dispatch_id = ? AND w.seq > ? ORDER BY w.seq LIMIT ?",
+    // Pencatatan note: kardus diturunkan dari urutan serial yang diterima (`rank_in`) dan kardus awal/isi per kardus header.
+    "SELECT (SELECT COUNT(*) FROM warehouse_dispatch_serials x WHERE x.dispatch_id = w.dispatch_id AND x.seq < w.seq) AS rank_in, (SELECT COUNT(*) FROM warehouse_dispatch_serials y WHERE y.dispatch_id = w.dispatch_id) AS total_in, w.seq, w.serial_id, w.serial, w.created_new, (s.id IS NULL OR s.deleted_at <> '') AS deleted, b.id AS box_id, b.number AS box_number, b.capacity AS box_capacity, (SELECT COUNT(*) FROM warehouse_ready_serials rc WHERE rc.box_id = b.id) AS box_count FROM warehouse_dispatch_serials w LEFT JOIN serials s ON s.id = w.serial_id LEFT JOIN warehouse_ready_serials r ON r.serial_id = w.serial_id AND r.dispatch_id = w.dispatch_id LEFT JOIN warehouse_ready_boxes b ON b.id = r.box_id WHERE w.dispatch_id = ? AND w.seq > ? ORDER BY w.seq LIMIT ?",
   )
     .bind(dispatch.id.trim(), Number.isFinite(after) ? after : -1, limit + 1)
     .all<{
+      rank_in: number | string;
+      total_in: number | string;
       seq: number | string;
       serial_id: string;
       serial: string;
@@ -278,17 +284,29 @@ export async function listWarehouseDispatchSerials(
     }>();
   const page = rows.results.slice(0, limit);
   const last = page[page.length - 1];
+  const noteBox = isNoteDispatch(dispatch) ? Number(dispatch.box_size) : 0;
+  const noteStart = Number(dispatch.box_start);
   return {
     items: page.map(
       (row): WarehouseDispatchSerialDto => ({
-        ...(row.box_id !== null
-          ? {
-              boxId: row.box_id.trim(),
-              boxNumber: Number(row.box_number),
-              capacity: Number(row.box_capacity),
-              boxCount: Number(row.box_count),
-            }
-          : {}),
+        ...(noteBox > 0
+          ? (() => {
+              const index = Math.floor(Number(row.rank_in) / noteBox);
+              return {
+                boxId: `${dispatch.id.trim()}:${noteStart + index}`,
+                boxNumber: noteStart + index,
+                capacity: noteBox,
+                boxCount: Math.min(noteBox, Number(row.total_in) - index * noteBox),
+              };
+            })()
+          : row.box_id !== null
+            ? {
+                boxId: row.box_id.trim(),
+                boxNumber: Number(row.box_number),
+                capacity: Number(row.box_capacity),
+                boxCount: Number(row.box_count),
+              }
+            : {}),
         seq: Number(row.seq),
         serialId: row.serial_id.trim(),
         serial: row.serial,

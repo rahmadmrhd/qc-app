@@ -49,7 +49,8 @@ export const EMPTY_FILTERS: WarehouseDraft['filters'] = {
   buId: '',
   locationId: '',
   testDate: '',
-  hideRecorded: true,
+  // Mencatat ulang serial yang sama diizinkan (2026-11-28): menyembunyikan yang sudah tercatat hanya pilihan pengguna.
+  hideRecorded: false,
 };
 
 const key = (email: string) => `${PREFIX}${email.trim().toLowerCase()}`;
