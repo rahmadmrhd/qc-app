@@ -296,7 +296,7 @@ test('konfirmasi kecocokan: task yang tak menyebut Item menahan simpan sampai di
   );
 });
 
-test('konfirmasi kecocokan: baris Item lain pada task yang menyebut Item juga memicu dialog', async () => {
+test('konfirmasi kecocokan: task yang menyebut Item (ada baris hijau) langsung disimpan walau memuat baris Item lain', async () => {
   candidatesMock.list = [
     candidate({
       note: '- [ ] Tenda AX300 5 unit\n- [ ] Router lain 2 unit',
@@ -312,8 +312,27 @@ test('konfirmasi kecocokan: baris Item lain pada task yang menyebut Item juga me
     originHandoverId: 'h9',
   });
   await userEvent.click(await screen.findByRole('button', { name: 'Simpan & salin' }));
-  expect(await screen.findByText(/Ada baris yang mungkin tidak cocok/)).toBeInTheDocument();
-  expect(props.onConfirm).not.toHaveBeenCalled();
+  expect(props.onConfirm).toHaveBeenCalledTimes(1);
+  expect(screen.queryByText('Apakah daftar permintaan item ini sudah sesuai?')).toBeNull();
+});
+
+test('konfirmasi kecocokan: cukup satu task hijau dari beberapa task terpilih untuk melewati dialog', async () => {
+  candidatesMock.list = [
+    candidate({ id: 'h9' }),
+    candidate({
+      id: 'h10',
+      number: 'ST-2',
+      mentionsItem: false,
+      matchedLines: [],
+      mismatchLines: ['Router lain 2 unit'],
+    }),
+  ];
+  const props = setup([makeExistingRow(whSerial())], {
+    handoverContext: handoverContext(),
+    originHandoverId: 'h9',
+  });
+  await userEvent.click(await screen.findByRole('button', { name: 'Simpan & salin' }));
+  expect(props.onConfirm).toHaveBeenCalledTimes(1);
 });
 
 test('konfirmasi kecocokan: task yang cocok langsung disimpan tanpa dialog', async () => {

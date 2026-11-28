@@ -19,7 +19,7 @@ export function FieldError({ errors, stacked = false }: FieldErrorProps) {
   if (messages.length === 0) return null;
   if (stacked) {
     return (
-      <div className="space-y-0.5">
+      <div data-slot="field-error" className="space-y-0.5">
         {messages.map((message) => (
           <p key={message} className="text-sm text-destructive-text">
             {message}
@@ -28,5 +28,9 @@ export function FieldError({ errors, stacked = false }: FieldErrorProps) {
       </div>
     );
   }
-  return <p className="text-sm text-destructive-text">{messages.join(', ')}</p>;
+  return (
+    <p data-slot="field-error" className="text-sm text-destructive-text">
+      {messages.join(', ')}
+    </p>
+  );
 }
