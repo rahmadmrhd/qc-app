@@ -17,7 +17,8 @@ export const countryLockPublicApp = new Hono<AppBindings>();
 
 const guard = createTokenGuard('desktop-countrylock', 'Bundel tidak tersedia');
 const SHA256 = /^[0-9a-f]{64}$/;
-const IMMUTABLE = 'public, max-age=31536000, immutable';
+// `private`: tak boleh disimpan cache bersama (proxy/CDN): akses berkas dijaga token bersama, bukan sekadar URL.
+const IMMUTABLE = 'private, max-age=31536000, immutable';
 
 countryLockPublicApp.get('/manifest', async (c) => {
   const rejected = await guard.reject(c);
@@ -37,10 +38,20 @@ countryLockPublicApp.get('/manifest', async (c) => {
 
 type ParsedRange = { start: number; end: number } | 'invalid' | null;
 
-/** Satu rentang `bytes=a-b` atau `bytes=a-` (akhir dijepit ke ukuran); bentuk lain atau di luar ukuran = `'invalid'`. */
+/**
+ * Satu rentang `bytes=a-b`, `bytes=a-` (akhir dijepit ke ukuran), atau akhiran `bytes=-N` (N byte terakhir, dijepit ke
+ * ukuran); bentuk lain, `-0`, atau di luar ukuran = `'invalid'`.
+ */
 function parseRange(header: string | undefined, size: number): ParsedRange {
   if (header === undefined) return null;
-  const match = /^bytes=(\d{1,15})-(\d{0,15})$/.exec(header.trim());
+  const trimmed = header.trim();
+  const suffix = /^bytes=-(\d{1,15})$/.exec(trimmed);
+  if (suffix !== null) {
+    const count = Number(suffix[1]);
+    if (count === 0 || size === 0) return 'invalid';
+    return { start: Math.max(0, size - count), end: size - 1 };
+  }
+  const match = /^bytes=(\d{1,15})-(\d{0,15})$/.exec(trimmed);
   if (match === null) return 'invalid';
   const start = Number(match[1]);
   const end = match[2] === '' ? size - 1 : Math.min(Number(match[2]), size - 1);
@@ -85,6 +96,7 @@ countryLockPublicApp.get('/files/:sha256', async (c) => {
     'accept-ranges': 'bytes',
     'cache-control': IMMUTABLE,
     'x-content-type-options': 'nosniff',
+    'referrer-policy': 'no-referrer',
   };
   if (text !== null) {
     const bytes = new TextEncoder().encode(text.body);

@@ -50,6 +50,8 @@ export interface FakeGoogle {
   tokenExchanges: JwtClaims[];
   /** Kuota yang dilaporkan `about.get`. */
   quota: { limit?: string; usage: string };
+  /** Meniru Drive yang mengabaikan header Range: jawaban 200 berisi seluruh berkas. */
+  ignoreRange: boolean;
   /** Dipanggil sebelum permintaan diproses; kembalikan Response untuk menggantikan jawaban atau lempar galat. */
   intercept:
     | ((request: RecordedRequest) => Response | undefined | Promise<Response | undefined>)
@@ -153,6 +155,7 @@ export function createFakeGoogle(options: {
     requests,
     tokenExchanges,
     quota: { limit: '16106127360', usage: '46137344' },
+    ignoreRange: false,
     intercept: null,
     addFolder(id, parents = []) {
       return fake.addFile(id, { name: id, mimeType: FOLDER_MIME, parents });
@@ -436,7 +439,7 @@ export function createFakeGoogle(options: {
       if (method === 'GET') {
         if (url.searchParams.get('alt') === 'media') {
           const rangeHeader = /^bytes=(\d+)-(\d*)$/.exec(request.headers.get('range') ?? '');
-          if (rangeHeader) {
+          if (rangeHeader && !fake.ignoreRange) {
             const start = Number(rangeHeader[1]);
             const end = Math.min(
               rangeHeader[2] === '' ? file.bytes.length - 1 : Number(rangeHeader[2]),

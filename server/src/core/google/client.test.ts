@@ -639,6 +639,38 @@ describe('metode tambahan untuk cadangan', () => {
     );
   });
 
+  test('downloadFile dengan range saat Drive mengabaikan Range (200 penuh): dipotong sendiri, bukan seluruh berkas (M10)', async () => {
+    rig = await createGoogleRig();
+    const bytes = patternBytes(1000);
+    rig.fake.addFile('RANGEFILE0000002', { parents: [BACKUP_ID], bytes });
+    rig.fake.ignoreRange = true;
+    const download = await rig.client.downloadFile('RANGEFILE0000002', BACKUP_ID, {
+      start: 10,
+      end: 19,
+    });
+    expect(download?.range).toEqual({ start: 10, end: 19 });
+    const body = new Uint8Array(
+      await new Response(download?.body as unknown as ReadableStream).arrayBuffer(),
+    );
+    expect(body).toEqual(bytes.slice(10, 20));
+  });
+
+  test('downloadFile dengan range saat Drive mengabaikan Range: akhir melewati ukuran dijepit', async () => {
+    rig = await createGoogleRig();
+    const bytes = patternBytes(1000);
+    rig.fake.addFile('RANGEFILE0000003', { parents: [BACKUP_ID], bytes });
+    rig.fake.ignoreRange = true;
+    const download = await rig.client.downloadFile('RANGEFILE0000003', BACKUP_ID, {
+      start: 990,
+      end: 5000,
+    });
+    expect(download?.range).toEqual({ start: 990, end: 999 });
+    const body = new Uint8Array(
+      await new Response(download?.body as unknown as ReadableStream).arrayBuffer(),
+    );
+    expect(body).toEqual(bytes.slice(990));
+  });
+
   test('downloadFile dengan range mengirim header Range dan mengalirkan byte itu saja', async () => {
     rig = await createGoogleRig();
     const bytes = patternBytes(1000);

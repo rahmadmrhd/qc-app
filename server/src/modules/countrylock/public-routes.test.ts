@@ -192,7 +192,9 @@ describe('berkas menurut sha256', () => {
     expect(text.status).toBe(200);
     expect(text.headers.get('content-type')).toBe('application/octet-stream');
     expect(text.headers.get('accept-ranges')).toBe('bytes');
-    expect(text.headers.get('cache-control')).toBe('public, max-age=31536000, immutable');
+    expect(text.headers.get('cache-control')).toBe('private, max-age=31536000, immutable');
+    expect(text.headers.get('referrer-policy')).toBe('no-referrer');
+    expect(text.headers.get('x-content-type-options')).toBe('nosniff');
     expect(new TextDecoder().decode(await readBytes(text))).toBe(SCRIPT);
 
     const binary = await get(`/files/${binarySha}`, auth);
@@ -225,7 +227,7 @@ describe('berkas menurut sha256', () => {
     for (const range of [
       'bytes=999999-',
       'bytes=5-2',
-      'bytes=-3',
+      'bytes=-0',
       'bytes=0-1,4-5',
       'items=0-1',
       'bytes=a-b',
@@ -235,6 +237,22 @@ describe('berkas menurut sha256', () => {
       expect(bad.headers.get('content-range')).toBe(`bytes */${BINARY.length}`);
       expect(bad.headers.get('cache-control')).toBe('no-store');
     }
+  });
+
+  test('Range akhiran bytes=-N = N byte terakhir (dijepit ke ukuran), untuk teks dan biner', async () => {
+    const { scriptSha, binarySha } = await publishBundle();
+    const last = await get(`/files/${binarySha}`, { ...auth, range: 'bytes=-3' });
+    expect(last.status).toBe(206);
+    expect(last.headers.get('content-range')).toBe(
+      `bytes ${BINARY.length - 3}-${BINARY.length - 1}/${BINARY.length}`,
+    );
+    expect(await readBytes(last)).toEqual(BINARY.slice(-3));
+    const all = await get(`/files/${binarySha}`, { ...auth, range: 'bytes=-999' });
+    expect(all.headers.get('content-range')).toBe(`bytes 0-${BINARY.length - 1}/${BINARY.length}`);
+    const textBytes = new TextEncoder().encode(SCRIPT);
+    const textLast = await get(`/files/${scriptSha}`, { ...auth, range: 'bytes=-2' });
+    expect(textLast.status).toBe(206);
+    expect(await readBytes(textLast)).toEqual(textBytes.slice(-2));
   });
 
   test('sha256 tak dirujuk bundel, bukan 64 heksa, atau huruf besar: 404 yang sama', async () => {

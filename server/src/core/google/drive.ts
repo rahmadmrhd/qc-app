@@ -83,6 +83,42 @@ function mimeOfHeader(response: Response, fallback = 'application/octet-stream')
   return value ? value : fallback;
 }
 
+/** Mengalirkan hanya `length` byte mulai dari byte ke-`start` dari `source` (sisanya dibuang; sumber dibatalkan di akhir). */
+export function sliceStream(
+  source: ReadableStream<Uint8Array>,
+  start: number,
+  length: number,
+): ReadableStream<Uint8Array> {
+  const reader = source.getReader();
+  let skipped = 0;
+  let sent = 0;
+  return new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      while (sent < length) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        let chunk = value;
+        if (skipped < start) {
+          const drop = Math.min(start - skipped, chunk.length);
+          skipped += drop;
+          chunk = chunk.subarray(drop);
+          if (chunk.length === 0) continue;
+        }
+        const take = Math.min(chunk.length, length - sent);
+        sent += take;
+        controller.enqueue(chunk.subarray(0, take));
+        if (sent >= length) {
+          await reader.cancel().catch(() => undefined);
+        }
+        return;
+      }
+      await reader.cancel().catch(() => undefined);
+      controller.close();
+    },
+    cancel: (reason) => reader.cancel(reason),
+  });
+}
+
 /** Operasi Drive di atas `GoogleHttp`. Setiap id yang masuk ke jalur URL divalidasi `DRIVE_ID_PATTERN` dulu. */
 export function createDriveApi(
   http: GoogleHttp,
@@ -676,16 +712,22 @@ export function createDriveApi(
       });
       if (response.status === 404) return null;
       if (!response.ok) return failResponse('downloadFile', response);
+      let body = (response.body ??
+        new ReadableStream({
+          start: (controller) => controller.close(),
+        })) as ReadableStream<Uint8Array>;
+      // Rentang diminta tetapi Drive menjawab 200 (Range diabaikan): isinya SELURUH berkas, jadi potong sendiri agar
+      // pemanggil tak menyajikan seluruh berkas sebagai 206 (review akhir M10).
+      if (served !== undefined && response.status !== 206) {
+        body = sliceStream(body, served.start, served.end - served.start + 1);
+      }
       return {
         mime: meta.mimeType,
         size: Number(
           meta.size ?? (served === undefined ? response.headers.get('content-length') : 0) ?? 0,
         ),
         ...(served === undefined ? {} : { range: served }),
-        body: (response.body ??
-          new ReadableStream({
-            start: (controller) => controller.close(),
-          })) as ReadableStream<Uint8Array>,
+        body,
       };
     },
 
