@@ -2,7 +2,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parseSettingsFile } from '@shared/countrylock-bundle';
 import { describe, expect, test } from 'vitest';
-import { parseLegacyConfig } from './parse-legacy-config';
+import { parseLegacyConfig, validateNetwork, withNetwork } from './parse-legacy-config';
 
 const FIXTURE = join(__dirname, '../../../../../countrylock/fixtures/country-lock2');
 const configText = readFileSync(join(FIXTURE, 'config.QC'), 'utf-8');
@@ -51,8 +51,11 @@ describe('parseLegacyConfig dengan config.QC contoh', () => {
   test('pengaturan hasil pemetaan lolos validasi settings.json skema 1', () => {
     const settings = result.request?.settings;
     expect(settings).toBeDefined();
-    const parsed = parseSettingsFile(JSON.stringify(settings));
-    expect(parsed.ok).toBe(true);
+    const withNet = withNetwork(result.request as NonNullable<typeof result.request>, {
+      computerIp: '192.168.88.9',
+      prefixLength: 24,
+    });
+    expect(parseSettingsFile(JSON.stringify(withNet.settings)).ok).toBe(true);
     expect(settings?.router).toMatchObject({
       ip: '192.168.88.2',
       username: 'admin',
@@ -72,12 +75,9 @@ describe('parseLegacyConfig dengan config.QC contoh', () => {
     expect(settings?.brands.ubiquiti.modes.multi.ip).toBe('');
   });
 
-  test('IP komputer tidak ada di config.QC: diisi bawaan satu segmen dengan router dan dilaporkan', () => {
-    expect(result.request?.settings.network).toEqual({
-      computerIp: '192.168.88.3',
-      prefixLength: 24,
-    });
-    expect(result.problems.some((problem) => /IP komputer/.test(problem))).toBe(true);
+  test('IP komputer tidak ditebak: hasil tanpa network dan tanpa masalah soal IP komputer', () => {
+    expect(result.request?.settings).not.toHaveProperty('network');
+    expect(result.problems.some((problem) => /IP komputer/.test(problem))).toBe(false);
   });
 
   test('peringatan informasi (sshKeys diabaikan) bukan masalah', () => {
@@ -149,8 +149,44 @@ describe('parseLegacyConfig: kasus bermasalah', () => {
       { brand: 'mikrotik', code: 'A', label: 'A', scriptPath: 'M/a.txt' },
     ]);
     // Merk Ubiquiti tidak ada di config: pengaturannya diisi bawaan agar dokumen tetap sah.
-    expect(parseSettingsFile(JSON.stringify(result.request?.settings)).ok).toBe(true);
-    expect(result.request?.settings.network.computerIp).toBe('10.0.0.3');
+    const withNet = withNetwork(result.request as NonNullable<typeof result.request>, {
+      computerIp: '10.0.0.9',
+      prefixLength: 24,
+    });
+    expect(parseSettingsFile(JSON.stringify(withNet.settings)).ok).toBe(true);
+    expect(withNet.settings.network.computerIp).toBe('10.0.0.9');
+  });
+});
+
+describe('validateNetwork', () => {
+  test('IP dan prefix sah menghasilkan jaringan (dipangkas)', () => {
+    expect(validateNetwork({ computerIp: ' 192.168.88.9 ', prefix: '24' })).toEqual({
+      ok: true,
+      network: { computerIp: '192.168.88.9', prefixLength: 24 },
+    });
+  });
+
+  test('kosong: keduanya wajib', () => {
+    expect(validateNetwork({ computerIp: '', prefix: '' })).toMatchObject({
+      ok: false,
+      ipError: expect.stringMatching(/wajib/),
+      prefixError: expect.stringMatching(/wajib/),
+    });
+  });
+
+  test.each(['300.1.1.1', '1.2.3', 'abc', '10.0.0.1/24', '1.2.3.4.5'])(
+    'IP tidak sah %s ditolak',
+    (value) => {
+      const result = validateNetwork({ computerIp: value, prefix: '24' });
+      expect(result.ok).toBe(false);
+      expect(!result.ok && result.ipError).toMatch(/IPv4/);
+    },
+  );
+
+  test.each(['0', '33', '2.5', 'x', '-1'])('prefix tidak sah %s ditolak', (value) => {
+    const result = validateNetwork({ computerIp: '10.0.0.9', prefix: value });
+    expect(result.ok).toBe(false);
+    expect(!result.ok && result.prefixError).toMatch(/1-32/);
   });
 });
 

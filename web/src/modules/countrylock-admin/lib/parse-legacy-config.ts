@@ -14,11 +14,18 @@ import {
 
 const BRANDS: readonly ClBrand[] = ['mikrotik', 'ubiquiti'];
 const FALLBACK_BRIDGE = 'bridge1';
-const DEFAULT_PREFIX = 24;
+
+/** Jaringan komputer operator: tidak ada di `config.QC`, jadi harus diisi admin (keputusan pemilik 2026-11-28). */
+export type ClNetwork = ClSettings['network'];
+
+/** Permintaan impor tanpa `network` (diisi admin lewat `withNetwork`); belum dipecah. */
+export type LegacyImportRequest = Omit<ImportClInput, 'settings'> & {
+  settings: Omit<ClSettings, 'network'>;
+};
 
 export interface LegacyParseResult {
-  /** Permintaan impor utuh (belum dipecah); `null` bila `config.QC` tidak dapat dipakai sama sekali. */
-  request: ImportClInput | null;
+  /** Permintaan impor (tanpa jaringan); `null` bila `config.QC` tidak dapat dipakai sama sekali. */
+  request: LegacyImportRequest | null;
   /** Hal yang perlu diperhatikan admin sebelum mengimpor (bukan penghalang kecuali `request` null). */
   problems: string[];
   /** Keterangan saja (mis. data lama yang memang tidak dibawa). */
@@ -28,6 +35,41 @@ export interface LegacyParseResult {
 function isIpv4(value: string): boolean {
   const parts = value.split('.');
   return parts.length === 4 && parts.every((part) => /^\d{1,3}$/.test(part) && Number(part) <= 255);
+}
+
+export interface NetworkInput {
+  computerIp: string;
+  prefix: string;
+}
+
+export type NetworkCheck =
+  | { ok: true; network: ClNetwork }
+  | { ok: false; ipError: string | null; prefixError: string | null };
+
+/** Memvalidasi isian jaringan: IP komputer IPv4 sah dan prefix bilangan bulat 1-32 (aturan yang sama dengan server). */
+export function validateNetwork(input: NetworkInput): NetworkCheck {
+  const computerIp = input.computerIp.trim();
+  const prefix = input.prefix.trim();
+  const ipError =
+    computerIp === ''
+      ? 'IP komputer wajib diisi'
+      : isIpv4(computerIp)
+        ? null
+        : 'IP komputer bukan alamat IPv4 yang sah';
+  const prefixLength = /^\d{1,2}$/.test(prefix) ? Number(prefix) : Number.NaN;
+  const prefixError =
+    prefix === ''
+      ? 'Panjang prefix wajib diisi'
+      : prefixLength >= 1 && prefixLength <= 32
+        ? null
+        : 'Panjang prefix harus bilangan bulat 1-32';
+  if (ipError !== null || prefixError !== null) return { ok: false, ipError, prefixError };
+  return { ok: true, network: { computerIp, prefixLength } };
+}
+
+/** Menggabungkan jaringan hasil isian admin ke permintaan impor utuh. */
+export function withNetwork(request: LegacyImportRequest, network: ClNetwork): ImportClInput {
+  return { ...request, settings: { ...request.settings, network } };
 }
 
 function baseName(path: string): string {
@@ -112,13 +154,6 @@ function mapBrand(brand: BrandConfig): ClBrandSettings {
   };
 }
 
-/** IP komputer bawaan: satu segmen /24 dengan router jump, alamat .3 (atau .4 bila router sendiri .3). */
-function defaultComputerIp(routerIp: string): string {
-  const parts = routerIp.split('.');
-  const last = Number(parts[3]);
-  return `${parts[0]}.${parts[1]}.${parts[2]}.${last === 3 ? 4 : 3}`;
-}
-
 function parseOrFail(configText: string): {
   parsed: { config: CountryLockConfig; warnings: string[] } | null;
   problems: string[];
@@ -155,7 +190,8 @@ function parseOrFail(configText: string): {
 /**
  * Memetakan `config.QC` lama dan berkas skrip terpilih ke permintaan impor (spek §5.2, impor sekali pakai). Skrip dicocokkan
  * dengan firmware lewat nama berkas (tak peka huruf besar/kecil) dan diberi jalur `<folder>/<berkas>`; skrip yang tak
- * dirujuk firmware mana pun dilewati. `sshKeys`, `version`, dan daftar interface lama tidak dibawa (spek §5.2).
+ * dirujuk firmware mana pun dilewati. `sshKeys`, `version`, dan daftar interface lama tidak dibawa (spek §5.2). IP komputer
+ * tidak ada di `config.QC` dan TIDAK ditebak: admin mengisinya di halaman impor (`validateNetwork`, `withNetwork`).
  */
 export function parseLegacyConfig(
   configText: string,
@@ -244,10 +280,7 @@ export function parseLegacyConfig(
   }
 
   const routerIp = config.server.ip;
-  problems.push(
-    `IP komputer tidak ada di config.QC: diisi bawaan ${defaultComputerIp(routerIp)}/${DEFAULT_PREFIX} (satu segmen dengan router jump). Periksa di Pengaturan Router.`,
-  );
-  const settings: ClSettings = {
+  const settings: LegacyImportRequest['settings'] = {
     schema: 1,
     router: {
       ip: routerIp,
@@ -255,7 +288,6 @@ export function parseLegacyConfig(
       password: config.server.password,
       interfaceBridge: config.server.interfaceBridge || FALLBACK_BRIDGE,
     },
-    network: { computerIp: defaultComputerIp(routerIp), prefixLength: DEFAULT_PREFIX },
     brands: {
       mikrotik: config.brands.mikrotik
         ? mapBrand(config.brands.mikrotik)

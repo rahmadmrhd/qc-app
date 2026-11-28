@@ -8,8 +8,10 @@ import { FormPage } from '@/components/page/form-page';
 import { FormSection } from '@/components/page/form-section';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { describeError } from '@/lib/api/describe-error';
-import { parseLegacyConfig } from '../lib/parse-legacy-config';
+import { parseLegacyConfig, validateNetwork, withNetwork } from '../lib/parse-legacy-config';
 import { mergeImportResults, splitImport } from '../lib/split-import';
 import { useRunImport } from '../queries';
 
@@ -80,6 +82,10 @@ export function ImportPage({ onCancel }: ImportPageProps) {
     [configText, scripts],
   );
   const request = parsed?.request ?? null;
+  // Jaringan komputer tidak ada di config.QC dan tidak ditebak: admin wajib mengisinya (keputusan pemilik 2026-11-28).
+  const [computerIp, setComputerIp] = useState('');
+  const [prefix, setPrefix] = useState('');
+  const networkCheck = validateNetwork({ computerIp, prefix });
 
   const pickConfig = async (files: File[]) => {
     const file = files[0];
@@ -135,8 +141,8 @@ export function ImportPage({ onCancel }: ImportPageProps) {
   }, [request]);
 
   const submit = async () => {
-    if (!request || busy) return;
-    const parts = splitImport(request);
+    if (!request || !networkCheck.ok || busy) return;
+    const parts = splitImport(withNetwork(request, networkCheck.network));
     setBusy(true);
     setFailure(null);
     setReport(null);
@@ -171,7 +177,7 @@ export function ImportPage({ onCancel }: ImportPageProps) {
       submitting={busy}
       busyText="Mengimpor…"
       submitLabel="Impor"
-      submitDisabled={request === null || report !== null}
+      submitDisabled={request === null || !networkCheck.ok || report !== null}
     >
       <form
         id={FORM_ID}
@@ -248,6 +254,48 @@ export function ImportPage({ onCancel }: ImportPageProps) {
               </ul>
             </div>
           ))}
+        </FormSection>
+
+        <FormSection title="3. Jaringan komputer" columns={2}>
+          <p className="text-xs text-muted-foreground sm:col-span-2">
+            Alamat komputer operator tidak tercatat di config.QC lama, jadi tidak ada nilai awal:
+            isi sendiri (alamat IPv4 komputer di segmen yang sama dengan router jump, dan panjang
+            prefix jaringannya). Dapat diubah lagi di Pengaturan Router.
+          </p>
+          <div className="space-y-1.5">
+            <Label htmlFor="cl-import-computer-ip" required>
+              IP komputer
+            </Label>
+            <Input
+              id="cl-import-computer-ip"
+              aria-required="true"
+              value={computerIp}
+              autoComplete="off"
+              inputMode="decimal"
+              aria-invalid={computerIp !== '' && !networkCheck.ok && networkCheck.ipError !== null}
+              onChange={(event) => setComputerIp(event.target.value)}
+            />
+            {computerIp !== '' && !networkCheck.ok && networkCheck.ipError ? (
+              <p className="text-xs text-destructive-text">{networkCheck.ipError}</p>
+            ) : null}
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="cl-import-prefix" required>
+              Panjang prefix jaringan
+            </Label>
+            <Input
+              id="cl-import-prefix"
+              aria-required="true"
+              value={prefix}
+              autoComplete="off"
+              inputMode="numeric"
+              aria-invalid={prefix !== '' && !networkCheck.ok && networkCheck.prefixError !== null}
+              onChange={(event) => setPrefix(event.target.value)}
+            />
+            {prefix !== '' && !networkCheck.ok && networkCheck.prefixError ? (
+              <p className="text-xs text-destructive-text">{networkCheck.prefixError}</p>
+            ) : null}
+          </div>
         </FormSection>
 
         {rejected.length > 0 ? (

@@ -51,6 +51,13 @@ beforeEach(() => {
 const page = () => renderInRouter(<ImportPage onCancel={onBack} />);
 const pickers = async () =>
   (await screen.findAllByTestId('file-picker-input')) as HTMLInputElement[];
+const fillNetwork = async (computerIp = '192.168.88.9', prefix = '24') => {
+  await userEvent.clear(screen.getByLabelText(/IP komputer/));
+  await userEvent.type(screen.getByLabelText(/IP komputer/), computerIp);
+  await userEvent.clear(screen.getByLabelText(/Panjang prefix/));
+  await userEvent.type(screen.getByLabelText(/Panjang prefix/), prefix);
+};
+const importButton = () => screen.getByRole('button', { name: 'Impor' }) as HTMLButtonElement;
 const importCalls = () => apiMock.mock.calls.filter((call) => call[0] === 'clImport.run');
 
 describe('ImportPage', () => {
@@ -61,28 +68,53 @@ describe('ImportPage', () => {
     await userEvent.upload(scripts as HTMLInputElement, fixtureFiles());
     expect(await screen.findByText(/17 firmware/)).toBeTruthy();
     expect(screen.getByText(/17 skrip/)).toBeTruthy();
+    await fillNetwork();
     await userEvent.click(screen.getByRole('button', { name: 'Impor' }));
     await waitFor(() => expect(importCalls()).toHaveLength(1));
     const sent = importCalls()[0]?.[1] as ImportClInput;
     expect(sent.firmwares).toHaveLength(17);
     expect(sent.scripts).toHaveLength(17);
     expect(sent.settings.router.ip).toBe('192.168.88.2');
+    expect(sent.settings.network).toEqual({ computerIp: '192.168.88.9', prefixLength: 24 });
     // Laporan hasil.
     expect(await screen.findByText(/18 berkas dibuat/)).toBeTruthy();
     expect(screen.getByText(/17 firmware dikaitkan/)).toBeTruthy();
   });
 
-  test('masalah dari parser tampil dan tombol Impor tetap dapat dipakai (hanya peringatan)', async () => {
+  test('Impor nonaktif sampai IP komputer dan prefix diisi sah; tak ada tebakan bawaan', async () => {
+    await page();
+    const [config, scripts] = await pickers();
+    await userEvent.upload(config as HTMLInputElement, configFile());
+    await userEvent.upload(scripts as HTMLInputElement, fixtureFiles());
+    expect(await screen.findByText(/17 firmware/)).toBeTruthy();
+    expect((screen.getByLabelText(/IP komputer/) as HTMLInputElement).value).toBe('');
+    expect((screen.getByLabelText(/Panjang prefix/) as HTMLInputElement).value).toBe('');
+    expect(importButton().disabled).toBe(true);
+    await userEvent.type(screen.getByLabelText(/IP komputer/), '300.1.1.1');
+    await userEvent.type(screen.getByLabelText(/Panjang prefix/), '24');
+    expect(await screen.findByText(/bukan alamat IPv4 yang sah/)).toBeTruthy();
+    expect(importButton().disabled).toBe(true);
+    await userEvent.clear(screen.getByLabelText(/IP komputer/));
+    await userEvent.type(screen.getByLabelText(/IP komputer/), '192.168.88.9');
+    await userEvent.clear(screen.getByLabelText(/Panjang prefix/));
+    await userEvent.type(screen.getByLabelText(/Panjang prefix/), '40');
+    expect(await screen.findByText(/bilangan bulat 1-32/)).toBeTruthy();
+    expect(importButton().disabled).toBe(true);
+    await userEvent.clear(screen.getByLabelText(/Panjang prefix/));
+    await userEvent.type(screen.getByLabelText(/Panjang prefix/), '24');
+    expect(importButton().disabled).toBe(false);
+    expect(importCalls()).toHaveLength(0);
+  });
+
+  test('masalah dari parser tampil dan tombol Impor dapat dipakai bila jaringan terisi (hanya peringatan)', async () => {
     await page();
     const [config, scripts] = await pickers();
     await userEvent.upload(config as HTMLInputElement, configFile());
     const withoutAc = fixtureFiles().filter((file) => file.name !== 'mikrotik-ac.txt');
     await userEvent.upload(scripts as HTMLInputElement, withoutAc);
     expect(await screen.findByText(/mikrotik-ac\.txt/)).toBeTruthy();
-    expect(screen.getByText(/IP komputer/)).toBeTruthy();
-    expect((screen.getByRole('button', { name: 'Impor' }) as HTMLButtonElement).disabled).toBe(
-      false,
-    );
+    await fillNetwork();
+    expect(importButton().disabled).toBe(false);
   });
 
   test('config.QC rusak: pesan galat dan Impor nonaktif', async () => {
@@ -123,7 +155,9 @@ describe('ImportPage', () => {
     const [configInput, scriptsInput] = await pickers();
     await userEvent.upload(configInput as HTMLInputElement, configFile(config));
     await userEvent.upload(scriptsInput as HTMLInputElement, scripts);
-    await userEvent.click(await screen.findByRole('button', { name: 'Impor' }));
+    await screen.findByRole('button', { name: 'Impor' });
+    await fillNetwork();
+    await userEvent.click(importButton());
     await waitFor(() => expect(importCalls()).toHaveLength(2));
     const [first, second] = importCalls().map((call) => call[1] as ImportClInput);
     expect(first?.scripts).toHaveLength(100);
@@ -131,6 +165,7 @@ describe('ImportPage', () => {
     expect(first?.firmwares).toHaveLength(0);
     expect(second?.firmwares).toHaveLength(120);
     expect(first?.settings).toEqual(second?.settings);
+    expect(first?.settings.network.computerIp).toBe('192.168.88.9');
     expect(await screen.findByText(/120 berkas dibuat/)).toBeTruthy();
   });
 
@@ -155,7 +190,9 @@ describe('ImportPage', () => {
     const [config, scripts] = await pickers();
     await userEvent.upload(config as HTMLInputElement, configFile());
     await userEvent.upload(scripts as HTMLInputElement, fixtureFiles());
-    await userEvent.click(await screen.findByRole('button', { name: 'Impor' }));
+    await screen.findByRole('button', { name: 'Impor' });
+    await fillNetwork();
+    await userEvent.click(importButton());
     expect(await screen.findByText('Berkas sudah ada dengan isi berbeda; dilewati')).toBeTruthy();
   });
 });
@@ -171,6 +208,7 @@ describe('ImportPage: beberapa folder dan batas ukuran', () => {
     expect(await screen.findByText(/17 firmware, 17 skrip siap diimpor/)).toBeTruthy();
     expect(screen.getByText('Pilihan 1')).toBeTruthy();
     expect(screen.getByText('Pilihan 2')).toBeTruthy();
+    await fillNetwork();
     await userEvent.click(screen.getByRole('button', { name: 'Impor' }));
     await waitFor(() => expect(importCalls()).toHaveLength(1));
     const sent = importCalls()[0]?.[1] as ImportClInput | undefined;
