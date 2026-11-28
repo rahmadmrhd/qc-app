@@ -50,6 +50,8 @@ export interface FakeGoogle {
   tokenExchanges: JwtClaims[];
   /** Kuota yang dilaporkan `about.get`. */
   quota: { limit?: string; usage: string };
+  /** Meniru Drive yang mengabaikan header Range: jawaban 200 berisi seluruh berkas. */
+  ignoreRange: boolean;
   /** Dipanggil sebelum permintaan diproses; kembalikan Response untuk menggantikan jawaban atau lempar galat. */
   intercept:
     | ((request: RecordedRequest) => Response | undefined | Promise<Response | undefined>)
@@ -153,6 +155,7 @@ export function createFakeGoogle(options: {
     requests,
     tokenExchanges,
     quota: { limit: '16106127360', usage: '46137344' },
+    ignoreRange: false,
     intercept: null,
     addFolder(id, parents = []) {
       return fake.addFile(id, { name: id, mimeType: FOLDER_MIME, parents });
@@ -435,6 +438,26 @@ export function createFakeGoogle(options: {
       if (!file) return googleError(404, 'notFound', 'File not found');
       if (method === 'GET') {
         if (url.searchParams.get('alt') === 'media') {
+          const rangeHeader = /^bytes=(\d+)-(\d*)$/.exec(request.headers.get('range') ?? '');
+          if (rangeHeader && !fake.ignoreRange) {
+            const start = Number(rangeHeader[1]);
+            const end = Math.min(
+              rangeHeader[2] === '' ? file.bytes.length - 1 : Number(rangeHeader[2]),
+              file.bytes.length - 1,
+            );
+            if (start >= file.bytes.length) {
+              return googleError(416, 'requestedRangeNotSatisfiable');
+            }
+            const part = file.bytes.slice(start, end + 1);
+            return new Response(part as unknown as ArrayBuffer, {
+              status: 206,
+              headers: {
+                'content-type': file.mimeType,
+                'content-length': String(part.length),
+                'content-range': `bytes ${start}-${end}/${file.bytes.length}`,
+              },
+            });
+          }
           return new Response(file.bytes as unknown as ArrayBuffer, {
             status: 200,
             headers: { 'content-type': file.mimeType, 'content-length': String(file.bytes.length) },

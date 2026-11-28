@@ -639,6 +639,81 @@ describe('metode tambahan untuk cadangan', () => {
     );
   });
 
+  test('downloadFile dengan range saat Drive mengabaikan Range (200 penuh): dipotong sendiri, bukan seluruh berkas (M10)', async () => {
+    rig = await createGoogleRig();
+    const bytes = patternBytes(1000);
+    rig.fake.addFile('RANGEFILE0000002', { parents: [BACKUP_ID], bytes });
+    rig.fake.ignoreRange = true;
+    const download = await rig.client.downloadFile('RANGEFILE0000002', BACKUP_ID, {
+      start: 10,
+      end: 19,
+    });
+    expect(download?.range).toEqual({ start: 10, end: 19 });
+    const body = new Uint8Array(
+      await new Response(download?.body as unknown as ReadableStream).arrayBuffer(),
+    );
+    expect(body).toEqual(bytes.slice(10, 20));
+  });
+
+  test('downloadFile dengan range saat Drive mengabaikan Range: akhir melewati ukuran dijepit', async () => {
+    rig = await createGoogleRig();
+    const bytes = patternBytes(1000);
+    rig.fake.addFile('RANGEFILE0000003', { parents: [BACKUP_ID], bytes });
+    rig.fake.ignoreRange = true;
+    const download = await rig.client.downloadFile('RANGEFILE0000003', BACKUP_ID, {
+      start: 990,
+      end: 5000,
+    });
+    expect(download?.range).toEqual({ start: 990, end: 999 });
+    const body = new Uint8Array(
+      await new Response(download?.body as unknown as ReadableStream).arrayBuffer(),
+    );
+    expect(body).toEqual(bytes.slice(990));
+  });
+
+  test('downloadFile dengan range mengirim header Range dan mengalirkan byte itu saja', async () => {
+    rig = await createGoogleRig();
+    const bytes = patternBytes(1000);
+    rig.fake.addFile('RANGEFILE0000001', { parents: [BACKUP_ID], bytes });
+    const read = async (range: { start: number; end: number }) => {
+      const download = await rig.client.downloadFile('RANGEFILE0000001', BACKUP_ID, range);
+      const body = new Uint8Array(
+        await new Response(download?.body as unknown as ReadableStream).arrayBuffer(),
+      );
+      return { download, body };
+    };
+    const middle = await read({ start: 10, end: 19 });
+    expect(middle.download?.size).toBe(1000);
+    expect(middle.download?.range).toEqual({ start: 10, end: 19 });
+    expect(middle.body).toEqual(bytes.slice(10, 20));
+    // akhir melewati ukuran berkas dijepit
+    const tail = await read({ start: 990, end: 5000 });
+    expect(tail.download?.range).toEqual({ start: 990, end: 999 });
+    expect(tail.body).toEqual(bytes.slice(990));
+    // rentang tak sah ditolak sebelum isi diminta (hanya metadata yang dibaca)
+    const mediaCalls = () =>
+      rig.fake.requests.filter((request) => request.url.searchParams.get('alt') === 'media').length;
+    const before = mediaCalls();
+    for (const range of [
+      { start: -1, end: 5 },
+      { start: 5, end: 4 },
+      { start: 1.5, end: 3 },
+    ]) {
+      expect(
+        (await failure(rig.client.downloadFile('RANGEFILE0000001', BACKUP_ID, range))).code,
+      ).toBe('VALIDATION');
+    }
+    expect(mediaCalls()).toBe(before);
+    // mulai di luar ukuran berkas ditolak (416 dari Drive atau dicegah klien)
+    expect(
+      (
+        await failure(
+          rig.client.downloadFile('RANGEFILE0000001', BACKUP_ID, { start: 1000, end: 1001 }),
+        )
+      ).code,
+    ).toBeDefined();
+  });
+
   test('deleteFile menghapus permanen hanya berkas milik service account di folder yang diizinkan', async () => {
     rig = await createGoogleRig();
     rig.fake.addFile('OWNEDFILE0000001', { parents: [BACKUP_ID], bytes: BYTES });

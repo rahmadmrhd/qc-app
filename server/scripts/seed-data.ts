@@ -33,6 +33,14 @@ const HOUR = 60 * MIN;
  * data yatim yang menunjuk ke baris yang sudah dihapus); `seed.test.ts` membandingkannya dengan skema.
  */
 export const RESET_TABLES = [
+  'cl_bundle_files',
+  'cl_bundles',
+  'cl_upload_chunks',
+  'cl_uploads',
+  'cl_blobs',
+  'cl_revisions',
+  'cl_files',
+  'cl_firmwares',
   'warehouse_ready_serials',
   'warehouse_ready_boxes',
   'warehouse_dispatch_serials',
@@ -100,6 +108,9 @@ export const SEED_KEPT_TABLES = ['schema_migrations', 'settings'];
  */
 export function buildSeedStatements(email: string, nowMs: number): SeedStatement[] {
   const sql: SeedStatement[] = RESET_TABLES.map((table) => raw(`DELETE FROM ${table}`));
+  // `cl_firmwares` dikosongkan di atas; penanda "seed firmware sudah jalan" (`settings`, sengaja tidak dikosongkan) ikut
+  // dihapus supaya start server dev berikutnya mengisi ulang firmware awal (seed firmware hanya jalan sekali per penanda).
+  sql.push(raw("DELETE FROM settings WHERE `key` = 'COUNTRYLOCK_FIRMWARE_SEEDED'"));
 
   const t0 = iso(nowMs - 3 * 24 * HOUR);
   const meta = { created_at: t0, updated_at: t0, updated_by: 'seed' };

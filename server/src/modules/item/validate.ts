@@ -10,8 +10,8 @@ import type {
   SaveItemInput,
   SetItemStatusInput,
 } from '@shared/contract';
+import { FIRMWARE_CODE_MAX } from '@shared/countrylock-bundle';
 import { MARKDOWN_MAX_LENGTH } from '@shared/files';
-import { FIRMWARE_CODE_MAX } from '@shared/firmware';
 import { ITEM_LIMITS, normalizeKey, normalizeNewlines } from '@shared/items';
 import { WAREHOUSE_BOX_LIMITS } from '@shared/serial-warehouse';
 import { SERIAL_PROOF_LIMITS } from '@shared/serials';

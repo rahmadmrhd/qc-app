@@ -16,7 +16,7 @@ import { useMe } from '@/modules/auth/use-me';
 import { useSaveBrand } from '@/modules/brand/queries';
 import { useSaveSticker, useSaveStickerType } from '@/modules/sticker/queries';
 import type { ItemFormProps } from '../components/item-form';
-import { useSaveItem } from '../queries';
+import { useFirmwareOptions, useSaveItem } from '../queries';
 import type { ItemFieldErrors, ItemFormOutput } from '../schemas';
 import { ITEM_FIELD_KEYS, toItemFormDefaults, toSaveItemInput } from '../schemas';
 import { mergeBusinessUnits } from './default-business-units';
@@ -73,6 +73,7 @@ export function useItemFormController({
   const saveBusinessUnit = useSaveBusinessUnit();
   const saveSticker = useSaveSticker();
   const saveStickerType = useSaveStickerType();
+  const firmwareOptions = useFirmwareOptions();
   // Tanpa tombol "Buka untuk ekspor": pindah halaman akan membuang isian form item.
   const links = itemFormLinkAccess(me);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -98,6 +99,7 @@ export function useItemFormController({
 
   const formProps = {
     brands: mergeItemBrand(lists.brands, item),
+    firmwareOptions,
     businessUnits: item
       ? mergeBusinessUnits(lists.businessUnits, item.businessUnits)
       : lists.businessUnits,

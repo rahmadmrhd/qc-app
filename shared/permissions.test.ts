@@ -187,3 +187,13 @@ test('modul dashboard: label, level none/view/edit/manage, dan petunjuk khusus',
   expect(levelHint('dashboard', 'manage')).toContain('milik SEMUA pengguna');
   expect(levelHint('dashboard', 'manage')).toContain('penerima');
 });
+
+test('countrylock mengenal level none/view/edit/manage dan peran lama (view) tetap sah', () => {
+  expect(levelsFor('countrylock')).toEqual(['none', 'view', 'edit', 'manage']);
+  expect(isLevelAllowed('countrylock', 'edit')).toBe(true);
+  expect(isLevelAllowed('countrylock', 'manage')).toBe(true);
+  expect(sanitizePermissions({ countrylock: 'view' })).toEqual({ countrylock: 'view' });
+  expect(sanitizePermissions({ countrylock: 'manage' })).toEqual({ countrylock: 'manage' });
+  expect(levelHint('countrylock', 'edit')).toContain('draf');
+  expect(levelHint('countrylock', 'manage')).toContain('menerbitkan');
+});

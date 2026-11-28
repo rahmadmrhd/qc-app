@@ -6,6 +6,7 @@ import type {
   DriveDownload,
   DriveFolderEntry,
   DriveFolderPage,
+  DriveRange,
   DriveStorageQuota,
   DriveUploadResult,
 } from '@server/core/bridge-client';
@@ -80,6 +81,42 @@ function concat(parts: Uint8Array[]): Uint8Array {
 function mimeOfHeader(response: Response, fallback = 'application/octet-stream'): string {
   const value = response.headers.get('content-type')?.split(';')[0]?.trim();
   return value ? value : fallback;
+}
+
+/** Mengalirkan hanya `length` byte mulai dari byte ke-`start` dari `source` (sisanya dibuang; sumber dibatalkan di akhir). */
+export function sliceStream(
+  source: ReadableStream<Uint8Array>,
+  start: number,
+  length: number,
+): ReadableStream<Uint8Array> {
+  const reader = source.getReader();
+  let skipped = 0;
+  let sent = 0;
+  return new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      while (sent < length) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        let chunk = value;
+        if (skipped < start) {
+          const drop = Math.min(start - skipped, chunk.length);
+          skipped += drop;
+          chunk = chunk.subarray(drop);
+          if (chunk.length === 0) continue;
+        }
+        const take = Math.min(chunk.length, length - sent);
+        sent += take;
+        controller.enqueue(chunk.subarray(0, take));
+        if (sent >= length) {
+          await reader.cancel().catch(() => undefined);
+        }
+        return;
+      }
+      await reader.cancel().catch(() => undefined);
+      controller.close();
+    },
+    cancel: (reason) => reader.cancel(reason),
+  });
 }
 
 /** Operasi Drive di atas `GoogleHttp`. Setiap id yang masuk ke jalur URL divalidasi `DRIVE_ID_PATTERN` dulu. */
@@ -643,14 +680,31 @@ export function createDriveApi(
       };
     },
 
-    async downloadFile(fileId, folderId): Promise<DriveDownload | null> {
+    async downloadFile(fileId, folderId, range?: DriveRange): Promise<DriveDownload | null> {
       if (!isDriveId(fileId)) return null;
       const meta = await metaInFolder('downloadFile', fileId, folderId);
       if (meta === null) return null;
+      const total = Number(meta.size ?? 0);
+      let served: DriveRange | undefined;
+      if (range !== undefined) {
+        if (
+          !Number.isSafeInteger(range.start) ||
+          !Number.isSafeInteger(range.end) ||
+          range.start < 0 ||
+          range.end < range.start ||
+          range.start >= total
+        ) {
+          validation('Rentang byte tidak valid');
+        }
+        served = { start: range.start, end: Math.min(range.end, total - 1) };
+      }
       const response = await http.request({
         op: 'downloadFile',
         method: 'GET',
         url: `${DRIVE}/files/${path(fileId)}?alt=media`,
+        ...(served === undefined
+          ? {}
+          : { headers: { range: `bytes=${served.start}-${served.end}` } }),
         idempotent: true,
         timeoutMs: CHUNK_TIMEOUT_MS,
         // Installer ~100 MB di jaringan lambat butuh > 120 dtk: batas hanya sampai header, bukan seluruh badan.
@@ -658,13 +712,22 @@ export function createDriveApi(
       });
       if (response.status === 404) return null;
       if (!response.ok) return failResponse('downloadFile', response);
+      let body = (response.body ??
+        new ReadableStream({
+          start: (controller) => controller.close(),
+        })) as ReadableStream<Uint8Array>;
+      // Rentang diminta tetapi Drive menjawab 200 (Range diabaikan): isinya SELURUH berkas, jadi potong sendiri agar
+      // pemanggil tak menyajikan seluruh berkas sebagai 206 (review akhir M10).
+      if (served !== undefined && response.status !== 206) {
+        body = sliceStream(body, served.start, served.end - served.start + 1);
+      }
       return {
         mime: meta.mimeType,
-        size: Number(meta.size ?? response.headers.get('content-length') ?? 0),
-        body: (response.body ??
-          new ReadableStream({
-            start: (controller) => controller.close(),
-          })) as ReadableStream<Uint8Array>,
+        size: Number(
+          meta.size ?? (served === undefined ? response.headers.get('content-length') : 0) ?? 0,
+        ),
+        ...(served === undefined ? {} : { range: served }),
+        body,
       };
     },
 

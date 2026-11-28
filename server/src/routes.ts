@@ -3,6 +3,7 @@ import { accessRoutes } from '@server/modules/access/routes';
 import { activityRoutes } from '@server/modules/activity/routes';
 import { authApiRoutes } from '@server/modules/auth/api';
 import { brandRoutes } from '@server/modules/brand/routes';
+import { countryLockRoutes } from '@server/modules/countrylock/routes';
 import { customerRoutes } from '@server/modules/customer/routes';
 import { dashboardReportRoutes } from '@server/modules/dashboard/report/routes';
 import { dashboardRoutes } from '@server/modules/dashboard/routes';
@@ -258,6 +259,26 @@ export const ALL_API_IDS: Record<ApiId, true> = {
   'dashboardReports.remove': true,
   'dashboardReports.sendTest': true,
   'dashboardReports.preview': true,
+  'clFiles.list': true,
+  'clFiles.get': true,
+  'clFiles.save': true,
+  'clFiles.remove': true,
+  'clFiles.history': true,
+  'clFiles.revision': true,
+  'clFiles.revert': true,
+  'clFirmwares.list': true,
+  'clFirmwares.options': true,
+  'clFirmwares.save': true,
+  'clFirmwares.remove': true,
+  'clUploads.start': true,
+  'clUploads.chunk': true,
+  'clUploads.finish': true,
+  'clBundles.draft': true,
+  'clBundles.publish': true,
+  'clBundles.list': true,
+  'clBundles.get': true,
+  'clBundles.reactivate': true,
+  'clImport.run': true,
 };
 
 /**
@@ -270,6 +291,7 @@ function realRoutes(): RouteTable {
     ...accessRoutes(),
     ...brandRoutes(),
     ...activityRoutes(),
+    ...countryLockRoutes(),
     ...customerRoutes(),
     ...dashboardRoutes(),
     ...dashboardShareRoutes(),

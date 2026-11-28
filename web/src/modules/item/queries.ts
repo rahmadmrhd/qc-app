@@ -1,5 +1,6 @@
 import type { ListStatusFilter, StatusBatchInput } from '@shared/batch';
 import type {
+  ClFirmwareOptionDto,
   ItemDto,
   ItemPageDto,
   ItemSummaryDto,
@@ -7,12 +8,14 @@ import type {
   SaveItemInput,
   SetItemStatusInput,
 } from '@shared/contract';
+import { type ClBrand, countryLockBrandOf } from '@shared/countrylock-bundle';
 import type { InfiniteData, QueryClient } from '@tanstack/react-query';
 import {
   infiniteQueryOptions,
   keepPreviousData,
   queryOptions,
   useMutation,
+  useQueries,
   useQueryClient,
 } from '@tanstack/react-query';
 import { api } from '@/lib/api';
@@ -251,4 +254,38 @@ export function useRestoreItems() {
       applyBatchResult(queryClient, result.items);
     },
   });
+}
+
+// --- Pilihan firmware Country Lock (daftar dinamis server, `clFirmwares.options`: cukup login) -------------------------
+
+export const firmwareOptionKeys = {
+  all: ['item', 'firmware-options'] as const,
+  brand: (brand: ClBrand) => ['item', 'firmware-options', brand] as const,
+};
+
+export type FirmwareOptionsByBrand = Record<ClBrand, readonly ClFirmwareOptionDto[]>;
+
+export function firmwareOptionsQuery(brand: ClBrand) {
+  return queryOptions({
+    queryKey: firmwareOptionKeys.brand(brand),
+    queryFn: () => api('clFirmwares.options', { brand }),
+    staleTime: 60_000,
+  });
+}
+
+/** Pilihan firmware per merk Country Lock; daftar belum tiba = kosong. Dipanggil sekali oleh pembungkus form/View. */
+export function useFirmwareOptions(): FirmwareOptionsByBrand {
+  const [mikrotik, ubiquiti] = useQueries({
+    queries: [firmwareOptionsQuery('mikrotik'), firmwareOptionsQuery('ubiquiti')],
+  });
+  return { mikrotik: mikrotik.data ?? [], ubiquiti: ubiquiti.data ?? [] };
+}
+
+/** Opsi firmware untuk nama merk di Data Item (kosong bila merk bukan Mikrotik/Ubiquiti). */
+export function firmwareOptionsOf(
+  byBrand: FirmwareOptionsByBrand | undefined,
+  brandName: string,
+): readonly ClFirmwareOptionDto[] {
+  const brand = countryLockBrandOf(brandName);
+  return brand === null ? [] : (byBrand?.[brand] ?? []);
 }
