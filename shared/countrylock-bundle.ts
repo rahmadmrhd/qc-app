@@ -282,12 +282,53 @@ function flushesArpGlobally(script: string): boolean {
   return false;
 }
 
+/** Pengaturan bundel terbit sebelumnya, pembanding peringatan `ADDRESS_CHANGED`. */
+export interface ClPreviousBundle {
+  settings: ClSettings;
+}
+
+function addressChanges(path: string, before: ClSettings, after: ClSettings): ClIssue[] {
+  const issues: ClIssue[] = [];
+  if (before.router.ip !== after.router.ip) {
+    issues.push({
+      severity: 'warning',
+      code: 'ADDRESS_CHANGED',
+      path,
+      message: `Alamat router berubah dari ${before.router.ip} ke ${after.router.ip}. Router yang sudah terpasang masih memakai alamat lama (${before.router.ip}), jadi komputer tidak akan menjangkaunya sampai router diatur ulang; skrip yang memakai {ipServer} perlu diperiksa`,
+    });
+  }
+  if (before.network.computerIp !== after.network.computerIp) {
+    issues.push({
+      severity: 'warning',
+      code: 'ADDRESS_CHANGED',
+      path,
+      message: `IP komputer berubah dari ${before.network.computerIp} ke ${after.network.computerIp}. Komputer operator harus pindah segmen/alamat ini, dan router yang terpasang masih mengenal alamat lama`,
+    });
+  }
+  if (before.router.interfaceBridge !== after.router.interfaceBridge) {
+    issues.push({
+      severity: 'warning',
+      code: 'ADDRESS_CHANGED',
+      path,
+      message: `Nama bridge router berubah dari ${before.router.interfaceBridge} ke ${after.router.interfaceBridge}. Router yang sudah terpasang masih memakai nama lama, sehingga skrip bisa gagal mencari bridge`,
+    });
+  }
+  return issues;
+}
+
 /**
  * Memeriksa draf bundel sebelum terbit. Kode `error` menolak penerbitan: `SETTINGS_MISSING`, `SETTINGS_INVALID`,
  * `SCRIPT_MISSING`, `TEMP_REF_MISSING`, `PLACEHOLDER_UNKNOWN`, `DUPLICATE_PATH_CASE`. Kode `warning` hanya peringatan:
- * `ORPHAN_ROUTER_FILE`, `ARP_FLUSH_GLOBAL`. (`ADDRESS_CHANGED` belum dipakai di fase 1.)
+ * `ORPHAN_ROUTER_FILE`, `ARP_FLUSH_GLOBAL`, `ADDRESS_CHANGED`. `DUPLICATE_ROUTER_NAME` (error): dua berkas router berbeda
+ * bernama dasar sama bertabrakan di `/temp/` router yang datar. `previous` (opsional) = pengaturan bundel terbit sebelumnya;
+ * bila alamat router, IP komputer, atau nama bridge router berbeda, tiap perbedaan jadi peringatan `ADDRESS_CHANGED`
+ * (spek §5.2 f; hanya peringatan, tidak menghalangi terbit).
  */
-export function validateDraft(files: ClDraftFile[], firmwares: ClFirmwareRef[]): ClIssue[] {
+export function validateDraft(
+  files: ClDraftFile[],
+  firmwares: ClFirmwareRef[],
+  previous?: ClPreviousBundle,
+): ClIssue[] {
   const issues: ClIssue[] = [];
 
   // Bentrok huruf besar/kecil (atau jalur kembar).
@@ -303,6 +344,23 @@ export function validateDraft(files: ClDraftFile[], firmwares: ClFirmwareRef[]):
         code: 'DUPLICATE_PATH_CASE',
         path: file.path,
         message: `Nama berkas bentrok dengan "${first}" (beda huruf besar/kecil tidak dianggap berbeda)`,
+      });
+    }
+  }
+
+  // Dua berkas router berbeda dengan nama dasar sama saling menimpa di /temp/ router (datar).
+  const routerBase = new Map<string, string>();
+  for (const file of files) {
+    if (file.role !== 'router') continue;
+    const first = routerBase.get(basename(file.path));
+    if (first === undefined) {
+      routerBase.set(basename(file.path), file.path);
+    } else if (first !== file.path) {
+      issues.push({
+        severity: 'error',
+        code: 'DUPLICATE_ROUTER_NAME',
+        path: file.path,
+        message: `Berkas router "${file.path}" bernama dasar sama dengan "${first}"; keduanya akan saling menimpa di /temp/ router`,
       });
     }
   }
@@ -332,6 +390,8 @@ export function validateDraft(files: ClDraftFile[], firmwares: ClFirmwareRef[]):
         path: settings.path,
         message: parsed.error,
       });
+    } else if (previous !== undefined) {
+      issues.push(...addressChanges(settings.path, previous.settings, parsed.settings));
     }
   }
 
@@ -442,4 +502,33 @@ export interface ClManifest {
     scriptPath: string | null;
     parallel: boolean;
   }[];
+}
+
+/**
+ * "Dipakai oleh" tiap berkas router (spek §5.2): kode firmware yang skripnya merujuk `/temp/<nama dasar berkas>`. Kunci peta =
+ * jalur berkas router (semua berkas router ada, daftar kosong bila tak dirujuk); kode urut abjad tanpa duplikat. Skrip dicari
+ * lewat `scriptPath` tak peka huruf besar/kecil.
+ */
+export function routerUsedBy(
+  files: ClDraftFile[],
+  firmwares: ClFirmwareRef[],
+): Map<string, string[]> {
+  const textByKey = new Map<string, string>();
+  for (const file of files) {
+    if (file.role === 'script' && file.text !== undefined)
+      textByKey.set(pathKey(file.path), file.text);
+  }
+  const used = new Map<string, Set<string>>();
+  for (const file of files) if (file.role === 'router') used.set(file.path, new Set());
+  for (const firmware of firmwares) {
+    if (firmware.scriptPath === null) continue;
+    const text = textByKey.get(pathKey(firmware.scriptPath));
+    if (text === undefined) continue;
+    const refs = new Set(extractTempRefs(text));
+    for (const file of files) {
+      if (file.role === 'router' && refs.has(basename(file.path)))
+        used.get(file.path)?.add(firmware.code);
+    }
+  }
+  return new Map([...used].map(([path, codes]) => [path, [...codes].sort()]));
 }

@@ -1939,6 +1939,11 @@ export interface ClFileDto {
   updatedBy: string;
   /** Berkas sudah dihapus (riwayatnya tetap). */
   removed: boolean;
+  /**
+   * Hanya berkas peran `router` (dan tak terhapus): kode firmware yang skripnya merujuk `/temp/<nama dasar berkas>`
+   * (urut abjad; kosong = tak dirujuk skrip mana pun). Tidak ada untuk berkas lain.
+   */
+  usedBy?: string[];
 }
 
 export interface ClRevisionDto {

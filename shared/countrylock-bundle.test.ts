@@ -15,6 +15,7 @@ import {
   PLACEHOLDER_NAMES,
   parseSettingsFile,
   pathKey,
+  routerUsedBy,
   SETTINGS_PATH,
   validateClPath,
   validateDraft,
@@ -285,8 +286,40 @@ describe('validateDraft', () => {
     expect(codes(validateDraft(scoped, [FIRMWARE]))).not.toContain('ARP_FLUSH_GLOBAL');
   });
 
-  test('ADDRESS_CHANGED tidak dipakai di fase 1', () => {
+  test('tanpa bundel sebelumnya tidak ada ADDRESS_CHANGED', () => {
     expect(codes(validateDraft(healthy(), [FIRMWARE]))).not.toContain('ADDRESS_CHANGED');
+    expect(codes(validateDraft(healthy(), [FIRMWARE], undefined))).not.toContain('ADDRESS_CHANGED');
+  });
+
+  test('alamat router, IP komputer, atau nama bridge beda dari bundel sebelumnya -> peringatan ADDRESS_CHANGED (bukan error)', () => {
+    const previous = parseSettingsFile(JSON.stringify(VALID_SETTINGS));
+    if (!previous.ok) throw new Error('fixture');
+    expect(codes(validateDraft(healthy(), [FIRMWARE], { settings: previous.settings }))).toEqual(
+      [],
+    );
+
+    const changed = {
+      ...VALID_SETTINGS,
+      router: { ...VALID_SETTINGS.router, ip: '10.9.9.1', interfaceBridge: 'bridge2' },
+      network: { ...VALID_SETTINGS.network, computerIp: '10.9.9.10' },
+    };
+    const files = healthy();
+    files[0] = settingsFile(JSON.stringify(changed));
+    const issues = validateDraft(files, [FIRMWARE], { settings: previous.settings });
+    const address = issues.filter((issue) => issue.code === 'ADDRESS_CHANGED');
+    expect(address).toHaveLength(3);
+    expect(address.every((issue) => issue.severity === 'warning')).toBe(true);
+    expect(address.every((issue) => issue.path === SETTINGS_PATH)).toBe(true);
+    expect(address.map((issue) => issue.message).join(' ')).toContain('192.168.88.1');
+    expect(address.map((issue) => issue.message).join(' ')).toContain('10.9.9.1');
+    expect(issues.some((issue) => issue.severity === 'error')).toBe(false);
+  });
+
+  test('dua berkas router berbeda dengan nama dasar sama -> DUPLICATE_ROUTER_NAME (error)', () => {
+    const files = [...healthy(), routerFile('lain/AC.cfg')];
+    const issue = validateDraft(files, [FIRMWARE]).find((i) => i.code === 'DUPLICATE_ROUTER_NAME');
+    expect(issue?.severity).toBe('error');
+    expect(issue?.path).toBe('lain/AC.cfg');
   });
 });
 
@@ -314,5 +347,28 @@ describe('canonicalHashInput', () => {
     expect(canonicalHashInput([{ path: 'a', sha256: HASH_A }], 'EXTRA')).toBe(
       `a\u0000${HASH_A}\nEXTRA`,
     );
+  });
+});
+
+describe('routerUsedBy', () => {
+  test('berkas router -> kode firmware yang skripnya merujuk /temp/<nama dasar>', () => {
+    const files = [
+      scriptFile('mikrotik/AC.rsc', '/import file-name=/temp/AC.cfg'),
+      scriptFile(
+        'mikrotik/AD.rsc',
+        '/import file-name=/temp/AC.cfg; /import file-name=/temp/lain.npk',
+      ),
+      scriptFile('mikrotik/bebas.rsc', '/import file-name=/temp/AC.cfg'),
+      routerFile('mikrotik/AC.cfg'),
+      routerFile('mikrotik/yatim.npk'),
+    ];
+    const used = routerUsedBy(files, [
+      FIRMWARE,
+      { brand: 'mikrotik', code: 'AD', scriptPath: 'MIKROTIK/ad.rsc', parallel: false },
+      { brand: 'ubiquiti', code: 'XM', scriptPath: null, parallel: false },
+    ]);
+    expect(used.get('mikrotik/AC.cfg')).toEqual(['AC', 'AD']);
+    expect(used.get('mikrotik/yatim.npk')).toEqual([]);
+    expect(used.has('mikrotik/AC.rsc')).toBe(false);
   });
 });

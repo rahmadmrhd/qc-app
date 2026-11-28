@@ -19,15 +19,18 @@ import type {
 import {
   type ClDraftFile,
   type ClManifest,
+  type ClPreviousBundle,
   canonicalHashInput,
   parseSettingsFile,
   pathKey,
+  routerUsedBy,
   validateDraft,
 } from '@shared/countrylock-bundle';
 import { toFileDto } from './files-service';
 import { listClFirmwares } from './firmware-service';
 import { sha256Hex } from './hash';
 import {
+  bundleSettingsText,
   type ClBundleRecord,
   type ClRole,
   type DraftFingerprint,
@@ -38,8 +41,7 @@ import {
   insertBundleStmt,
   latestBundle,
   listBundles,
-  listFileHeads,
-  liveHeadTexts,
+  listLiveFilesWithText,
   reserveBundleNumber,
 } from './repo';
 
@@ -98,8 +100,23 @@ interface DraftComputation {
 async function computeHashes(
   files: { path: string; role: ClRole; sha256: string }[],
   settingsText: string | undefined,
+  firmwares: ClBundleFirmwareDto[],
 ): Promise<{ computerHash: string; routerHash: string }> {
-  const computerHash = await sha256Hex(canonicalHashInput(files));
+  // Spek 5.1: bagian pengaturan komputer (daftar merk dan firmware) ikut hash komputer. JSON kanonik: urut merk + kode.
+  const sortedFirmwares = [...firmwares].sort((a, b) =>
+    a.brand !== b.brand
+      ? a.brand < b.brand
+        ? -1
+        : 1
+      : a.code < b.code
+        ? -1
+        : a.code > b.code
+          ? 1
+          : 0,
+  );
+  const computerHash = await sha256Hex(
+    canonicalHashInput(files, `firmwares\n${JSON.stringify(sortedFirmwares)}`),
+  );
   let credentials = '';
   if (settingsText !== undefined) {
     const parsed = parseSettingsFile(settingsText);
@@ -133,19 +150,26 @@ function parseManifest(record: ClBundleRecord): ClManifest {
 async function computeDraft(env: Env): Promise<DraftComputation> {
   // Sidik jari DULU, isi sesudahnya (lihat `draftFingerprint`).
   const fingerprint = await draftFingerprint(env.DB);
-  const [heads, texts, firmwares, latest] = await Promise.all([
-    listFileHeads(env.DB),
-    liveHeadTexts(env.DB),
+  // Berkas + revisi + isi teks dalam SATU kueri (satu snapshot konsisten).
+  const [heads, firmwares, latest] = await Promise.all([
+    listLiveFilesWithText(env.DB),
     listClFirmwares(env),
     latestBundle(env.DB),
   ]);
-  const draftFiles: ClDraftFile[] = heads.map(({ file, revision }) => ({
+  const draftFiles: ClDraftFile[] = heads.map(({ file, revision, text }) => ({
     path: file.path,
     role: file.role,
     sha256: revision.sha256,
     size: revision.size,
-    ...(file.kind === 'text' ? { text: texts.get(file.id) ?? '' } : {}),
+    ...(file.kind === 'text' ? { text: text ?? '' } : {}),
   }));
+  // Pengaturan bundel terbit terakhir = pembanding peringatan ADDRESS_CHANGED.
+  let previous: ClPreviousBundle | undefined;
+  if (latest !== null) {
+    const previousText = await bundleSettingsText(env.DB, latest.id);
+    const parsed = previousText === null ? null : parseSettingsFile(previousText);
+    if (parsed?.ok) previous = { settings: parsed.settings };
+  }
   const manifestFiles: ClManifest['files'] = [...draftFiles]
     .sort((a, b) => {
       const left = pathKey(a.path);
@@ -169,9 +193,23 @@ async function computeDraft(env: Env): Promise<DraftComputation> {
       scriptPath,
       parallel,
     })),
+    previous,
+  );
+  const usedBy = routerUsedBy(
+    draftFiles,
+    firmwares.map(({ brand, code, scriptPath, parallel }) => ({
+      brand,
+      code,
+      scriptPath,
+      parallel,
+    })),
   );
   const settingsText = draftFiles.find((file) => file.role === 'settings')?.text;
-  const { computerHash, routerHash } = await computeHashes(manifestFiles, settingsText);
+  const { computerHash, routerHash } = await computeHashes(
+    manifestFiles,
+    settingsText,
+    manifestFirmwares,
+  );
   const changed =
     latest === null ||
     !sameContent(parseManifest(latest), computerHash, routerHash, manifestFirmwares);
@@ -181,7 +219,7 @@ async function computeDraft(env: Env): Promise<DraftComputation> {
     manifestFirmwares,
     hasErrors: issues.some((issue) => issue.severity === 'error'),
     dto: {
-      files: heads.map(toFileDto),
+      files: heads.map((head) => toFileDto(head, usedBy)),
       firmwares,
       issues,
       computerHash,

@@ -426,25 +426,38 @@ export async function firmwareUseCounts(db: Preparer): Promise<Map<string, numbe
 
 // --- Bundel: pembacaan massal, sidik jari draf, dan penulisan -------------------------------------------------------
 
-/** Teks revisi terbaru semua berkas teks hidup, menurut id berkas (satu kueri, bukan satu per berkas). */
-export async function liveHeadTexts(db: Preparer): Promise<Map<string, string>> {
-  const result = await db
-    .prepare(
-      "SELECT f.id AS file_id, r.text_body FROM cl_files f JOIN cl_revisions r ON r.file_id = f.id AND r.seq = f.head_rev WHERE f.removed_at = '' AND f.kind = 'text'",
-    )
-    .all<Row>();
-  return new Map(result.results.map((row) => [text(row.file_id), text(row.text_body)]));
+/** Berkas hidup beserta revisi terbarunya DAN isi teksnya, dimuat dalam SATU kueri (satu snapshot yang konsisten). */
+export interface ClFileHeadWithText extends ClFileHead {
+  /** Isi teks revisi terbaru; `null` untuk biner. */
+  text: string | null;
 }
 
-const FIREWARE_PRINT =
-  "COUNT(*) AS n, COALESCE(SUM(CRC32(CONCAT_WS('|', id, brand, code, label, IFNULL(script_path, ''), parallel, sort))), 0) AS crc FROM cl_firmwares WHERE removed_at = ''";
+export async function listLiveFilesWithText(db: Preparer): Promise<ClFileHeadWithText[]> {
+  const result = await db
+    .prepare(
+      `SELECT ${HEAD_SELECT}, r.text_body FROM cl_files f JOIN cl_revisions r ON r.file_id = f.id AND r.seq = f.head_rev WHERE f.removed_at = '' ORDER BY f.path_key, f.created_at, f.id`,
+    )
+    .all<Row>();
+  return result.results.map((row) => ({
+    ...toHead(row),
+    text: row.text_body === null ? null : text(row.text_body),
+  }));
+}
 
-/** Sidik jari draf: jumlah berkas hidup + jumlah nomor revisi terbarunya, serta jumlah + CRC isi baris firmware hidup. */
+// Sidik jari: MD5 atas daftar `id|head_rev|sha256` (berkas hidup) dan atas isi tiap baris firmware hidup, diurut menurut id.
+// Berbeda dari jumlah/penjumlahan sederhana, hapus-B + buat-C (jumlah dan total head_rev sama) menghasilkan nilai lain.
+const FILES_FP_EXPR =
+  "MD5(COALESCE(GROUP_CONCAT(CONCAT_WS('|', f.id, f.head_rev, r.sha256) ORDER BY f.id SEPARATOR ','), ''))";
+const FILES_FP_FROM =
+  "FROM cl_files f JOIN cl_revisions r ON r.file_id = f.id AND r.seq = f.head_rev WHERE f.removed_at = ''";
+const FIRMWARES_FP_EXPR =
+  "MD5(COALESCE(GROUP_CONCAT(CONCAT_WS('|', id, brand, code, label, IFNULL(script_path, ''), parallel, sort) ORDER BY id SEPARATOR ','), ''))";
+const FIRMWARES_FP_FROM = "FROM cl_firmwares WHERE removed_at = ''";
+
+/** Sidik jari draf: berkas hidup (id, nomor revisi terbaru, sha256) dan firmware hidup (seluruh isi baris). */
 export interface DraftFingerprint {
-  files: number;
-  headSum: number;
-  firmwares: number;
-  firmwareCrc: number;
+  files: string;
+  firmwares: string;
 }
 
 /**
@@ -452,18 +465,11 @@ export interface DraftFingerprint {
  * lebih tua daripada isi, sehingga `draftGuardStmts` menggagalkan penerbitan (aman, lalu diulang).
  */
 export async function draftFingerprint(db: Preparer): Promise<DraftFingerprint> {
-  const files = await db
-    .prepare(
-      "SELECT COUNT(*) AS n, COALESCE(SUM(head_rev), 0) AS s FROM cl_files WHERE removed_at = ''",
-    )
+  const files = await db.prepare(`SELECT ${FILES_FP_EXPR} AS fp ${FILES_FP_FROM}`).first<Row>();
+  const firmwares = await db
+    .prepare(`SELECT ${FIRMWARES_FP_EXPR} AS fp ${FIRMWARES_FP_FROM}`)
     .first<Row>();
-  const firmwares = await db.prepare(`SELECT ${FIREWARE_PRINT}`).first<Row>();
-  return {
-    files: Number(files?.n ?? 0),
-    headSum: Number(files?.s ?? 0),
-    firmwares: Number(firmwares?.n ?? 0),
-    firmwareCrc: Number(firmwares?.crc ?? 0),
-  };
+  return { files: text(files?.fp), firmwares: text(firmwares?.fp) };
 }
 
 /**
@@ -475,15 +481,26 @@ export function draftGuardStmts(db: Preparer, expected: DraftFingerprint): DbSta
   return [
     db
       .prepare(
-        `SELECT CASE WHEN COUNT(*) = ? AND COALESCE(SUM(head_rev), 0) = ? THEN 1 ELSE ${CAS_FAIL_SQL} END AS guard_ok FROM cl_files WHERE removed_at = '' FOR UPDATE`,
+        `SELECT CASE WHEN ${FILES_FP_EXPR} = ? THEN 1 ELSE ${CAS_FAIL_SQL} END AS guard_ok ${FILES_FP_FROM} FOR UPDATE`,
       )
-      .bind(expected.files, expected.headSum),
+      .bind(expected.files),
     db
       .prepare(
-        `SELECT CASE WHEN COUNT(*) = ? AND COALESCE(SUM(CRC32(CONCAT_WS('|', id, brand, code, label, IFNULL(script_path, ''), parallel, sort))), 0) = ? THEN 1 ELSE ${CAS_FAIL_SQL} END AS guard_ok FROM cl_firmwares WHERE removed_at = '' FOR UPDATE`,
+        `SELECT CASE WHEN ${FIRMWARES_FP_EXPR} = ? THEN 1 ELSE ${CAS_FAIL_SQL} END AS guard_ok ${FIRMWARES_FP_FROM} FOR UPDATE`,
       )
-      .bind(expected.firmwares, expected.firmwareCrc),
+      .bind(expected.firmwares),
   ];
+}
+
+/** Isi teks `settings.json` yang dirujuk bundel `bundleId` (revisi ber-sha256 itu), atau `null` bila tak ditemukan. */
+export async function bundleSettingsText(db: Preparer, bundleId: string): Promise<string | null> {
+  const row = await db
+    .prepare(
+      "SELECT r.text_body AS body FROM cl_bundle_files b JOIN cl_files f ON f.path = b.path JOIN cl_revisions r ON r.file_id = f.id AND r.sha256 = b.sha256 WHERE b.bundle_id = ? AND b.role = 'settings' AND r.text_body IS NOT NULL LIMIT 1",
+    )
+    .bind(bundleId)
+    .first<Row>();
+  return row === null ? null : text(row.body);
 }
 
 /** Bundel terbit, nomor terbesar dulu. */

@@ -30,7 +30,7 @@ async function errorOf(promise: Promise<unknown>): Promise<Failure> {
   );
 }
 
-function settingsJson(routerPassword = 'rahasia'): string {
+function settingsJson(routerPassword = 'rahasia', routerIp = '10.0.0.1'): string {
   const mode = (ipServer: string) => ({
     ip: '',
     ipServer,
@@ -47,7 +47,7 @@ function settingsJson(routerPassword = 'rahasia'): string {
   return JSON.stringify({
     schema: 1,
     router: {
-      ip: '10.0.0.1',
+      ip: routerIp,
       username: 'admin',
       password: routerPassword,
       interfaceBridge: 'bridge1',
@@ -171,11 +171,32 @@ describe('publishClBundle', () => {
 
   test('tanpa perubahan = CONFLICT; hanya firmware yang berubah juga dihitung perubahan', async () => {
     await validDraft();
-    await publish();
+    const first = await publish();
     expect((await errorOf(publish())).code).toBe('CONFLICT');
     env.clock.advance(1000);
-    await putFirmware({ id: (await clDraft(env)).firmwares[0]?.id, parallel: true });
-    expect((await clDraft(env)).changed).toBe(true);
+    const before = await clDraft(env);
+    await putFirmware({ id: before.firmwares[0]?.id, parallel: true });
+    const after = await clDraft(env);
+    expect(after.changed).toBe(true);
+    // Spek 5.1: daftar firmware ikut computerHash; tanpa itu desktop tak mengunduh bundel baru.
+    expect(after.computerHash).not.toBe(before.computerHash);
+    const second = await publish();
+    expect(second.number).toBe(2);
+    expect(second.computerHash).not.toBe(first.computerHash);
+  });
+
+  test('firmware baru yang menaut skrip yang sama mengubah computerHash dan boleh diterbitkan', async () => {
+    await validDraft();
+    const first = await publish();
+    await putFirmware({
+      brand: 'ubiquiti',
+      code: 'XC2',
+      label: 'XC2',
+      scriptPath: 'mikrotik/AC.rsc',
+    });
+    const draft = await clDraft(env);
+    expect(draft.computerHash).not.toBe(first.computerHash);
+    expect(draft.changed).toBe(true);
     expect((await publish()).number).toBe(2);
   });
 
@@ -201,6 +222,62 @@ describe('publishClBundle', () => {
     expect(rejected.reason.code).toBe('CONFLICT');
     const numbers = (await listClBundles(env)).map((bundle) => bundle.number);
     expect(numbers).toEqual([2, 1]);
+  });
+});
+
+describe('perbaikan review: peringatan dan validasi draf', () => {
+  test('ADDRESS_CHANGED hanya peringatan: muncul bila IP router berbeda dari bundel terbit terakhir, publish tetap boleh', async () => {
+    await validDraft();
+    expect((await clDraft(env)).issues.some((i) => i.code === 'ADDRESS_CHANGED')).toBe(false);
+    await publish();
+    expect((await clDraft(env)).issues.some((i) => i.code === 'ADDRESS_CHANGED')).toBe(false);
+    await putText('settings.json', 'settings', settingsJson('rahasia', '10.9.9.1'));
+    const draft = await clDraft(env);
+    const address = draft.issues.filter((i) => i.code === 'ADDRESS_CHANGED');
+    expect(address).toHaveLength(1);
+    expect(address[0]?.severity).toBe('warning');
+    expect(address[0]?.message).toContain('10.0.0.1');
+    expect(address[0]?.message).toContain('10.9.9.1');
+    expect((await publish()).number).toBe(2);
+    // Setelah terbit, bundel terbaru menjadi pembanding: peringatan hilang.
+    expect((await clDraft(env)).issues.some((i) => i.code === 'ADDRESS_CHANGED')).toBe(false);
+  });
+
+  test('dua berkas router bernama dasar sama di folder berbeda = error DUPLICATE_ROUTER_NAME dan publish ditolak', async () => {
+    await validDraft();
+    await putText('lain/boot.cfg', 'router', 'config lain');
+    const draft = await clDraft(env);
+    expect(draft.issues.find((i) => i.code === 'DUPLICATE_ROUTER_NAME')?.severity).toBe('error');
+    expect((await errorOf(publish())).code).toBe('CONFLICT');
+  });
+
+  test('usedBy: berkas router membawa kode firmware yang skripnya merujuk /temp/<nama dasar> (draf dan daftar berkas)', async () => {
+    await validDraft();
+    await putText('os/yatim.npk', 'router', 'x');
+    const draft = await clDraft(env);
+    const byPath = new Map(draft.files.map((file) => [file.path, file]));
+    expect(byPath.get('os/boot.cfg')?.usedBy).toEqual(['AC']);
+    expect(byPath.get('os/yatim.npk')?.usedBy).toEqual([]);
+    expect(byPath.get('mikrotik/AC.rsc')?.usedBy).toBeUndefined();
+    const { listClFiles, getClFile } = await import('./files-service');
+    const list = await listClFiles(env);
+    const boot = list.find((file) => file.path === 'os/boot.cfg');
+    expect(boot?.usedBy).toEqual(['AC']);
+    expect((await getClFile(env, { id: boot?.id ?? '' })).usedBy).toEqual(['AC']);
+  });
+
+  test('sidik jari draf berbeda untuk hapus-berkas-B + buat-berkas-C (kasus yang lolos pada COUNT+SUM)', async () => {
+    const { draftFingerprint } = await import('./repo');
+    const { removeClFile, listClFiles } = await import('./files-service');
+    await putText('a.rsc', 'script', 'a');
+    await putText('b.rsc', 'script', 'b');
+    const before = await draftFingerprint(env.DB);
+    const b = (await listClFiles(env)).find((file) => file.path === 'b.rsc');
+    await removeClFile(env, { id: b?.id ?? '' }, ACTOR);
+    await putText('c.rsc', 'script', 'c');
+    const after = await draftFingerprint(env.DB);
+    expect(after.files).not.toBe(before.files);
+    expect(after.firmwares).toBe(before.firmwares);
   });
 });
 

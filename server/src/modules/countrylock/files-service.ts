@@ -33,14 +33,16 @@ import {
   listRevisions,
   removeFileStmt,
 } from './repo';
+import { loadRouterUsage } from './usage';
 import { settingsRoleProblem } from './validate';
 
 const STALE_MESSAGE = 'Berkas sudah diubah orang lain. Muat ulang lalu coba lagi.';
 const NOT_FOUND_MESSAGE = 'Berkas tidak ditemukan';
 const HISTORY_LIMIT = 200;
 
-export function toFileDto(head: ClFileHead): ClFileDto {
+export function toFileDto(head: ClFileHead, usedBy?: Map<string, string[]>): ClFileDto {
   const { file, revision } = head;
+  const used = file.role === 'router' && file.removedAt === '' ? usedBy?.get(file.path) : undefined;
   return {
     id: file.id,
     path: file.path,
@@ -52,6 +54,7 @@ export function toFileDto(head: ClFileHead): ClFileDto {
     updatedAt: file.updatedAt,
     updatedBy: revision.author,
     removed: file.removedAt !== '',
+    ...(used === undefined ? {} : { usedBy: used }),
   };
 }
 
@@ -78,7 +81,8 @@ async function loadDetail(env: Env, id: string): Promise<ClFileDetailDto> {
   const head = await getFileHead(env.DB, id);
   if (head === null) throw appError('NOT_FOUND', NOT_FOUND_MESSAGE);
   const revision = await getRevision(env.DB, id, head.file.headRev);
-  return { ...toFileDto(head), text: revision?.textBody ?? null };
+  const usage = head.file.role === 'router' ? await loadRouterUsage(env.DB) : undefined;
+  return { ...toFileDto(head, usage), text: revision?.textBody ?? null };
 }
 
 /** Berkas hidup menurut id, atau `NOT_FOUND` (terhapus atau tak ada). */
@@ -98,7 +102,8 @@ function checkTextRules(path: string, role: string, text: string): void {
 }
 
 export async function listClFiles(env: Env): Promise<ClFileDto[]> {
-  return (await listFileHeads(env.DB)).map(toFileDto);
+  const [heads, usage] = await Promise.all([listFileHeads(env.DB), loadRouterUsage(env.DB)]);
+  return heads.map((head) => toFileDto(head, usage));
 }
 
 /** Berkas (juga yang sudah dihapus: hanya dapat dibaca) beserta isi teks terbarunya. */
