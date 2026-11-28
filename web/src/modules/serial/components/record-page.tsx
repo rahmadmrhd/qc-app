@@ -50,6 +50,7 @@ import { lockedLocationOf, todayWib, toLocationOptions } from '../lib/locations'
 import { applyProofMins, fetchProofMins, uniqueItemIds } from '../lib/proof-refresh';
 import type { QcsnImport } from '../lib/qcsn';
 import { findRescanWarnings, type RescanWarning } from '../lib/rescan';
+import { type SaveConfirmSummary, saveConfirmSummaryOf } from '../lib/save-confirm';
 import { type ProofSession, useProofSinks, useProofUploads } from '../lib/use-proof-uploads';
 import { useSerialLocations } from '../lib/use-serial-locations';
 import {
@@ -868,20 +869,31 @@ function RecordPageInner({
   }
 
   // Peringatan scan ulang (hanya saat Simpan): resolver menunggu pilihan pengguna di dialog.
-  const [rescanWarnings, setRescanWarnings] = useState<RescanWarning[] | null>(null);
+  // Konfirmasi Simpan (satu dialog): ringkasan isian, dan daftar cek ulang bila ada (keputusan pemilik 2026-11-28).
+  const [saveConfirm, setSaveConfirm] = useState<{
+    summary: SaveConfirmSummary;
+    warnings: RescanWarning[];
+  } | null>(null);
   const rescanResolveRef = useRef<((proceed: boolean) => void) | null>(null);
-  function confirmRescan(warnings: RescanWarning[]): Promise<boolean> {
+  function confirmSave(summary: SaveConfirmSummary, warnings: RescanWarning[]): Promise<boolean> {
     return new Promise((resolve) => {
       rescanResolveRef.current = resolve;
-      setRescanWarnings(warnings);
+      setSaveConfirm({ summary, warnings });
     });
   }
   function answerRescan(proceed: boolean) {
     const resolve = rescanResolveRef.current;
     rescanResolveRef.current = null;
-    setRescanWarnings(null);
+    setSaveConfirm(null);
     resolve?.(proceed);
   }
+  // Progres simpan per batch (`toBatches`, maks. 200 baris): ditampilkan selama kiriman berjalan.
+  const [saveProgress, setSaveProgress] = useState<{
+    done: number;
+    total: number;
+    batch: number;
+    batches: number;
+  } | null>(null);
   useEffect(
     () => () => {
       rescanResolveRef.current?.(false);
@@ -910,11 +922,12 @@ function RecordPageInner({
       return false;
     }
     const rescans = findRescanWarnings(current);
-    if (rescans.length > 0) {
+    // Konfirmasi selalu muncul sebelum kirim; cek ulang (bila ada) digabung di dialog yang sama.
+    {
       preparingRef.current = true;
       let proceed: boolean;
       try {
-        proceed = await confirmRescan(rescans);
+        proceed = await confirmSave(saveConfirmSummaryOf(current), rescans);
       } finally {
         preparingRef.current = false;
       }
@@ -987,9 +1000,18 @@ function RecordPageInner({
 
       const batches = toBatches(rowsRef.current.filter((row) => sendIds.has(row.clientId)));
       const tally: SaveSummary = { created: 0, rechecked: 0, duplicate: 0, failed: 0, skipped };
+      const totalRows = batches.reduce((count, batch) => count + batch.length, 0);
+      let sentRows = 0;
       for (const [index, batch] of batches.entries()) {
+        setSaveProgress({
+          done: sentRows,
+          total: totalRows,
+          batch: index + 1,
+          batches: batches.length,
+        });
         try {
           const output = await saveBatch.mutateAsync({ rows: batch.map(toRowInput) });
+          sentRows += batch.length;
           for (const result of output.results) {
             if (result.result === 'created') tally.created++;
             else if (result.result === 'rechecked') tally.rechecked++;
@@ -1024,6 +1046,7 @@ function RecordPageInner({
         rowsRef.current.length === 0;
     } finally {
       setSaving(false);
+      setSaveProgress(null);
     }
     if (!mountedRef.current) {
       // Halaman sudah ditinggalkan: draf yang ditulis saat unlock masih memuat baris yang kini tersimpan; sinkronkan.
@@ -1200,6 +1223,33 @@ function RecordPageInner({
         ) : null}
       </div>
 
+      {saveProgress ? (
+        <div className="space-y-1.5" role="status" aria-live="polite">
+          <div
+            role="progressbar"
+            aria-label="Kemajuan penyimpanan"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={
+              saveProgress.total > 0
+                ? Math.round((saveProgress.done / saveProgress.total) * 100)
+                : 0
+            }
+            className="h-2 w-full overflow-hidden rounded-full bg-muted"
+          >
+            <div
+              className="h-full bg-primary transition-all"
+              style={{
+                width: `${saveProgress.total > 0 ? Math.round((saveProgress.done / saveProgress.total) * 100) : 0}%`,
+              }}
+            />
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Menyimpan {saveProgress.done} dari {saveProgress.total} serial (batch{' '}
+            {saveProgress.batch} dari {saveProgress.batches}). Jangan tutup halaman ini.
+          </p>
+        </div>
+      ) : null}
       {notice ? (
         <p
           role="status"
@@ -1395,8 +1445,9 @@ function RecordPageInner({
         />
       ) : null}
       <RescanWarningDialog
-        open={rescanWarnings !== null}
-        warnings={rescanWarnings ?? []}
+        open={saveConfirm !== null}
+        warnings={saveConfirm?.warnings ?? []}
+        summary={saveConfirm?.summary}
         onContinue={() => answerRescan(true)}
         onCancel={() => answerRescan(false)}
       />

@@ -302,7 +302,7 @@ test('F5: foto yang mulai diunggah selagi Simpan menunggu pencarian serial membu
     return base?.(id, input, options);
   });
   renderPage();
-  await userEvent.click(await screen.findByRole('button', { name: /^Simpan 1 serial/ }));
+  await clickSaveRow(/^Simpan 1 serial/);
   // Selama pencarian berjalan, tabel belum `saving`: foto masih bisa ditambahkan.
   await addPhoto('AAA111');
   await waitFor(() => expect(uploads).toHaveLength(1));
@@ -349,3 +349,14 @@ test('onUploadsPendingChange true selama unggahan berjalan atau gagal, false set
   await userEvent.click(screen.getByRole('button', { name: /^Buang / }));
   await waitFor(() => expect(onPending).toHaveBeenLastCalledWith(false));
 });
+
+/** Klik Simpan pada baris/halaman, lalu konfirmasi ringkasan (dialog `alertdialog`) bila tampil. */
+async function clickSaveRow(namePattern: RegExp) {
+  await userEvent.click(await screen.findByRole('button', { name: namePattern }));
+  const dialog = screen.queryByRole('alertdialog');
+  if (dialog) {
+    await userEvent.click(
+      within(dialog).getByRole('button', { name: /^(Simpan|Lanjut menyimpan)$/ }),
+    );
+  }
+}

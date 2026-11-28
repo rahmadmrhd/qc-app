@@ -176,14 +176,13 @@ function EditDispatchBody({ onOpenChange, dispatch }: EditDispatchDialogProps) {
             localFilter
             highlight
             keyboardless
+            disabled
             placeholder="Pilih BU"
             {...(touched && errors.bu ? { error: errors.bu } : {})}
           />
-          {buId !== dispatch.buId ? (
-            <p className="text-xs text-muted-foreground">
-              Mengubah BU akan membuat ulang nomor riwayat untuk BU baru.
-            </p>
-          ) : null}
+          <p className="text-xs text-muted-foreground">
+            BU riwayat tidak dapat diubah. Item harus tercatat pada BU tersebut.
+          </p>
         </div>
 
         <div className="space-y-3">

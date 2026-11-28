@@ -165,7 +165,7 @@ test('serial baru pada Item yang bukan milik BU tujuan ditolak di dialog', async
     item: whItem({ buIds: ['bu2'] }),
     formBuId: 'bu1',
   });
-  await userEvent.click(screen.getByRole('button', { name: 'Simpan & salin' }));
+  await clickSave();
   expect(props.onConfirm).not.toHaveBeenCalled();
   expect(await screen.findByText(/Item ini bukan milik BU tersebut/)).toBeInTheDocument();
 });
@@ -193,11 +193,11 @@ test('serial baru tanpa lokasi: Lokasi dialog wajib dan dipakai; tidak ada isian
   expect(
     screen.getByText('Dipakai untuk serial baru dan pengurangan stok stiker yang belum tertempel.'),
   ).toBeInTheDocument();
-  await userEvent.click(screen.getByRole('button', { name: 'Simpan & salin' }));
+  await clickSave();
   expect(props.onConfirm).not.toHaveBeenCalled();
   expect(await screen.findByText('Lokasi wajib dipilih')).toBeInTheDocument();
   await pickLink(screen, 'Lokasi', 'Gudang QC');
-  await userEvent.click(screen.getByRole('button', { name: 'Simpan & salin' }));
+  await clickSave();
   const values = vi.mocked(props.onConfirm).mock.calls[0]?.[0];
   expect(values).toMatchObject({ locationId: 'loc1' });
   expect(values).not.toHaveProperty('newTestDate');
@@ -210,7 +210,7 @@ test('serial baru yang sudah berlokasi: Lokasi dialog tetap wajib dan dipakai un
   expect(
     screen.getByText('Dipakai untuk serial baru dan pengurangan stok stiker yang belum tertempel.'),
   ).toBeInTheDocument();
-  await userEvent.click(screen.getByRole('button', { name: 'Simpan & salin' }));
+  await clickSave();
   expect(props.onConfirm).not.toHaveBeenCalled();
   expect(await screen.findByText('Lokasi wajib dipilih')).toBeInTheDocument();
 });
@@ -226,7 +226,7 @@ test('BU dan Lokasi terisi dari serial yang sudah ada bila semuanya sama', async
   await screen.findByLabelText('Nomor kardus awal');
   expect(screen.getByLabelText('BU')).toHaveValue('B - BU 2');
   expect(screen.getByLabelText('Lokasi')).toHaveValue('Gudang Utama');
-  await userEvent.click(screen.getByRole('button', { name: 'Simpan & salin' }));
+  await clickSave();
   expect(props.onConfirm).toHaveBeenCalledWith(
     expect.objectContaining({ buId: 'bu2', locationId: 'loc2' }),
   );
@@ -287,6 +287,7 @@ test('konfirmasi kecocokan: task yang tak menyebut Item menahan simpan sampai di
     handoverContext: handoverContext(),
     originHandoverId: 'h9',
   });
+  // Klik pertama hanya membuka ringkasan; ketidaksesuaian tampil di langkah yang sama, belum menyimpan.
   await userEvent.click(await screen.findByRole('button', { name: 'Simpan & salin' }));
   expect(
     await screen.findByText('Apakah daftar permintaan item ini sudah sesuai?'),
@@ -295,8 +296,7 @@ test('konfirmasi kecocokan: task yang tak menyebut Item menahan simpan sampai di
   expect(props.onConfirm).not.toHaveBeenCalled();
   await userEvent.click(screen.getByRole('button', { name: 'Kembali' }));
   expect(props.onConfirm).not.toHaveBeenCalled();
-  await userEvent.click(screen.getByRole('button', { name: 'Simpan & salin' }));
-  await userEvent.click(await screen.findByRole('button', { name: 'Sesuai, lanjut simpan' }));
+  await clickSave();
   expect(props.onConfirm).toHaveBeenCalledTimes(1);
   expect(props.onConfirm).toHaveBeenCalledWith(
     expect.objectContaining({ handoverIds: ['h9'], mode: 'note' }),
@@ -318,7 +318,7 @@ test('konfirmasi kecocokan: task yang menyebut Item (ada baris hijau) langsung d
     handoverContext: handoverContext(),
     originHandoverId: 'h9',
   });
-  await userEvent.click(await screen.findByRole('button', { name: 'Simpan & salin' }));
+  await clickSave();
   expect(props.onConfirm).toHaveBeenCalledTimes(1);
   expect(screen.queryByText('Apakah daftar permintaan item ini sudah sesuai?')).toBeNull();
 });
@@ -338,7 +338,7 @@ test('konfirmasi kecocokan: cukup satu task hijau dari beberapa task terpilih un
     handoverContext: handoverContext(),
     originHandoverId: 'h9',
   });
-  await userEvent.click(await screen.findByRole('button', { name: 'Simpan & salin' }));
+  await clickSave();
   expect(props.onConfirm).toHaveBeenCalledTimes(1);
 });
 
@@ -348,7 +348,7 @@ test('konfirmasi kecocokan: task yang cocok langsung disimpan tanpa dialog', asy
     handoverContext: handoverContext(),
     originHandoverId: 'h9',
   });
-  await userEvent.click(await screen.findByRole('button', { name: 'Simpan & salin' }));
+  await clickSave();
   expect(props.onConfirm).toHaveBeenCalledTimes(1);
   expect(screen.queryByText('Apakah daftar permintaan item ini sudah sesuai?')).toBeNull();
 });
@@ -358,7 +358,7 @@ test('konfirmasi kecocokan: task yang DTO-nya tak dikenal dilewati', async () =>
     handoverContext: handoverContext(),
     originHandoverId: 'h9',
   });
-  await userEvent.click(await screen.findByRole('button', { name: 'Simpan & salin' }));
+  await clickSave();
   expect(props.onConfirm).toHaveBeenCalledTimes(1);
 });
 
@@ -371,7 +371,7 @@ test('Task asal yang tak ada di pemilih: tanda belum diperiksa, simpan tidak dib
     originHandoverId: 'h9',
   });
   expect(await screen.findByText(/Task asal belum diperiksa kecocokannya/)).toBeInTheDocument();
-  await userEvent.click(screen.getByRole('button', { name: 'Simpan & salin' }));
+  await clickSave();
   expect(props.onConfirm).toHaveBeenCalledTimes(1);
 });
 
@@ -401,7 +401,7 @@ test('tanpa Tujuan, No SO, dan Customer; urutan field: Tanggal, BU, Lokasi, Kard
 test('simpan mengirim mode note dengan catatan Markdown, kardus awal 1, dan isi dari Item', async () => {
   const props = setup([makeExistingRow(whSerial())], { item: whItem({ boxSize: 10 }) });
   await userEvent.type(await screen.findByLabelText('Isi catatan'), '  halo ');
-  await userEvent.click(screen.getByRole('button', { name: 'Simpan & salin' }));
+  await clickSave();
   expect(props.onConfirm).toHaveBeenCalledTimes(1);
   expect(vi.mocked(props.onConfirm).mock.calls[0]?.[0]).toEqual({
     mode: 'note',
@@ -421,11 +421,11 @@ test('ringkasan perkiraan kardus dan Simpan terblokir bila isi per kardus kosong
   expect(await screen.findByText('Kardus 1-3: 2 penuh, 1 ecer (5 unit)')).toBeInTheDocument();
   const size = screen.getByLabelText('Isi per kardus');
   await userEvent.clear(size);
-  await userEvent.click(screen.getByRole('button', { name: 'Simpan & salin' }));
+  await clickSave();
   expect(props.onConfirm).not.toHaveBeenCalled();
   expect(await screen.findByText('Isi per kardus harus lebih dari 0')).toBeInTheDocument();
   await userEvent.type(size, '0');
-  await userEvent.click(screen.getByRole('button', { name: 'Simpan & salin' }));
+  await clickSave();
   expect(props.onConfirm).not.toHaveBeenCalled();
 });
 
@@ -439,7 +439,14 @@ test('galat nomor kardus dari server tampil pada field nomor', async () => {
 
 test('BU wajib dipilih', async () => {
   const props = setup([newRow('N1')], { formBuId: '', item: whItem({ buIds: [], boxSize: 10 }) });
-  await userEvent.click(await screen.findByRole('button', { name: 'Simpan & salin' }));
+  await clickSave();
   expect(props.onConfirm).not.toHaveBeenCalled();
   expect(await screen.findByText('BU wajib dipilih')).toBeInTheDocument();
 });
+
+/** Klik Simpan & salin, lalu konfirmasi ringkasan (langkah kedua) bila tampil. */
+async function clickSave() {
+  await userEvent.click(await screen.findByRole('button', { name: 'Simpan & salin' }));
+  const confirm = screen.queryByRole('button', { name: 'Simpan' });
+  if (confirm) await userEvent.click(confirm);
+}

@@ -128,6 +128,9 @@ test('Simpan di bar judul mengirim draft (lewat form kosong), bukan lewat Enter 
   await userEvent.type(screen.getByRole('textbox', { name: /Scan atau tempel serial/ }), '{Enter}');
   expect(apiMock.mock.calls.some((call) => call[0] === 'serials.saveBatch')).toBe(false);
   await userEvent.click(save);
+  await userEvent.click(
+    within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Simpan' }),
+  );
   await waitFor(() =>
     expect(apiMock.mock.calls.some((call) => call[0] === 'serials.saveBatch')).toBe(true),
   );

@@ -282,7 +282,7 @@ test('urutan draf tetap urutan scan walau ponsel menampilkan yang terbaru di ata
   const titles = await screen.findAllByText(/^(AAA|BBB)$/);
   expect(titles.map((node) => node.textContent)).toEqual(['BBB', 'AAA']);
   await userEvent.click(screen.getByRole('button', { name: /Simpan \(2\)/ }));
-  await userEvent.click(screen.getByRole('button', { name: 'Simpan & salin' }));
+  await clickSave();
   await waitFor(() => expect(submitCalls).toHaveLength(1));
   // Urutan kiriman (= seq = clipboard) tetap urutan scan.
   expect(submitCalls[0]?.rows.map((row) => row.serial)).toEqual(['AAA', 'BBB']);
@@ -316,7 +316,7 @@ test('clipboard gagal: dialog Salin lagi muncul tanpa mengirim ulang', async () 
     });
     await renderPage();
     await userEvent.click(await screen.findByRole('button', { name: /Simpan \(1\)/ }));
-    await userEvent.click(screen.getByRole('button', { name: 'Simpan & salin' }));
+    await clickSave();
     expect(await screen.findByRole('button', { name: 'Salin lagi' })).toBeInTheDocument();
     expect(screen.getByRole('textbox', { name: 'Daftar Serial Number' })).toHaveValue('AAA');
     expect(submitCalls).toHaveLength(1);
@@ -341,7 +341,7 @@ test('header catatan: mode note tanpa SO, customer, dan orderId; kardus awal 1',
   });
   await renderPage();
   await userEvent.click(await screen.findByRole('button', { name: /Simpan \(1\)/ }));
-  await userEvent.click(await screen.findByRole('button', { name: 'Simpan & salin' }));
+  await clickSave();
   await waitFor(() => expect(submitCalls).toHaveLength(1));
   const header = submitCalls[0]?.header;
   expect(header).toMatchObject({ mode: 'note', orderNumber: '', customerName: '', buId: 'bu1' });
@@ -358,7 +358,7 @@ test('serial baru tanpa lokasi dan tanggal uji: memakai Lokasi dialog dan tangga
   await scan('baru1');
   await userEvent.click(await screen.findByRole('button', { name: /Simpan \(1\)/ }));
   await pickLink(screen, 'Lokasi', 'Gudang 1');
-  await userEvent.click(screen.getByRole('button', { name: 'Simpan & salin' }));
+  await clickSave();
   await waitFor(() => expect(submitCalls).toHaveLength(1));
   const call = submitCalls[0];
   expect(call?.rows[0]).toMatchObject({
@@ -386,7 +386,7 @@ test('Lokasi dialog menjadi lokasi semua serial baru, menimpa lokasi chip saat s
   await renderPage();
   await userEvent.click(await screen.findByRole('button', { name: /Simpan \(1\)/ }));
   await pickLink(screen, 'Lokasi', 'Gudang 2');
-  await userEvent.click(screen.getByRole('button', { name: 'Simpan & salin' }));
+  await clickSave();
   await waitFor(() => expect(submitCalls).toHaveLength(1));
   expect(submitCalls[0]?.rows[0]).toMatchObject({ kind: 'new', locationId: 'loc2' });
 });
@@ -401,7 +401,7 @@ test('chip Tanggal uji yang terisi menang atas tanggal keluar untuk serial baru'
   });
   await renderPage();
   await userEvent.click(await screen.findByRole('button', { name: /Simpan \(1\)/ }));
-  await userEvent.click(await screen.findByRole('button', { name: 'Simpan & salin' }));
+  await clickSave();
   await waitFor(() => expect(submitCalls).toHaveLength(1));
   expect(submitCalls[0]?.rows[0]).toMatchObject({ kind: 'new', testDate: '2026-11-18' });
 });
@@ -417,7 +417,7 @@ test('urutan kiriman mengikuti urutan serial dipilih dari tabel, bukan urutan ta
   await userEvent.click(await screen.findByRole('checkbox', { name: 'Pilih S3' }));
   await userEvent.click(await screen.findByRole('checkbox', { name: 'Pilih S1' }));
   await userEvent.click(await screen.findByRole('button', { name: /Simpan \(2\)/ }));
-  await userEvent.click(await screen.findByRole('button', { name: 'Simpan & salin' }));
+  await clickSave();
   await waitFor(() => expect(submitCalls).toHaveLength(1));
   expect(submitCalls[0]?.rows.map((row) => row.serial)).toEqual(['S3', 'S1']);
 });
@@ -512,7 +512,7 @@ test('setelah potongan terkirim, cache serialwh ditandai basi lewat mutasi bersa
   const { queryClient } = await renderPage();
   const spy = vi.spyOn(queryClient, 'invalidateQueries');
   await userEvent.click(await screen.findByRole('button', { name: /Simpan \(1\)/ }));
-  await userEvent.click(screen.getByRole('button', { name: 'Simpan & salin' }));
+  await clickSave();
   await waitFor(() => expect(submitCalls).toHaveLength(1));
   await waitFor(() => {
     const keys = spy.mock.calls.map((call) => JSON.stringify(call[0]?.queryKey));
@@ -536,10 +536,12 @@ test('klip dimulai sinkron dari klik Simpan & salin (sebelum menunggu server)', 
     seedDraft({ itemId: 'item1', rows: [draftRow('AAA')] });
     await renderPage();
     await userEvent.click(await screen.findByRole('button', { name: /Simpan \(1\)/ }));
-    const save = screen.getByRole('button', { name: 'Simpan & salin' });
+    // Klik Simpan & salin hanya membuka ringkasan; klik konfirmasi "Simpan" yang memulai kiriman dan klip.
+    await userEvent.click(screen.getByRole('button', { name: 'Simpan & salin' }));
+    const confirm = screen.getByRole('button', { name: 'Simpan' });
     // Klik mentah: pemeriksaan tepat setelah handler sinkron, sebelum mikrotask lain berjalan.
     act(() => {
-      save.click();
+      confirm.click();
     });
     expect(write).toHaveBeenCalledTimes(1);
   } finally {
@@ -578,7 +580,7 @@ test('banner peringatan dapat dibuka untuk melihat serialnya; baris menyebut SO 
 
 async function sendDraft() {
   await userEvent.click(await screen.findByRole('button', { name: /Simpan \(\d+\)/ }));
-  await userEvent.click(screen.getByRole('button', { name: 'Simpan & salin' }));
+  await clickSave();
 }
 
 function stubClipboard() {
@@ -755,7 +757,7 @@ test('catatan: isi per kardus bawaan dari Item; hasil membuka detail riwayat', a
   const { router } = await renderPage();
   await userEvent.click(await screen.findByRole('button', { name: /Simpan \(1\)/ }));
   await waitFor(() => expect(screen.getByLabelText('Isi per kardus')).toHaveValue(12));
-  await userEvent.click(screen.getByRole('button', { name: 'Simpan & salin' }));
+  await clickSave();
   await waitFor(() => expect(submitCalls).toHaveLength(1));
   expect(submitCalls[0]?.header).toMatchObject({
     mode: 'note',
@@ -804,3 +806,10 @@ test('ponsel: satu bar bawah berisi ✕, kotak centang, N dipilih, Batal, dan Si
   expect(screen.getByRole('button', { name: 'Batal' })).toBeInTheDocument();
   expect(screen.getByRole('button', { name: /Simpan \(1\)/ })).toBeInTheDocument();
 });
+
+/** Klik Simpan & salin, lalu konfirmasi ringkasan (langkah kedua) bila tampil. */
+async function clickSave() {
+  await userEvent.click(await screen.findByRole('button', { name: 'Simpan & salin' }));
+  const confirm = screen.queryByRole('button', { name: 'Simpan' });
+  if (confirm) await userEvent.click(confirm);
+}

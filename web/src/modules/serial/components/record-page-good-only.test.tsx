@@ -128,7 +128,7 @@ test('formulir tidak punya kontrol status atau kerusakan; baris yang disimpan ti
   await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih semua baris' }));
   expect(screen.queryByLabelText('Status (ubah massal)')).toBeNull();
   expect(screen.queryByLabelText('Kerusakan (ubah massal)')).toBeNull();
-  await userEvent.click(screen.getByRole('button', { name: /^Simpan 2 serial/ }));
+  await clickSaveRow(/^Simpan 2 serial/);
   await waitFor(() => expect(saveCalls).toHaveLength(1));
   for (const saved of saveCalls[0] ?? []) {
     expect(saved).not.toHaveProperty('status');
@@ -189,3 +189,14 @@ test('impor .qcsn memuat baris Lolos; draf 5b berisi baris Tidak lolos tetap tam
   expect(screen.getByLabelText('Serial OLD2')).toBeInTheDocument();
   expect(screen.getAllByText(/dicatat lewat Lapor Rusak/).length).toBeGreaterThan(0);
 });
+
+/** Klik Simpan pada baris/halaman, lalu konfirmasi ringkasan (dialog `alertdialog`) bila tampil. */
+async function clickSaveRow(namePattern: RegExp) {
+  await userEvent.click(await screen.findByRole('button', { name: namePattern }));
+  const dialog = screen.queryByRole('alertdialog');
+  if (dialog) {
+    await userEvent.click(
+      within(dialog).getByRole('button', { name: /^(Simpan|Lanjut menyimpan)$/ }),
+    );
+  }
+}

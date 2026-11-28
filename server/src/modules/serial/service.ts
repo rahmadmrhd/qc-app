@@ -380,7 +380,9 @@ export class SerialLookupMemo {
   proofMinOf(itemId: string): Promise<number> {
     let found = this.proofMins.get(itemId);
     if (!found) {
-      found = this.env.DB.prepare('SELECT proof_required, proof_min FROM items WHERE id = ?')
+      found = this.env.DB.prepare(
+        `SELECT proof_required, proof_min FROM items WHERE ${liveWhere()} AND id = ?`,
+      )
         .bind(itemId)
         .first<{ proof_required: number | string; proof_min: number | string }>()
         .then((item) =>

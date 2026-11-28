@@ -276,7 +276,7 @@ test('mencentang jumlah stiker 2 mengirim stickers dengan qty 2 saat simpan', as
   await userEvent.click(within(dialog).getByRole('button', { name: 'Tambah Stiker A' }));
   expect(within(dialog).getByLabelText('Jumlah Stiker A')).toHaveTextContent('2');
   await userEvent.click(within(dialog).getByRole('button', { name: 'Terapkan' }));
-  await userEvent.click(screen.getByRole('button', { name: /^Simpan/ }));
+  await clickSaveRow(/^Simpan/);
   await waitFor(() => expect(saveCalls).toHaveLength(1));
   expect(saveCalls[0]?.rows[0]?.stickers).toEqual([
     { stickerId: 's1', qty: 2 },
@@ -288,7 +288,7 @@ test('baris tanpa pilihan stiker memakai semua stiker yang berlaku saat simpan',
   renderPage();
   await pickDefaults();
   await paste('A1');
-  await userEvent.click(screen.getByRole('button', { name: /^Simpan/ }));
+  await clickSaveRow(/^Simpan/);
   await waitFor(() => expect(saveCalls).toHaveLength(1));
   expect(saveCalls[0]?.rows[0]?.stickers).toEqual([
     { stickerId: 's1', qty: 1 },
@@ -304,7 +304,7 @@ test('simpan 450 baris memanggil mutasi 3 kali dan menghapus baris created', asy
   const text = Array.from({ length: 450 }, (_, index) => `SN${index}`).join('\n');
   await paste(text);
   expect(dataRows()).toHaveLength(450);
-  await userEvent.click(screen.getByRole('button', { name: /^Simpan 450 serial/ }));
+  await clickSaveRow(/^Simpan 450 serial/);
   await waitFor(() => expect(saveCalls).toHaveLength(3), { timeout: 10_000 });
   expect(saveCalls.map((call) => call.rows.length)).toEqual([200, 200, 50]);
   await waitFor(() => expect(screen.queryAllByRole('row')).toHaveLength(0));
@@ -316,7 +316,7 @@ test('baris duplicate dari server tersisa berwarna dan dapat dicoba lagi setelah
   await pickDefaults();
   await paste('A1\nA2');
   resultFor = (row) => (row.serial === 'A2' ? 'duplicate' : 'created');
-  await userEvent.click(screen.getByRole('button', { name: /^Simpan/ }));
+  await clickSaveRow(/^Simpan/);
   await waitFor(() => expect(serialValues()).toEqual(['A2']));
   const row = dataRows()[0] as HTMLElement;
   expect(row).toHaveAttribute('data-result', 'duplicate');
@@ -329,7 +329,7 @@ test('baris duplicate dari server tersisa berwarna dan dapat dicoba lagi setelah
   await userEvent.tab();
   expect(dataRows()[0]).toHaveAttribute('data-result', 'ok');
   resultFor = () => 'created';
-  await userEvent.click(screen.getByRole('button', { name: /^Simpan/ }));
+  await clickSaveRow(/^Simpan/);
   await waitFor(() => expect(saveCalls).toHaveLength(2));
   expect(saveCalls[1]?.rows.map((r) => r.serial)).toEqual(['A3']);
 });
@@ -342,7 +342,7 @@ test('galat jaringan menandai baris tersisa sebagai error dan menawarkan Coba la
   apiMock.mockImplementation((id: string, input: Record<string, unknown>) =>
     id === 'serials.saveBatch' ? Promise.reject(new Error('putus')) : original?.(id, input),
   );
-  await userEvent.click(screen.getByRole('button', { name: /^Simpan/ }));
+  await clickSaveRow(/^Simpan/);
   expect(await screen.findByRole('button', { name: 'Coba lagi' })).toBeInTheDocument();
   expect(dataRows()[0]).toHaveAttribute('data-result', 'error');
 });
@@ -355,7 +355,7 @@ test('simpan ditolak bila ada baris tanpa item atau lokasi', async () => {
     { ...row, itemId: '', itemLabel: '', buId: '', buLabel: '', locationId: '', locationLabel: '' },
   ]);
   renderPage();
-  await userEvent.click(screen.getByRole('button', { name: /^Simpan/ }));
+  await clickSaveRow(/^Simpan/);
   expect(screen.getByText(/1 baris belum lengkap/)).toBeInTheDocument();
   expect(saveCalls).toHaveLength(0);
   expect(screen.getByText('Item belum dipilih')).toBeInTheDocument();
@@ -399,7 +399,7 @@ test('impor berkas sah menambah baris; baris dengan item yang tak ditemukan waji
   await waitFor(() => expect(serialValues()).toEqual(['IMP1', 'IMP2']));
   expect(screen.getByText(/serial\.qcsn: 2 baris baru/)).toBeInTheDocument();
   expect(screen.getByText('Pilih ulang item (tidak ditemukan)')).toBeInTheDocument();
-  await userEvent.click(screen.getByRole('button', { name: /^Simpan/ }));
+  await clickSaveRow(/^Simpan/);
   expect(screen.getByText(/1 baris belum lengkap/)).toBeInTheDocument();
   expect(saveCalls).toHaveLength(0);
 });
@@ -456,7 +456,7 @@ test('semua baris tersimpan: onAllSaved dipanggil dan draft localStorage kosong'
   renderPage({ onAllSaved });
   await pickDefaults();
   await paste('A1\nA2');
-  await userEvent.click(screen.getByRole('button', { name: /^Simpan 2 serial/ }));
+  await clickSaveRow(/^Simpan 2 serial/);
   await waitFor(() => expect(onAllSaved).toHaveBeenCalledTimes(1), { timeout: 10_000 });
   expect(onAllSaved).toHaveBeenCalledWith(2);
   expect(toastSuccess).toHaveBeenCalledWith('Serial Number berhasil disimpan');
@@ -471,7 +471,7 @@ test('sebagian gagal (duplikat): tidak berpindah halaman; baris sukses keluar, b
   await pickDefaults();
   await paste('A1\nA2');
   resultFor = (row) => (row.serial === 'A2' ? 'duplicate' : 'created');
-  await userEvent.click(screen.getByRole('button', { name: /^Simpan/ }));
+  await clickSaveRow(/^Simpan/);
   await waitFor(() => expect(serialValues()).toEqual(['A2']));
   expect(onAllSaved).not.toHaveBeenCalled();
 });
@@ -485,7 +485,7 @@ test('galat jaringan: tidak berpindah halaman', async () => {
   apiMock.mockImplementation((id: string, input: Record<string, unknown>) =>
     id === 'serials.saveBatch' ? Promise.reject(new Error('putus')) : original?.(id, input),
   );
-  await userEvent.click(screen.getByRole('button', { name: /^Simpan/ }));
+  await clickSaveRow(/^Simpan/);
   expect(await screen.findByRole('button', { name: 'Coba lagi' })).toBeInTheDocument();
   expect(onAllSaved).not.toHaveBeenCalled();
 });
@@ -504,7 +504,10 @@ test('halaman ditinggalkan saat simpan berjalan: onAllSaved tidak dipanggil dan 
     if (id === 'serials.saveBatch') await gate;
     return original?.(id, input);
   });
-  await userEvent.click(screen.getByRole('button', { name: /^Simpan 1 serial/ }));
+  await userEvent.click(await screen.findByRole('button', { name: /^Simpan 1 serial/ }));
+  await userEvent.click(
+    within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Simpan' }),
+  );
   await waitFor(() => expect(screen.getByRole('button', { name: /Menyimpan/ })).toBeDisabled());
   view.unmount();
   release();
@@ -515,3 +518,14 @@ test('halaman ditinggalkan saat simpan berjalan: onAllSaved tidak dipanggil dan 
   const draft = localStorage.getItem('qc.serial.draft:a@gmail.com');
   expect(draft === null || draft === '[]').toBe(true);
 });
+
+/** Klik Simpan pada baris/halaman, lalu konfirmasi ringkasan (dialog `alertdialog`) bila tampil. */
+async function clickSaveRow(namePattern: RegExp) {
+  await userEvent.click(await screen.findByRole('button', { name: namePattern }));
+  const dialog = screen.queryByRole('alertdialog');
+  if (dialog) {
+    await userEvent.click(
+      within(dialog).getByRole('button', { name: /^(Simpan|Lanjut menyimpan)$/ }),
+    );
+  }
+}

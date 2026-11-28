@@ -147,7 +147,7 @@ test('Default: serial yang dicatat ke BU lain memotong stiker BU itu saat disimp
   await pickLink(screen, 'Business Unit', 'BU2 - Business Unit 2');
   await screen.findByRole('checkbox', { name: 'Segel BU2' });
   await paste('A1');
-  await userEvent.click(screen.getByRole('button', { name: /^Simpan/ }));
+  await clickSaveRow(/^Simpan/);
   await waitFor(() => expect(saved).toHaveLength(1));
   expect(saved[0]).toEqual({ buId: 'b2', stickers: [{ stickerId: 's5', qty: 1 }] });
 });
@@ -167,7 +167,7 @@ test('Ubah baris: mengganti BU meminta ulang stiker (item, BU baru) dan mereset 
   expect(askedFor('i1', 'b2')).toBe(true);
 
   await userEvent.click(within(dialog).getByRole('button', { name: 'Terapkan' }));
-  await userEvent.click(screen.getByRole('button', { name: /^Simpan/ }));
+  await clickSaveRow(/^Simpan/);
   await waitFor(() => expect(saved).toHaveLength(1));
   expect(saved[0]).toEqual({ buId: 'b2', stickers: [{ stickerId: 's5', qty: 1 }] });
 });
@@ -190,8 +190,19 @@ test('Ubah massal: BU baris diganti, pilihan stiker eksplisit BU lama dibuang da
   // Pilihan lama tidak terbawa ke BU baru.
   expect(screen.queryByText(/^Stiker A ×/)).toBeNull();
 
-  await userEvent.click(screen.getByRole('button', { name: /^Simpan/ }));
+  await clickSaveRow(/^Simpan/);
   await waitFor(() => expect(saved).toHaveLength(1));
   expect(askedFor('i1', 'b2')).toBe(true);
   expect(saved[0]).toEqual({ buId: 'b2', stickers: [{ stickerId: 's5', qty: 1 }] });
 });
+
+/** Klik Simpan pada baris/halaman, lalu konfirmasi ringkasan (dialog `alertdialog`) bila tampil. */
+async function clickSaveRow(namePattern: RegExp) {
+  await userEvent.click(await screen.findByRole('button', { name: namePattern }));
+  const dialog = screen.queryByRole('alertdialog');
+  if (dialog) {
+    await userEvent.click(
+      within(dialog).getByRole('button', { name: /^(Simpan|Lanjut menyimpan)$/ }),
+    );
+  }
+}

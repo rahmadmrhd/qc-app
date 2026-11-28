@@ -62,12 +62,16 @@ export const SOFT_DELETE_EXEMPT: Record<string, string> = {
     'Penampil rujukan: Riwayat pengeluaran menampilkan nama Item walau Item terhapus (LEFT JOIN); catatan historis, bukan keputusan hak.',
   'server/src/modules/serialwh/orders.ts#brands@1#a712a262':
     'Penampil rujukan: nama merk Item pada Riwayat pengeluaran tetap tampil walau merk terhapus.',
-  'server/src/modules/serialwh/dispatches.ts#business_units@1#0397fd8f':
+  'server/src/modules/serialwh/dispatches.ts#business_units@1#93981bde':
     'Riwayat pengeluaran menampilkan kode/nama BU walau BU terhapus (BU terhapus tetap memberi hak); dibatasi `bu_id` hak pemanggil.',
-  'server/src/modules/serialwh/dispatches.ts#items@1#0397fd8f':
+  'server/src/modules/serialwh/dispatches.ts#items@1#93981bde':
     'Penampil rujukan: Riwayat pengeluaran menampilkan nama Item walau Item terhapus (LEFT JOIN); catatan historis, bukan keputusan hak.',
-  'server/src/modules/serialwh/dispatches.ts#brands@1#0397fd8f':
+  'server/src/modules/serialwh/dispatches.ts#brands@1#93981bde':
     'Penampil rujukan: nama merk Item pada Riwayat pengeluaran tetap tampil walau merk terhapus.',
+  'server/src/modules/serialwh/dispatches.ts#item_business_units@1#5606f282':
+    'Cek tautan BU item saat Ubah riwayat: item diambil dari catatan yang sudah ada (bukan dari pilihan), dan tabel penghubung tak punya kolom terhapus sendiri; BU tujuan diperiksa aktif dan hidup di atasnya.',
+  'server/src/modules/serialwh/submit.ts#serial_stickers@1#97d2488a':
+    'Stiker yang sudah tertempel pada serial yang SUDAH ada: serial itu sudah lolos pemeriksaan hidup di rencana simpan (plans) sebelum kueri ini, jadi hanya anak dari serial hidup yang dibaca.',
   'server/src/modules/serialwh/dispatches.ts#business_units@2#fe798be5':
     'Riwayat pengeluaran menampilkan kode/nama BU walau BU terhapus (BU terhapus tetap memberi hak); dibatasi `bu_id` hak pemanggil.',
   'server/src/modules/serialwh/dispatches.ts#items@2#fe798be5':
@@ -500,8 +504,6 @@ export const SOFT_DELETE_EXEMPT: Record<string, string> = {
     "Subkueri BU item di `serials.itemOptions`: item yang dibaca disaring `liveWhere('i')` di literal kueri yang sama; tabel penghubung `item_business_units` tak punya kolom terhapus sendiri.",
   'server/src/modules/serial/service.ts#business_units@1#3232c3a8':
     'Penampil rujukan atau pembaca kode BU menurut id yang sudah divalidasi hidup oleh jalur tulis (`activeItemWritableForBu`, `liveWhere` pada BU target); BU terhapus tetap memberi nama dan hak (soft delete 9).',
-  'server/src/modules/serial/service.ts#items@3#122b7dd8':
-    'Penampil rujukan: serial menampilkan nama item (LEFT JOIN) walau item terhapus; item terhapus tak dihitung/dipilih di jalur tulis (jalur tulis lain: `activeItemWritableForBu` (serial/repo.ts) menyaring hidup).',
   'server/src/modules/handover/repo.ts#customers@1#4f2b2d39':
     'Nama customer untuk tampilan: customer terhapus tetap memberi nama pada task yang memakainya (rujukan tersimpan tetap sah, soft delete T1); task disaring `liveWhere` di kueri yang sama.',
   'server/src/modules/handover/repo.ts#handovers@2#5ad762be':

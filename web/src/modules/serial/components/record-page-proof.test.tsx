@@ -130,7 +130,7 @@ test('Simpan mengirim proofPhotoIds hanya untuk baris yang punya foto; baris ter
     { serial: 'BBB222', photos: [] },
   ]);
   renderPage();
-  await userEvent.click(await screen.findByRole('button', { name: /^Simpan 2 serial/ }));
+  await clickSaveRow(/^Simpan 2 serial/);
   await waitFor(() => expect(saveCalls).toHaveLength(1));
   expect(saveCalls[0]?.map((row) => row.proofPhotoIds)).toEqual([['p1', 'p2'], undefined]);
   await waitFor(() => expect(screen.getByText(/Dibuat 2/)).toBeInTheDocument());
@@ -183,7 +183,7 @@ test('foto kedaluwarsa: baris tetap di draft dengan pesan server, foto dibuang d
   seedDraft([{ serial: 'AAA111', photos: ['p1'] }]);
   respond = () => ({ result: 'invalid', message: 'Foto sudah kedaluwarsa, unggah ulang' });
   renderPage();
-  await userEvent.click(await screen.findByRole('button', { name: /^Simpan 1 serial/ }));
+  await clickSaveRow(/^Simpan 1 serial/);
   expect(await screen.findByText('Foto sudah kedaluwarsa, unggah ulang')).toBeInTheDocument();
   expect(screen.getByRole('textbox', { name: 'Serial AAA111' })).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Foto (0), AAA111' })).toBeInTheDocument();
@@ -196,7 +196,7 @@ test('galat penyimpanan lain: foto tetap melekat pada baris', async () => {
   seedDraft([{ serial: 'AAA111', photos: ['p1'] }]);
   respond = () => ({ result: 'invalid', message: 'Item tidak ditemukan' });
   renderPage();
-  await userEvent.click(await screen.findByRole('button', { name: /^Simpan 1 serial/ }));
+  await clickSaveRow(/^Simpan 1 serial/);
   expect(await screen.findByText('Item tidak ditemukan')).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Foto (1), AAA111' })).toBeInTheDocument();
 });
@@ -232,10 +232,11 @@ test('handleRef.save: menyimpan semua baris, true, mengosongkan draft, tanpa mem
   const onAllSaved = vi.fn();
   const handleRef = renderGuarded({ onAllSaved });
   await screen.findByRole('button', { name: /^Simpan 1 serial/ });
-  let saved = false;
-  await act(async () => {
-    saved = (await handleRef.current?.save()) ?? false;
-  });
+  const pending = handleRef.current?.save();
+  await userEvent.click(
+    within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Simpan' }),
+  );
+  const saved = (await pending) ?? false;
   expect(saved).toBe(true);
   expect(saveCalls[0]?.map((row) => row.proofPhotoIds)).toEqual([['p1']]);
   expect(onAllSaved).not.toHaveBeenCalled();
@@ -253,10 +254,22 @@ test('handleRef.save: ada baris gagal = false dan draft tetap', async () => {
       : { result: 'created', message: '' };
   const handleRef = renderGuarded({});
   await screen.findByRole('button', { name: /^Simpan 2 serial/ });
-  let saved = true;
-  await act(async () => {
-    saved = (await handleRef.current?.save()) ?? true;
-  });
+  const pending = handleRef.current?.save();
+  await userEvent.click(
+    within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Simpan' }),
+  );
+  const saved = (await pending) ?? true;
   expect(saved).toBe(false);
   expect(screen.getByText('Ditolak')).toBeInTheDocument();
 });
+
+/** Klik Simpan pada baris/halaman, lalu konfirmasi ringkasan (dialog `alertdialog`) bila tampil. */
+async function clickSaveRow(namePattern: RegExp) {
+  await userEvent.click(await screen.findByRole('button', { name: namePattern }));
+  const dialog = screen.queryByRole('alertdialog');
+  if (dialog) {
+    await userEvent.click(
+      within(dialog).getByRole('button', { name: /^(Simpan|Lanjut menyimpan)$/ }),
+    );
+  }
+}

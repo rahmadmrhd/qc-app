@@ -194,7 +194,7 @@ test('Simpan mengirim baris Cek ulang dengan item catatan, BU saat ini, stiker k
   await pickDefaults();
   await paste('OLD001');
   await waitFor(() => expect(screen.getByText('Cek ulang')).toBeInTheDocument());
-  await userEvent.click(screen.getByRole('button', { name: /^Simpan/ }));
+  await clickSaveRow(/^Simpan/);
   await waitFor(() => expect(saved).toHaveLength(1));
   expect(saved[0]).toMatchObject({
     serial: 'OLD001',
@@ -216,7 +216,7 @@ test('semua baris tersimpan dengan cek ulang: toast menyebut jumlah dicek ulang'
   await pickDefaults();
   await paste('OLD001\nNEW002');
   await waitFor(() => expect(screen.getByText('Cek ulang')).toBeInTheDocument());
-  await userEvent.click(screen.getByRole('button', { name: /^Simpan/ }));
+  await clickSaveRow(/^Simpan/);
   await waitFor(() => expect(onAllSaved).toHaveBeenCalledWith(2));
   expect(toastSuccess).toHaveBeenCalledWith(
     'Serial Number berhasil disimpan (1 dibuat, 1 dicek ulang)',
@@ -243,7 +243,7 @@ test('serial dengan laporan aktif atau Rusak tampil bermasalah dan tidak dikirim
   const second = await rowOf('OLD002');
   expect(within(second).getByText('Unit ini sudah dinyatakan rusak.')).toBeInTheDocument();
 
-  await userEvent.click(screen.getByRole('button', { name: /^Simpan/ }));
+  await clickSaveRow(/^Simpan/);
   expect(
     await screen.findByText(/2 baris belum lengkap atau tidak bisa dicek ulang/),
   ).toBeInTheDocument();
@@ -275,7 +275,7 @@ test('Ubah baris Cek ulang: item terkunci, BU hanya recheckBuIds, Sample tidak a
   expect(
     within(old).getByText('Pindah BU: BU2 - Business Unit 2 → BU3 - Business Unit 3'),
   ).toBeInTheDocument();
-  await userEvent.click(screen.getByRole('button', { name: /^Simpan/ }));
+  await clickSaveRow(/^Simpan/);
   await waitFor(() => expect(saved[0]).toMatchObject({ buId: 'b3', stickers: [] }));
 });
 
@@ -298,7 +298,7 @@ test('pencarian gagal (jaringan): Simpan berhenti dengan pesan dan tidak mengiri
   await pickDefaults();
   await paste('OLD001');
   await rowOf('OLD001');
-  await userEvent.click(screen.getByRole('button', { name: /^Simpan/ }));
+  await clickSaveRow(/^Simpan/);
   expect(
     await screen.findByText(/Pengecekan serial yang sudah tercatat gagal/),
   ).toBeInTheDocument();
@@ -336,14 +336,14 @@ test('Simpan menanyakan ulang SEMUA baris: serial yang kini sudah tercatat mengh
   // NEW002 belum ada saat ditanyakan: baris biasa, semua stiker berlaku (Stiker A) tercentang saat dikirim.
   // Sesudahnya BU lain mencatatnya.
   found = [existing({ serial: 'NEW002', id: 'sn-new' })];
-  await userEvent.click(screen.getByRole('button', { name: /^Simpan/ }));
+  await clickSaveRow(/^Simpan/);
   expect(await screen.findByText(/1 baris berubah/)).toBeInTheDocument();
   expect(saved).toHaveLength(0);
   const row = await rowOf('NEW002');
   expect(within(row).getByText('Cek ulang')).toBeInTheDocument();
   expect(within(row).getByText('Item Catatan')).toBeInTheDocument();
 
-  await userEvent.click(screen.getByRole('button', { name: /^Simpan/ }));
+  await clickSaveRow(/^Simpan/);
   await waitFor(() => expect(saved).toHaveLength(1));
   expect(saved[0]).toMatchObject({ serial: 'NEW002', itemId: 'i9', buId: 'b2', stickers: [] });
   // Pencarian ulang terjadi di tiap Simpan (bukan hanya untuk baris yang belum pernah ditanyakan).
@@ -357,7 +357,7 @@ test('baris Cek ulang yang serialnya kini tak ada lagi kembali biasa (stiker baw
   await paste('OLD001');
   await waitFor(() => expect(screen.getByText('Cek ulang')).toBeInTheDocument());
   found = [];
-  await userEvent.click(screen.getByRole('button', { name: /^Simpan/ }));
+  await clickSaveRow(/^Simpan/);
   expect(await screen.findByText(/1 baris berubah/)).toBeInTheDocument();
   expect(saved).toHaveLength(0);
   expect(screen.queryByText('Cek ulang')).toBeNull();
@@ -426,3 +426,14 @@ test('impor .qcsn: serial yang sudah ada menjadi Cek ulang (item berkas diganti 
     ),
   ).toBeInTheDocument();
 });
+
+/** Klik Simpan pada baris/halaman, lalu konfirmasi ringkasan (dialog `alertdialog`) bila tampil. */
+async function clickSaveRow(namePattern: RegExp) {
+  await userEvent.click(await screen.findByRole('button', { name: namePattern }));
+  const dialog = screen.queryByRole('alertdialog');
+  if (dialog) {
+    await userEvent.click(
+      within(dialog).getByRole('button', { name: /^(Simpan|Lanjut menyimpan)$/ }),
+    );
+  }
+}
