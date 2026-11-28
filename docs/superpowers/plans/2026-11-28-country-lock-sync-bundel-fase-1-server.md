@@ -14,7 +14,7 @@
 
 - `shared/` murni: tanpa `node:*`, `crypto`, DOM, `fetch`; sha256 dihitung di server (dan di web/desktop bila perlu), `shared/` hanya membentuk string kanonik.
 - ID baris = `newId()` (`server/src/core/id.ts`), ULID huruf kecil; `crypto.randomUUID()` hanya untuk nilai tak tertebak.
-- Migrasi expand-only, nomor berikut `0044` (`server/migrations/0044_country_lock_bundel.sql`), idempoten (`IF NOT EXISTS`), tanpa `SET @var`/`PREPARE`; tanpa `DROP`/`RENAME` (tak perlu `-- qc:contract`).
+- Migrasi expand-only, nomor berikut `0046` (`server/migrations/0046_country_lock_bundel.sql`), idempoten (`IF NOT EXISTS`), tanpa `SET @var`/`PREPARE`; tanpa `DROP`/`RENAME` (tak perlu `-- qc:contract`).
 - Parameter SQL selalu `?` berurutan; kolom `key`/`before`/`after` berbacktick; `SUM`/`COUNT` dibungkus `Number()`.
 - Konkurensi: CAS di `batch()` (`core/cas.ts`: `CAS_FAIL_SQL`, `runCas`, `staleError`) atau `SELECT ... FOR UPDATE`; jangan baca-lalu-tulis tanpa salah satunya. Nomor berurutan lewat penghitung `counters` CAS.
 - Setiap rute baru: id di `ApiContract` (`shared/contract.ts`) + `API_ROUTES` (`shared/api.ts`) + `server/src/routes.ts` (`ALL_API_IDS`, `realRoutes()`) + `shared/api-versions.ts` (kelompok `cl*`) + contoh di `shared/api.test.ts` + entri di `server/src/http/body.test.ts` bila JSON/biner + `bun run api:snapshot`.
@@ -47,7 +47,7 @@
 | `shared/countrylock-bundle.ts` | Konstanta batas, tipe manifest/pengaturan, `extractTempRefs`, `extractPlaceholders`, `countryLockBrandOf`, `parseSettingsFile`, `validateDraft`, `canonicalHashInput`, validator nama jalur |
 | `shared/countrylock-bundle.test.ts` | Tes murni modul di atas |
 | `countrylock/src/placeholder-parity.test.ts` | Menjaga `PLACEHOLDER_NAMES` (shared) = `PLACEHOLDERS` (`script-template.ts`) |
-| `server/migrations/0044_country_lock_bundel.sql` | Tabel `cl_files`, `cl_revisions`, `cl_blobs`, `cl_uploads`, `cl_upload_chunks`, `cl_firmwares`, `cl_bundles`, `cl_bundle_files` |
+| `server/migrations/0046_country_lock_bundel.sql` | Tabel `cl_files`, `cl_revisions`, `cl_blobs`, `cl_uploads`, `cl_upload_chunks`, `cl_firmwares`, `cl_bundles`, `cl_bundle_files` |
 | `server/src/modules/countrylock/` | `repo.ts`, `files-service.ts`, `upload-service.ts`, `firmware-service.ts`, `bundle-service.ts`, `import-service.ts`, `seed.ts`, `audit.ts`, `validate.ts`, `routes.ts`, `public-routes.ts`, `blob-store.ts`, `sweep.ts` |
 | `server/src/modules/desktop/token-guard.ts` | Penjaga token bersama (diekstrak dari `desktop/routes.ts`) |
 | `web/src/modules/countrylock-admin/` | `queries.ts`, `components/` (halaman berkas, editor, riwayat/diff, pengaturan, firmware, bundel, impor), `lib/` (`parse-legacy-config.ts` dll.) |
@@ -103,10 +103,10 @@
 
 ---
 
-### Task 3: Migrasi `0044`, repo dasar, dan seed firmware
+### Task 3: Migrasi `0046`, repo dasar, dan seed firmware
 
 **Files:**
-- Create: `server/migrations/0044_country_lock_bundel.sql`
+- Create: `server/migrations/0046_country_lock_bundel.sql`
 - Create: `server/src/modules/countrylock/repo.ts`, `server/src/modules/countrylock/seed.ts`, `server/src/modules/countrylock/repo.test.ts`
 - Modify: `server/src/server.ts` (panggil `seedCountryLockFirmwares(env)` setelah migrasi, di samping `ensureSystemStickerTypes`; galat dicatat, tak menggagalkan start)
 - Modify: `shared/audit.ts` bila ada daftar target/aksi yang menuntut pendaftaran (lihat Task 4)
@@ -128,7 +128,7 @@
 - [ ] **Step 3: Tulis migrasi** (idempoten `CREATE TABLE IF NOT EXISTS`) dan `repo.ts`, `seed.ts`; sambungkan seed di `server.ts`.
 - [ ] **Step 4: Jalankan** tes di atas, plus tes migrasi/hash templat bila ada (`bun run --cwd server test src/core/migrate`), `bun run typecheck`.
 - [ ] **Step 5: Fragmen** `server/changelog.d/20261128-country-lock-bundel-skema.md`: `feat(countrylock): skema bundel Country Lock dan seed firmware awal`.
-- [ ] **Step 6: Commit** `feat(countrylock): migrasi 0044 dan repo dasar bundel`.
+- [ ] **Step 6: Commit** `feat(countrylock): migrasi 0046 dan repo dasar bundel`.
 
 ---
 
@@ -304,4 +304,4 @@
 - **Hal yang perlu diverifikasi implementer (tidak ditebak di rencana):** nama fungsi tes izin di `shared`; pola persis `ensureNamedFolder`/`folderIdOf`; apakah `FilePicker` membatasi tipe berkas; lokasi pendaftaran `AUDIT_NON_ENTITY_ACTIONS`; apakah `module-coverage.test.ts` mewajibkan entri untuk modul baru.
 - **Keputusan perancang yang menunggu persetujuan pemilik:** perluasan level izin `countrylock` (T1); `computerHash` ikut berubah saat kredensial router berubah (over-inclusion disengaja, T7); potongan unggah ≤ 4 MiB disimpan sementara di DB (T5); editor Monaco dengan cadangan CodeMirror (T10).
 
-**Deviasi yang disetujui pemilik 2026-11-28.** Pemilik produk menyetujui dua deviasi dari rencana ini. (1) Editor admin memakai CodeMirror 6 (+ `@codemirror/merge` untuk diff), bukan Monaco: hasil spike Task 10 menunjukkan Monaco `editor.api` 598 KB gzip dan versi lengkap 851 KB melewati anggaran 600 KB gzip per potongan, sedangkan CodeMirror 6 sekitar 116 KB gzip. Langkah spike di atas (Step 1, pilih Monaco atau CodeMirror) sudah dijawab dengan CodeMirror. (2) Migrasi tetap bernomor `0044_country_lock_bundel.sql` (expand-only, tabel `cl_*`), karena `0043` sudah dipakai `origin/dev`. Keputusan ini mengubah spek §9 butir 5 sampai 9 (`docs/superpowers/specs/2026-11-28-country-lock-sync-bundel-design.md`). Butir batas laju, jalur Windows, IP komputer impor, dan sesi `aborted` dicatat di spek dan `CLAUDE.md`; statusnya di kode perlu diverifikasi terhadap rencana tugas 4 sampai 9.
+**Deviasi yang disetujui pemilik 2026-11-28.** Pemilik produk menyetujui dua deviasi dari rencana ini. (1) Editor admin memakai CodeMirror 6 (+ `@codemirror/merge` untuk diff), bukan Monaco: hasil spike Task 10 menunjukkan Monaco `editor.api` 598 KB gzip dan versi lengkap 851 KB melewati anggaran 600 KB gzip per potongan, sedangkan CodeMirror 6 sekitar 116 KB gzip. Langkah spike di atas (Step 1, pilih Monaco atau CodeMirror) sudah dijawab dengan CodeMirror. (2) Migrasi tetap bernomor `0046_country_lock_bundel.sql` (expand-only, tabel `cl_*`), karena `0043` sudah dipakai `origin/dev`. Keputusan ini mengubah spek §9 butir 5 sampai 9 (`docs/superpowers/specs/2026-11-28-country-lock-sync-bundel-design.md`). Butir batas laju, jalur Windows, IP komputer impor, dan sesi `aborted` dicatat di spek dan `CLAUDE.md`; statusnya di kode perlu diverifikasi terhadap rencana tugas 4 sampai 9.

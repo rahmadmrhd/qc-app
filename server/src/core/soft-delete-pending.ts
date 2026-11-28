@@ -54,7 +54,7 @@ export const SOFT_DELETE_EXEMPT: Record<string, string> = {
     'Penampil rujukan: opsi Item menampilkan nama merk walau merk terhapus (LEFT JOIN dari item hidup aktif); tak ada keputusan hak atau aturan.',
   'server/src/modules/serialwh/options.ts#item_business_units@1#a82e00c6':
     'Anak dari item yang SUDAH tersaring (daftar id berasal dari kueri item hidup di atasnya); hanya mengambil BU tertaut item untuk label opsi.',
-  'server/src/modules/serialwh/options.ts#business_units@1#3282e0ba':
+  'server/src/modules/serialwh/options.ts#business_units@1#7b2b82ae':
     'Pemilih SO: BU pemilik SO tampil dengan kode/namanya walau BU terhapus (BU terhapus tetap memberi hak, spek soft delete butir 9); SO dibatasi `bu_id` hak pemanggil.',
   'server/src/modules/serialwh/orders.ts#business_units@1#80737b55':
     'Ringkasan SO menampilkan kode/nama BU pemilik walau BU terhapus (BU terhapus tetap memberi hak); SO dibatasi `bu_id` hak pemanggil.',
@@ -62,11 +62,11 @@ export const SOFT_DELETE_EXEMPT: Record<string, string> = {
     'Penampil rujukan: Riwayat pengeluaran menampilkan nama Item walau Item terhapus (LEFT JOIN); catatan historis, bukan keputusan hak.',
   'server/src/modules/serialwh/orders.ts#brands@1#a712a262':
     'Penampil rujukan: nama merk Item pada Riwayat pengeluaran tetap tampil walau merk terhapus.',
-  'server/src/modules/serialwh/dispatches.ts#business_units@1#fc0fc753':
+  'server/src/modules/serialwh/dispatches.ts#business_units@1#0397fd8f':
     'Riwayat pengeluaran menampilkan kode/nama BU walau BU terhapus (BU terhapus tetap memberi hak); dibatasi `bu_id` hak pemanggil.',
-  'server/src/modules/serialwh/dispatches.ts#items@1#fc0fc753':
+  'server/src/modules/serialwh/dispatches.ts#items@1#0397fd8f':
     'Penampil rujukan: Riwayat pengeluaran menampilkan nama Item walau Item terhapus (LEFT JOIN); catatan historis, bukan keputusan hak.',
-  'server/src/modules/serialwh/dispatches.ts#brands@1#fc0fc753':
+  'server/src/modules/serialwh/dispatches.ts#brands@1#0397fd8f':
     'Penampil rujukan: nama merk Item pada Riwayat pengeluaran tetap tampil walau merk terhapus.',
   'server/src/modules/serialwh/dispatches.ts#business_units@2#fe798be5':
     'Riwayat pengeluaran menampilkan kode/nama BU walau BU terhapus (BU terhapus tetap memberi hak); dibatasi `bu_id` hak pemanggil.',
@@ -102,7 +102,7 @@ export const SOFT_DELETE_EXEMPT: Record<string, string> = {
     'Penampil rujukan: nama merk Item pada DTO serial tetap tampil walau merk terhapus.',
   'server/src/modules/serialwh/repo.ts#locations@1#223dac03':
     'Penampil rujukan: DTO serial menampilkan nama lokasi walau lokasi terhapus (seperti daftar Serial).',
-  'server/src/modules/serialwh/repo.ts#business_units@2#c84dcbb3':
+  'server/src/modules/serialwh/repo.ts#business_units@2#4d6f3599':
     'Penampil rujukan: referensi pengeluaran selesai menampilkan kode BU pemilik SO walau BU terhapus.',
   'server/src/modules/dashboard/widgets/serial.ts#items@1#cfe93ce1':
     'Filter brand grup Serial: subkueri mencocokkan brand pada item serial APA PUN statusnya (item terhapus tetap memiliki brand serialnya; sama dengan widget Item teratas); hanya membaca brand item untuk menyaring, tak ada keputusan hak.',

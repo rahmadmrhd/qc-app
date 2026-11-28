@@ -28,6 +28,16 @@ export const orderAuditTarget = (orderId: string, orderNumber: string): Warehous
   label: `SO ${orderNumber}`,
 });
 
+/** Penjualan tanpa No SO: jenis `order` (log `warehouseOrder`), `target_id` = id PENGELUARAN, label `Penjualan <tanggal>`. */
+export const saleAuditTarget = (
+  dispatchId: string,
+  dispatchedOn: string,
+): WarehouseAuditTarget => ({
+  kind: 'order',
+  targetId: dispatchId,
+  label: `Penjualan ${dispatchedOn}`,
+});
+
 export const readyAuditTarget = (
   dispatchId: string,
   dispatchedOn: string,

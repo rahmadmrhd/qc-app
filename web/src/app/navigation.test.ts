@@ -655,17 +655,15 @@ test('Dashboard tak aktif di halaman Laporan terjadwal dan Tautan dibagikan', ()
   expect(isNavItemActive(itemTo('/dashboard/tautan'), at('/dashboard/tautan/s1'))).toBe(true);
 });
 
-test('Stok Ready dan Riwayat Gudang tidak menyala bersamaan', () => {
+test('Riwayat Gudang menyala di form pencatatan dan tidak ada butir Stok Ready', () => {
   const children = flattenNavItems(NAV_GROUPS);
-  const ready = children.find((entry) => entry.to === '/serial/gudang/ready');
   const history = children.find((entry) => entry.to === '/serial/gudang/riwayat');
-  expect(ready).toBeDefined();
   expect(history).toBeDefined();
+  expect(children.some((entry) => entry.to === ('/serial/gudang/ready' as string))).toBe(false);
   const at = (path: string) => (to: string, fuzzy: boolean) =>
     fuzzy ? path === to || path.startsWith(`${to}/`) : path === to;
-  if (ready && history) {
-    expect(isNavItemActive(ready, at('/serial/gudang/ready'))).toBe(true);
-    expect(isNavItemActive(history, at('/serial/gudang/ready'))).toBe(false);
+  if (history) {
     expect(isNavItemActive(history, at('/serial/gudang'))).toBe(true);
+    expect(isNavItemActive(history, at('/serial/gudang/riwayat/d1'))).toBe(true);
   }
 });

@@ -22,6 +22,8 @@ interface Row {
   kind: string;
   order_id: string;
   order_number: string | null;
+  /** Id catatan SO; null pada Ready dan Penjualan tanpa SO. */
+  so_id: string | null;
   bu_id: string;
   bu_code: string;
   bu_name: string;
@@ -43,10 +45,13 @@ interface Row {
   created_count: number | string;
 }
 
-// BU pengeluaran: pada Ready Stock di baris pengeluaran, pada Penjualan di catatan SO.
-const BU_EXPR = "IF(d.kind = 'ready', d.bu_id, o.bu_id)";
+// BU pengeluaran: di baris pengeluaran bila terisi (Ready Stock dan Penjualan tanpa SO), selain itu di catatan SO.
+const BU_EXPR = "IF(d.bu_id <> '', d.bu_id, o.bu_id)";
+// Customer: dari catatan SO bila ada, selain itu dari baris pengeluaran (Penjualan tanpa SO; kosong pada Ready).
+const CUSTOMER_ID_EXPR = 'IF(o.id IS NULL, d.customer_id, o.customer_id)';
+const CUSTOMER_NAME_EXPR = 'IF(o.id IS NULL, d.customer_name, o.customer_name)';
 
-const SELECT = `SELECT d.id, d.number, d.kind, d.order_id, o.number AS order_number, bu.id AS bu_id, bu.code AS bu_code, bu.name AS bu_name, o.customer_id, o.customer_name, d.item_id, b.name AS brand_name, i.model, (SELECT COUNT(*) FROM warehouse_dispatch_serials s WHERE s.dispatch_id = d.id) AS serial_count, d.dispatched_on, d.status, d.note, d.created_by, d.created_at, d.completed_at, d.cancelled_at, d.chunk_count, d.chunks_received, d.created_count FROM warehouse_dispatches d LEFT JOIN warehouse_orders o ON o.id = d.order_id JOIN business_units bu ON bu.id = ${BU_EXPR} LEFT JOIN items i ON i.id = d.item_id LEFT JOIN brands b ON b.id = i.brand_id`;
+const SELECT = `SELECT d.id, d.number, d.kind, d.order_id, o.number AS order_number, o.id AS so_id, bu.id AS bu_id, bu.code AS bu_code, bu.name AS bu_name, ${CUSTOMER_ID_EXPR} AS customer_id, ${CUSTOMER_NAME_EXPR} AS customer_name, d.item_id, b.name AS brand_name, i.model, (SELECT COUNT(*) FROM warehouse_dispatch_serials s WHERE s.dispatch_id = d.id) AS serial_count, d.dispatched_on, d.status, d.note, d.created_by, d.created_at, d.completed_at, d.cancelled_at, d.chunk_count, d.chunks_received, d.created_count FROM warehouse_dispatches d LEFT JOIN warehouse_orders o ON o.id = d.order_id JOIN business_units bu ON bu.id = ${BU_EXPR} LEFT JOIN items i ON i.id = d.item_id LEFT JOIN brands b ON b.id = i.brand_id`;
 
 function asStatus(raw: string): WarehouseDispatchStatus {
   const status = raw.trim();
@@ -61,7 +66,7 @@ function toItem(
     id: row.id.trim(),
     number: row.number,
     kind: row.kind.trim() === 'ready' ? 'ready' : 'order',
-    orderId: row.order_id.trim(),
+    orderId: (row.so_id ?? '').trim(),
     orderNumber: row.order_number ?? '',
     buId: row.bu_id.trim(),
     buCode: row.bu_code.trim(),
@@ -97,7 +102,7 @@ export async function listWarehouseDispatches(
   const query = (input.query ?? '').trim().toLowerCase();
   if (query !== '') {
     where.push(
-      "(LOWER(d.number) LIKE ? ESCAPE '!' OR o.`key` LIKE ? ESCAPE '!' OR LOWER(o.customer_name) LIKE ? ESCAPE '!')",
+      `(LOWER(d.number) LIKE ? ESCAPE '!' OR o.\`key\` LIKE ? ESCAPE '!' OR LOWER(${CUSTOMER_NAME_EXPR}) LIKE ? ESCAPE '!')`,
     );
     const like = `%${escapeLike(query)}%`;
     binds.push(like, like, like);
@@ -107,7 +112,7 @@ export async function listWarehouseDispatches(
     binds.push(input.kind);
   }
   if (input.customerIds !== undefined) {
-    where.push(`o.customer_id IN (${placeholders(input.customerIds.length)})`);
+    where.push(`${CUSTOMER_ID_EXPR} IN (${placeholders(input.customerIds.length)})`);
     binds.push(...input.customerIds);
   }
   if (input.itemIds !== undefined) {

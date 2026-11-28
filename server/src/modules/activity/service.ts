@@ -12,7 +12,7 @@ import { assertHandoverReadable } from '@server/modules/handover/service';
 import { assertItemReadable } from '@server/modules/item/service';
 import { readablePostel } from '@server/modules/postel/service';
 import { readableQrDesign, readableQrPreset } from '@server/modules/qrcode/service';
-import { loadReadableOrder } from '@server/modules/serialwh/orders';
+import { assertReadableOrderTarget } from '@server/modules/serialwh/orders';
 import { loadReadableReady } from '@server/modules/serialwh/ready';
 import { assertStickerReadable, assertStickerTypeReadable } from '@server/modules/sticker/service';
 import { type ActivityKind, auditTargetKind } from '@shared/audit';
@@ -109,7 +109,7 @@ const GATES: Record<ActivityKind, Gate> = {
   },
   // Catatan SO Keluar Gudang: gerbang yang sama dengan `serialWarehouse.getOrder` (BU SO ber-`serialwh: view`).
   warehouseOrder: async (env, user, id) => {
-    await loadReadableOrder(env, user, id);
+    await assertReadableOrderTarget(env, user, id);
   },
   // Pencatatan ready (tanpa SO): gerbang yang sama dengan `serialWarehouse.ready` (BU pencatatan ber-`serialwh: view`).
   warehouseReady: async (env, user, id) => {

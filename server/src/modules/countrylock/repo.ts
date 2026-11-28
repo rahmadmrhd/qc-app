@@ -3,7 +3,7 @@ import type { Db, DbStatement, Preparer } from '@server/core/db';
 import { pathKey } from '@shared/countrylock-bundle';
 
 /**
- * Akses database modul Country Lock (`cl_*`, migrasi 0044). Penulisan memakai pernyataan siap-`batch()` (bersama audit)
+ * Akses database modul Country Lock (`cl_*`, migrasi 0046). Penulisan memakai pernyataan siap-`batch()` (bersama audit)
  * dengan penjaga CAS; pembacaan murni. `cl_revisions` hanya ditambah (tidak pernah UPDATE/DELETE) dan berkas/firmware
  * yang dihapus hanya diberi `removed_at` (bukan `deleted_at`: bukan model soft delete kit).
  */

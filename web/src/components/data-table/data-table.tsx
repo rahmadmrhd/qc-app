@@ -73,7 +73,7 @@ interface DataTableBase<T> {
   /** Baris yang disorot sebentar (mis. hasil scan terakhir): latar hijau lembut; bukan pilihan. */
   rowHighlighted?: (row: T) => boolean;
   /**
-   * Nada latar selang-seling per kelompok baris (mis. per kardus pada Stok Ready): `a` = bawaan, `b` = latar lembut.
+   * Nada latar selang-seling per kelompok baris (mis. per kardus pada detail pencatatan Ready): `a` = bawaan, `b` = latar lembut.
    * Ditulis ke atribut `data-box-tone` baris; hanya tampilan tabel desktop.
    */
   rowTone?: (row: T) => 'a' | 'b' | undefined;

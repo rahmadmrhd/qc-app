@@ -108,7 +108,7 @@ export function DispatchDetailPage({ dispatchId }: DispatchDetailPageProps) {
             ) : (
               <ActivityLog
                 kind="warehouseOrder"
-                id={dispatch.orderId}
+                id={dispatch.orderId !== '' ? dispatch.orderId : dispatch.id}
                 createdAt={dispatch.createdAt}
               />
             )}
@@ -122,16 +122,20 @@ export function DispatchDetailPage({ dispatchId }: DispatchDetailPageProps) {
               { label: 'Jenis', value: WAREHOUSE_KIND_LABEL[dispatch.kind] },
               {
                 label: 'No SO',
-                hidden: dispatch.orderId === '',
-                value: (
-                  <Link
-                    to="/serial/gudang/riwayat/so/$orderId"
-                    params={{ orderId: dispatch.orderId }}
-                    className="text-info-text underline-offset-4 hover:underline"
-                  >
-                    {dispatch.orderNumber}
-                  </Link>
-                ),
+                hidden: dispatch.kind === 'ready',
+                // Penjualan tanpa No SO: tanpa tautan (tak ada halaman SO).
+                value:
+                  dispatch.orderId === '' ? (
+                    '—'
+                  ) : (
+                    <Link
+                      to="/serial/gudang/riwayat/so/$orderId"
+                      params={{ orderId: dispatch.orderId }}
+                      className="text-info-text underline-offset-4 hover:underline"
+                    >
+                      {dispatch.orderNumber}
+                    </Link>
+                  ),
               },
               {
                 label: 'Business Unit',
@@ -192,7 +196,9 @@ export function DispatchDetailPage({ dispatchId }: DispatchDetailPageProps) {
           <ViewSection title="Task Serah Terima">
             {dispatch.handovers.length === 0 ? (
               <p className="text-sm text-muted-foreground">
-                Belum ada task Serah Terima tertaut pada SO ini.
+                {dispatch.orderId === ''
+                  ? 'Belum ada task Serah Terima tertaut pada pengeluaran ini.'
+                  : 'Belum ada task Serah Terima tertaut pada SO ini.'}
               </p>
             ) : (
               <ul className="divide-y" aria-label="Task Serah Terima tertaut">

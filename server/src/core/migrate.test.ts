@@ -376,7 +376,9 @@ describe('skema baseline', () => {
       { name: '0041_serial_ready_wh.sql' },
       { name: '0042_serial_wh_nomor_riwayat.sql' },
       { name: '0043_stok_ready_kardus.sql' },
-      { name: '0044_country_lock_bundel.sql' },
+      { name: '0044_wh_penjualan_tanpa_so.sql' },
+      { name: '0045_indeks_kandidat_task_gudang.sql' },
+      { name: '0046_country_lock_bundel.sql' },
     ]);
   });
 
@@ -540,6 +542,7 @@ describe('skema baseline', () => {
         'handover_comments.handover_comments_seq',
         'handovers.handovers_board',
         'handovers.handovers_board_live',
+        'handovers.handovers_candidates',
         'handovers.handovers_client_id',
         'handovers.handovers_customer',
         'handovers.handovers_number_live',

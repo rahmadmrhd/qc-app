@@ -4,7 +4,7 @@ import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { ApiError } from '@/lib/api/api-error';
-import { pickSelect } from '@/test/link-field';
+import { pickLink, pickSelect } from '@/test/link-field';
 import { longPress } from '@/test/long-press';
 import { mockMatchMedia } from '@/test/match-media';
 import { renderInRouter } from '@/test/render-in-router';
@@ -18,7 +18,6 @@ import {
   warehouseDraftWritesBlocked,
   writeWarehouseDraft,
 } from '../lib/draft-store';
-import { handOffToDispatch } from '../lib/hand-off';
 import { whItem, whMe, whSerial } from '../lib/test-support';
 
 const apiMock = vi.hoisted(() => vi.fn());
@@ -43,7 +42,10 @@ function api(id: string, input: Record<string, unknown>) {
   switch (id) {
     case 'serialWarehouse.options':
       return Promise.resolve({
-        locations: [{ id: 'loc1', name: 'Gudang 1' }],
+        locations: [
+          { id: 'loc1', name: 'Gudang 1' },
+          { id: 'loc2', name: 'Gudang 2' },
+        ],
         customers: [{ id: 'c1', name: 'PT Maju' }],
         inactiveCustomerNames: [],
       });
@@ -320,6 +322,103 @@ test('clipboard gagal: dialog Salin lagi muncul tanpa mengirim ulang', async () 
     vi.unstubAllGlobals();
     Reflect.deleteProperty(navigator, 'clipboard');
   }
+});
+
+test('tanpa No SO: header Penjualan tanpa SO (tanpa orderId) dan customer boleh kosong', async () => {
+  seedDraft({
+    itemId: 'item1',
+    rows: [
+      makeNewRow({
+        serial: 'AAA',
+        itemId: 'item1',
+        buId: 'bu1',
+        locationId: 'loc1',
+        testDate: '2026-11-20',
+      }),
+    ],
+  });
+  await renderPage();
+  await userEvent.click(await screen.findByRole('button', { name: /Salin ke clipboard \(1\)/ }));
+  await userEvent.click(await screen.findByRole('button', { name: 'Simpan & salin' }));
+  await waitFor(() => expect(submitCalls).toHaveLength(1));
+  const header = submitCalls[0]?.header;
+  expect(header).toMatchObject({ orderNumber: '', customerName: '', buId: 'bu1' });
+  expect(header).not.toHaveProperty('orderId');
+  expect(header?.mode).toBeUndefined();
+});
+
+test('serial baru tanpa lokasi dan tanggal uji: memakai Lokasi dialog dan tanggal keluar', async () => {
+  seedDraft({
+    itemId: 'item1',
+    rows: [],
+    filters: { buId: 'bu1', locationId: '', testDate: '', hideRecorded: true },
+  });
+  await renderPage();
+  await scan('baru1');
+  await userEvent.click(await screen.findByRole('button', { name: /Salin ke clipboard \(1\)/ }));
+  await pickLink(screen, 'Lokasi', 'Gudang 1');
+  await userEvent.click(screen.getByRole('button', { name: 'Simpan & salin' }));
+  await waitFor(() => expect(submitCalls).toHaveLength(1));
+  const call = submitCalls[0];
+  expect(call?.rows[0]).toMatchObject({
+    kind: 'new',
+    serial: 'BARU1',
+    locationId: 'loc1',
+    testDate: call?.header.dispatchedOn,
+  });
+});
+
+test('Lokasi dialog menjadi lokasi semua serial baru, menimpa lokasi chip saat scan', async () => {
+  seedDraft({
+    itemId: 'item1',
+    rows: [
+      makeNewRow({
+        serial: 'AAA',
+        itemId: 'item1',
+        buId: 'bu1',
+        locationId: 'loc1',
+        testDate: '2026-11-20',
+      }),
+    ],
+    filters: { buId: 'bu1', locationId: 'loc1', testDate: '2026-11-20', hideRecorded: true },
+  });
+  await renderPage();
+  await userEvent.click(await screen.findByRole('button', { name: /Salin ke clipboard \(1\)/ }));
+  await pickLink(screen, 'Lokasi', 'Gudang 2');
+  await userEvent.click(screen.getByRole('button', { name: 'Simpan & salin' }));
+  await waitFor(() => expect(submitCalls).toHaveLength(1));
+  expect(submitCalls[0]?.rows[0]).toMatchObject({ kind: 'new', locationId: 'loc2' });
+});
+
+test('chip Tanggal uji yang terisi menang atas tanggal keluar untuk serial baru', async () => {
+  seedDraft({
+    itemId: 'item1',
+    rows: [
+      makeNewRow({ serial: 'AAA', itemId: 'item1', buId: 'bu1', locationId: 'loc1', testDate: '' }),
+    ],
+    filters: { buId: 'bu1', locationId: 'loc1', testDate: '2026-11-18', hideRecorded: true },
+  });
+  await renderPage();
+  await userEvent.click(await screen.findByRole('button', { name: /Salin ke clipboard \(1\)/ }));
+  await userEvent.click(await screen.findByRole('button', { name: 'Simpan & salin' }));
+  await waitFor(() => expect(submitCalls).toHaveLength(1));
+  expect(submitCalls[0]?.rows[0]).toMatchObject({ kind: 'new', testDate: '2026-11-18' });
+});
+
+test('urutan kiriman mengikuti urutan serial dipilih dari tabel, bukan urutan tampil', async () => {
+  serialsPage = [
+    whSerial({ id: 's1', serial: 'S1' }),
+    whSerial({ id: 's2', serial: 'S2' }),
+    whSerial({ id: 's3', serial: 'S3' }),
+  ];
+  seedDraft({ itemId: 'item1', rows: [] });
+  await renderPage();
+  await userEvent.click(await screen.findByRole('checkbox', { name: 'Pilih S3' }));
+  await userEvent.click(await screen.findByRole('checkbox', { name: 'Pilih S1' }));
+  await userEvent.click(await screen.findByRole('button', { name: /Salin ke clipboard \(2\)/ }));
+  await userEvent.click(await screen.findByRole('button', { name: 'Simpan & salin' }));
+  await waitFor(() => expect(submitCalls).toHaveLength(1));
+  expect(submitCalls[0]?.rows.map((row) => row.serial)).toEqual(['S3', 'S1']);
 });
 
 const draftRow = (serial: string) =>
@@ -731,30 +830,4 @@ test('ponsel: satu bar bawah berisi ✕, kotak centang, N dipilih, Batal, dan Si
   expect(document.querySelector('[data-slot="selection-bar"]')).toBeNull();
   expect(screen.getByRole('button', { name: 'Batal' })).toBeInTheDocument();
   expect(screen.getByRole('button', { name: /Salin ke clipboard \(1\)/ })).toBeInTheDocument();
-});
-
-test('serial oper dari Stok Ready muncul di draf dengan Item terisi dan Tujuan Penjualan', async () => {
-  handOffToDispatch(
-    [
-      {
-        serialId: 'h1',
-        serial: 'OPER1',
-        itemId: 'item1',
-        buId: 'bu1',
-        snapshot: whSerial({ id: 'h1', serial: 'OPER1' }),
-      },
-      {
-        serialId: 'h2',
-        serial: 'OPER2',
-        itemId: 'item1',
-        buId: 'bu1',
-        snapshot: whSerial({ id: 'h2', serial: 'OPER2' }),
-      },
-    ],
-    'wh@x.com',
-  );
-  await renderPage();
-  expect(await screen.findByText('OPER1')).toBeInTheDocument();
-  expect(screen.getByText('OPER2')).toBeInTheDocument();
-  expect(screen.getByRole('button', { name: /Salin ke clipboard \(2\)/ })).toBeEnabled();
 });
