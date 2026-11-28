@@ -98,7 +98,7 @@ describe('unggah biner bertahap', () => {
     expect((await errorOf(chunk(session.uploadId, 3, DATA.slice(8)))).code).toBe('VALIDATION');
   });
 
-  test('finish tanpa semua potongan atau ukuran/sha256 salah = VALIDATION dan sesi tetap bisa dilanjutkan', async () => {
+  test('finish tanpa semua potongan tetap bisa dilanjutkan; hasil sha256 salah = VALIDATION dan sesi dibatalkan', async () => {
     const session = await start('b.bin', DATA);
     await chunk(session.uploadId, 0, DATA.slice(0, 4));
     expect((await errorOf(finish(session.uploadId))).code).toBe('VALIDATION'); // potongan belum lengkap
@@ -108,8 +108,9 @@ describe('unggah biner bertahap', () => {
     const bad = await errorOf(finish(session.uploadId));
     expect(bad.code).toBe('VALIDATION');
     expect(driveUploads()).toHaveLength(0);
-    // sesi masih terbuka: potongan 2 yang salah tak dapat diganti (isi beda = CONFLICT), jadi sesi baru untuk unggah ulang
-    expect((await errorOf(chunk(session.uploadId, 2, DATA.slice(8)))).code).toBe('CONFLICT');
+    // sesi dibatalkan (potongan tak dapat diganti): kirim potongan atau finish lagi = NOT_FOUND, mulai sesi baru
+    expect((await errorOf(chunk(session.uploadId, 2, DATA.slice(8)))).code).toBe('NOT_FOUND');
+    expect((await errorOf(finish(session.uploadId))).code).toBe('NOT_FOUND');
     const again = await start('b.bin', DATA);
     for (const [idx, part] of [DATA.slice(0, 4), DATA.slice(4, 8), DATA.slice(8)].entries()) {
       await chunk(again.uploadId, idx, part);
@@ -117,9 +118,8 @@ describe('unggah biner bertahap', () => {
     expect((await finish(again.uploadId)).headRev).toBe(1);
   });
 
-  test('sha256 hasil unggahan salah: finish ditolak, sesi tetap open tanpa berkas/unggahan Drive; pemulihan = sesi BARU yang benar', async () => {
-    // Potongan tak dapat diganti isinya (CONFLICT), jadi finish ulang pada sesi yang sama mustahil; jalur pulihnya sesi
-    // baru untuk path yang sama (sesi lama dibuang penyapu setelah 24 jam).
+  test('sha256 hasil unggahan salah: finish ditolak dengan pesan jelas, sesi aborted dan potongan dibuang, tanpa berkas/unggahan Drive; pemulihan = sesi BARU yang benar', async () => {
+    // Potongan tak dapat diganti isinya, jadi sesi yang hasilnya tak cocok langsung dibatalkan; klien memulai sesi baru.
     const declared = await sha256Hex(Uint8Array.from([1, 2, 3, 4]));
     const session = await startClUpload(
       env,
@@ -128,13 +128,21 @@ describe('unggah biner bertahap', () => {
       { chunkBytes: 4 },
     );
     await chunk(session.uploadId, 0, Uint8Array.from([4, 3, 2, 1]));
-    expect((await errorOf(finish(session.uploadId))).code).toBe('VALIDATION');
+    const failure = await errorOf(finish(session.uploadId));
+    expect(failure.code).toBe('VALIDATION');
+    expect(failure.message).toContain('sesi dibatalkan');
     expect(await listClFiles(env)).toEqual([]);
     expect(driveUploads()).toHaveLength(0);
     const row = await env.DB.prepare('SELECT state FROM cl_uploads WHERE id = ?')
       .bind(session.uploadId)
       .first<{ state: string }>();
-    expect(row?.state).toBe('open');
+    expect(row?.state).toBe('aborted');
+    const chunks = await env.DB.prepare(
+      'SELECT COUNT(*) AS n FROM cl_upload_chunks WHERE upload_id = ?',
+    )
+      .bind(session.uploadId)
+      .first<{ n: number | string }>();
+    expect(Number(chunks?.n)).toBe(0);
     const retry = await startClUpload(
       env,
       validateStartClUpload({ path: 'c.bin', role: 'router', size: 4, sha256: declared }),
@@ -144,6 +152,20 @@ describe('unggah biner bertahap', () => {
     await chunk(retry.uploadId, 0, Uint8Array.from([1, 2, 3, 4]));
     expect((await finish(retry.uploadId)).path).toBe('c.bin');
     expect(driveUploads()).toHaveLength(1);
+  });
+
+  test('ukuran hasil tak cocok dengan yang dinyatakan: VALIDATION dan sesi dibatalkan', async () => {
+    const session = await start('d.bin', DATA);
+    await chunk(session.uploadId, 0, DATA.slice(0, 4));
+    await chunk(session.uploadId, 1, DATA.slice(4, 8));
+    await chunk(session.uploadId, 2, DATA.slice(8, 9)); // 9 byte, dinyatakan 10
+    const failure = await errorOf(finish(session.uploadId));
+    expect(failure.code).toBe('VALIDATION');
+    expect(failure.message).toContain('sesi dibatalkan');
+    const row = await env.DB.prepare('SELECT state FROM cl_uploads WHERE id = ?')
+      .bind(session.uploadId)
+      .first<{ state: string }>();
+    expect(row?.state).toBe('aborted');
   });
 
   test('unggah biner BARU saat draf penuh (CL_FILES_MAX) = VALIDATION di start dan di finish', async () => {

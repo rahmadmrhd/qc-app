@@ -15,7 +15,19 @@ import { latestBundle } from './repo';
  */
 export const countryLockPublicApp = new Hono<AppBindings>();
 
-const guard = createTokenGuard('desktop-countrylock', 'Bundel tidak tersedia');
+/**
+ * Batas permintaan SAH ke manifest dan berkas bundel: 600 per 10 menit per IP (keputusan pemilik 2026-11-28). Sengaja
+ * longgar: satu IP kantor dipakai banyak komputer dan satu sinkron mengunduh banyak berkas (manifest + tiap berkas
+ * yang berubah), jadi ini hanya pelindung penyalahgunaan, bukan pembentuk lalu lintas normal. Kunci terpisah dari
+ * pembatas kegagalan (`desktop-countrylock-ok:<ip>`); lewat batas = 429 + `Retry-After`.
+ */
+export const DOWNLOAD_RATE_LIMIT = 600;
+export const DOWNLOAD_RATE_WINDOW_MS = 10 * 60 * 1000;
+
+const guard = createTokenGuard('desktop-countrylock', 'Bundel tidak tersedia', {
+  limit: DOWNLOAD_RATE_LIMIT,
+  windowMs: DOWNLOAD_RATE_WINDOW_MS,
+});
 const SHA256 = /^[0-9a-f]{64}$/;
 // `private`: tak boleh disimpan cache bersama (proxy/CDN): akses berkas dijaga token bersama, bukan sekadar URL.
 const IMMUTABLE = 'private, max-age=31536000, immutable';

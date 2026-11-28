@@ -1,10 +1,12 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
 import { app } from '@server/app';
+import { nowOf } from '@server/core/env';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import { publishClBundle, validatePublishClBundle } from './bundle-service';
 import { saveClFile } from './files-service';
 import { saveClFirmware, validateSaveClFirmware } from './firmware-service';
 import { sha256Hex } from './hash';
+import { DOWNLOAD_RATE_LIMIT, DOWNLOAD_RATE_WINDOW_MS } from './public-routes';
 import {
   finishClUpload,
   putClUploadChunk,
@@ -182,6 +184,41 @@ describe('akses: token', () => {
     expect((await get('/manifest', {}, withIp)).status).toBe(429);
     expect((await get('/manifest', auth, withIp)).status).toBe(200);
     expect((await get('/manifest', {}, { ...env, clientIp: '203.0.113.10' })).status).toBe(404);
+  });
+});
+
+describe('batas laju permintaan sah (600 per 10 menit per IP)', () => {
+  const seedCount = (ip: string, count: number) =>
+    env.DB.prepare('INSERT INTO rate_limits (`key`, count, window_start) VALUES (?, ?, ?)')
+      .bind(`desktop-countrylock-ok:${ip}`, count, nowOf(env))
+      .run();
+
+  test('di bawah atau tepat di batas dilayani; di atas batas = 429 problem+json dengan Retry-After; IP lain tak terpengaruh', async () => {
+    await publishBundle();
+    const ip = '203.0.113.50';
+    const withIp = { ...env, clientIp: ip };
+    await seedCount(ip, DOWNLOAD_RATE_LIMIT - 1);
+    expect((await get('/manifest', auth, withIp)).status).toBe(200); // permintaan ke-600
+    const over = await get('/manifest', auth, withIp);
+    expect(over.status).toBe(429);
+    expect(over.headers.get('content-type')).toContain('application/problem+json');
+    const retry = Number(over.headers.get('retry-after'));
+    expect(retry).toBeGreaterThanOrEqual(1);
+    expect(retry).toBeLessThanOrEqual(DOWNLOAD_RATE_WINDOW_MS / 1000);
+    expect((await get(`/files/${'a'.repeat(64)}`, auth, withIp)).status).toBe(429);
+    expect((await get('/manifest', auth, { ...env, clientIp: '203.0.113.51' })).status).toBe(200);
+  });
+
+  test('jendela baru setelah 10 menit melayani lagi; pembatas kegagalan dihitung terpisah', async () => {
+    await publishBundle();
+    const ip = '203.0.113.60';
+    const withIp = { ...env, clientIp: ip };
+    await seedCount(ip, DOWNLOAD_RATE_LIMIT + 5);
+    expect((await get('/manifest', auth, withIp)).status).toBe(429);
+    // Kegagalan tidak memakai kunci "-ok": tanpa token tetap 404 (belum 20 kegagalan) walau jatah sah habis.
+    expect((await get('/manifest', {}, withIp)).status).toBe(404);
+    env.clock.advance(DOWNLOAD_RATE_WINDOW_MS + 1000);
+    expect((await get('/manifest', auth, withIp)).status).toBe(200);
   });
 });
 

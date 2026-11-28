@@ -235,6 +235,29 @@ export async function putClUploadChunk(
   return { received: idx + 1 };
 }
 
+const SIZE_MISMATCH_MESSAGE =
+  'Ukuran hasil unggahan tidak sama dengan yang dinyatakan; sesi dibatalkan, mulai unggahan baru';
+const SHA_MISMATCH_MESSAGE =
+  'sha256 hasil unggahan tidak sama dengan yang dinyatakan; sesi dibatalkan, mulai unggahan baru';
+
+/**
+ * Menandai sesi `aborted` dan membuang potongannya (potongan tak dapat diganti isinya, jadi sesi yang hasilnya tak cocok
+ * tak dapat dipulihkan; klien memulai sesi baru). Best-effort: kegagalan di sini tidak menutupi galat validasi aslinya
+ * (penyapu 24 jam tetap membersihkannya).
+ */
+async function abortSession(env: Env, id: string): Promise<void> {
+  try {
+    await env.DB.batch([
+      env.DB.prepare(
+        "UPDATE cl_uploads SET state = 'aborted', updated_at = ? WHERE id = ? AND state = 'open'",
+      ).bind(nowIso(env), id),
+      env.DB.prepare('DELETE FROM cl_upload_chunks WHERE upload_id = ?').bind(id),
+    ]);
+  } catch (error) {
+    console.error(`countrylock: sesi unggah ${id} gagal ditandai aborted: ${String(error)}`);
+  }
+}
+
 async function assembleChunks(env: Env, session: UploadSession): Promise<Uint8Array> {
   const rows = await env.DB.prepare(
     'SELECT idx, data FROM cl_upload_chunks WHERE upload_id = ? ORDER BY idx',
@@ -249,9 +272,8 @@ async function assembleChunks(env: Env, session: UploadSession): Promise<Uint8Ar
   }
   const total = parts.reduce((sum, row) => sum + row.data.length, 0);
   if (total !== session.size) {
-    throw appError('VALIDATION', 'Ukuran hasil unggahan tidak sama dengan yang dinyatakan', {
-      size: 'Ukuran hasil unggahan tidak sama dengan yang dinyatakan',
-    });
+    await abortSession(env, session.id);
+    throw appError('VALIDATION', SIZE_MISMATCH_MESSAGE, { size: SIZE_MISMATCH_MESSAGE });
   }
   return new Uint8Array(Buffer.concat(parts.map((row) => Buffer.from(row.data))));
 }
@@ -269,7 +291,7 @@ function closeSessionStmts(env: Env, sessionId: string, now: string) {
 /**
  * Merakit potongan, memeriksa jumlah/ukuran/sha256, menyimpan biner ke Drive (tak diunggah ulang bila sha256 sudah ada)
  * lalu membuat berkas biner (revisi 1) atau revisi baru pada berkas biner yang ada. Isi sama dengan revisi terbaru =
- * no-op. Ukuran/sha256 tak cocok = `VALIDATION` dan sesi tetap terbuka. `finish` ulang pada sesi selesai mengembalikan
+ * no-op. Ukuran/sha256 tak cocok = `VALIDATION` dan sesi ditandai `aborted` (potongan dibuang; mulai sesi baru). `finish` ulang pada sesi selesai mengembalikan
  * berkas yang sama.
  */
 export async function finishClUpload(
@@ -291,9 +313,8 @@ export async function finishClUpload(
   const bytes = await assembleChunks(env, session);
   const sha256 = await sha256Hex(bytes);
   if (sha256 !== session.sha256) {
-    throw appError('VALIDATION', 'sha256 hasil unggahan tidak sama dengan yang dinyatakan', {
-      sha256: 'sha256 hasil unggahan tidak sama dengan yang dinyatakan',
-    });
+    await abortSession(env, session.id);
+    throw appError('VALIDATION', SHA_MISMATCH_MESSAGE, { sha256: SHA_MISMATCH_MESSAGE });
   }
 
   const existing = await getFileByPath(env.DB, session.path);
