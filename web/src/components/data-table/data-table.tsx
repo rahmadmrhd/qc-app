@@ -85,6 +85,8 @@ interface DataTableBase<T> {
    * atau dialog). Bawaan: `viewport` di dalam `ListPage`, selain itu `content`.
    */
   fit?: 'viewport' | 'content';
+  /** `fit="viewport"` di dalam halaman yang bleed ke tepi `<main>` (mis. `FormPage` di layar lebar). */
+  fitBleed?: boolean;
 }
 
 export interface RowTarget {
@@ -169,6 +171,7 @@ function DataTableImpl<T>({
   rowTone,
   rowClassName,
   fit: fitProp,
+  fitBleed = false,
 }: DataTableProps<T>) {
   const desktop = useIsDesktop();
   const inList = useContext(ListFrameContext);
@@ -179,7 +182,8 @@ function DataTableImpl<T>({
   const fitHeight = useViewportFit(
     scroller,
     desktop && fit === 'viewport',
-    loadMoreError ? 64 : hasMore ? 48 : 0,
+    loadMoreError ? 64 : hasMore ? 44 : 0,
+    fitBleed,
   );
   // Lebar nyata kolom menempel (checkbox + Aksi) dipakai `scroll-padding-left` agar fokus keyboard tak tertutup kolom itu;
   // Aksi bisa lebih lebar dari perkiraan tetap karena jumlah tombol ikon berbeda per tabel.

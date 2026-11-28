@@ -364,7 +364,7 @@ test('fit: di luar ListPage bawaannya content (tanpa batas tinggi); fit="viewpor
   expect(viewport.dataset.fit).toBe('viewport');
   expect(viewport.style.maxHeight).toContain('100dvh');
   // Tombol "Muat lebih banyak" di bawah pembungkus ikut dikurangkan.
-  expect(viewport.style.maxHeight).toContain('- 48px -');
+  expect(viewport.style.maxHeight).toContain('- 44px -');
 });
 
 test('di dalam ListPage tabel mengisi viewport tanpa menyebut fit', () => {

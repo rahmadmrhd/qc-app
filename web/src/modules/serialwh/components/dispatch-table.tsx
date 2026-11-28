@@ -401,6 +401,7 @@ export function DispatchTable({
         filtered={filtered}
         empty={empty}
         fit="viewport"
+        fitBleed
         rowHighlighted={(row) => highlighted?.has(row.key) ?? false}
       />
       {draftRows.length > visible ? (
