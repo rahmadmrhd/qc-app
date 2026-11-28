@@ -1033,9 +1033,13 @@ export async function planItemWrite(
     brandKeyGuardStmt(env.DB, brand.id, brand.key, existing?.brandId !== brand.id),
   ];
   // Firmware yang BARU disetel harus masih hidup saat komit (penghapusan firmware yang menyela membatalkan batch).
-  // Firmware yang tak berubah tidak dijaga: item ini sendiri sudah mencegah penghapusannya (item hidup pemakai).
+  // Firmware yang tak berubah TETAP di merk yang sama tidak dijaga (item ini sendiri mencegah penghapusannya); kode yang
+  // sama tetapi merk BERPINDAH adalah rujukan baru ke firmware merk baru, jadi tetap dijaga (review akhir M7).
   const firmwareBrand = countryLockBrandOf(brand.name);
-  if (firmware !== '' && firmware !== (existing?.firmware ?? '') && firmwareBrand !== null) {
+  const firmwareChanged =
+    firmware !== (existing?.firmware ?? '') ||
+    (existing !== undefined && existing.brandId !== brand.id);
+  if (firmware !== '' && firmwareChanged && firmwareBrand !== null) {
     statements.push(firmwareKeyGuardStmt(env.DB, firmwareBrand, firmware));
   }
 
@@ -1328,6 +1332,10 @@ const RESTORE_COLLISION_MESSAGE =
  * Perencana pulihkan: kembali Nonaktif; belum terhapus = `unchanged`. Tabrakan merk+tipe atau nama lain dengan item
  * HIDUP ditolak generik (`CONFLICT`, tanpa menyebut item lain); tanpa tabrakan, baris kunci nama lain dibangun ulang
  * dan `brands.item_count` naik dalam `batch()` yang sama. Indeks unik `_live` dan PK `item_alias_keys` tetap pagar.
+ * Firmware Country Lock: penghapusan firmware hanya memeriksa item HIDUP, jadi item terhapus dapat menyimpan kode yang
+ * kemudian dihapus. Saat pulih, kode yang tak lagi hidup bagi merknya DIKOSONGKAN (jejaknya ada di snapshot Log Audit:
+ * firmware sebelum terisi, sesudah kosong); kode yang masih hidup dijaga `firmwareKeyGuardStmt` sampai komit (review akhir
+ * M6).
  */
 export async function planItemRestore(
   env: Env,
@@ -1340,9 +1348,17 @@ export async function planItemRestore(
   const hit = await nameCheckStatement(env, [item.key, ...aliasKeys], item.id).first();
   if (hit) throw appError('CONFLICT', RESTORE_COLLISION_MESSAGE);
   const now = nowIso(env);
+  const firmwareBrand = countryLockBrandOf(loaded.found.brandName);
+  const firmwareLive =
+    item.firmware !== '' &&
+    item.isCountryLock &&
+    firmwareBrand !== null &&
+    (await firmwareExists(env.DB, firmwareBrand, item.firmware));
+  const firmware = firmwareLive ? item.firmware : '';
   const restored: ItemRecord = {
     ...item,
     status: 'inactive',
+    firmware,
     updatedAt: now,
     updatedBy: actor.email,
     deletedAt: '',
@@ -1353,8 +1369,14 @@ export async function planItemRestore(
     stmts: [
       brandKeyGuardStmt(env.DB, item.brandId, brandKey),
       versionGuardStmt(env.DB, 'items', item.id, item.updatedAt, 'deleted'),
+      ...(firmwareLive && firmwareBrand !== null
+        ? [firmwareKeyGuardStmt(env.DB, firmwareBrand, item.firmware)]
+        : []),
       restoreStmt(env.DB, 'items', item.id),
-      env.DB.prepare("UPDATE items SET status = 'inactive' WHERE id = ?").bind(item.id),
+      env.DB.prepare("UPDATE items SET status = 'inactive', firmware = ? WHERE id = ?").bind(
+        firmware,
+        item.id,
+      ),
       stampStmt(env.DB, 'items', item.id, now, actor.email),
       ...insertAliasKeyStmts(env.DB, item.id, aliasKeys),
       adjustItemCountStmt(env.DB, item.brandId, 1),

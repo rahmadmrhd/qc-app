@@ -113,6 +113,58 @@ describe('firmware item', () => {
     expect(off.json.firmware).toBe('');
   });
 
+  test('pindah merk dengan kode yang sama dan hidup di merk baru: lolos dan kode tetap (M7)', async () => {
+    const now = '2026-11-18T00:00:00.000Z';
+    await env.DB.prepare(
+      "INSERT INTO cl_firmwares (id, brand, code, label, script_path, parallel, sort, removed_at, created_at, updated_at) VALUES ('fw-mt-wa', 'mikrotik', 'WA', 'WA', NULL, 0, 900, '', ?, ?)",
+    )
+      .bind(now, now)
+      .run();
+    const created = (await create({ ...base, firmware: 'WA' })).json;
+    const moved = await update(created, {
+      ...base,
+      brandId: brandIdOf('Mikrotik'),
+      firmware: 'WA',
+    });
+    expect(moved.response.status).toBe(200);
+    expect(moved.json.firmware).toBe('WA');
+    // Kode yang tak hidup di merk baru ditolak (merk Mikrotik tidak punya 'XW').
+    const bad = await update(moved.json, {
+      ...base,
+      brandId: brandIdOf('Mikrotik'),
+      firmware: 'XW',
+    });
+    expect(bad.response.status).toBe(422);
+  });
+
+  test('pulihkan item terhapus: firmware yang sudah dihapus dikosongkan, yang masih hidup dipertahankan (M6)', async () => {
+    const withGone = (await create({ ...base, model: 'A', firmware: 'XW' })).json;
+    const withLive = (await create({ ...base, model: 'B', firmware: 'WA' })).json;
+    for (const item of [withGone, withLive]) {
+      env.clock.advance(1000);
+      expect(
+        (await rest.patch(`/items/${item.id as string}`, { body: { status: 'inactive' } })).status,
+      ).toBe(200);
+      expect((await rest.del(`/items/${item.id as string}`)).status).toBe(200);
+    }
+    // Item terhapus tak menahan penghapusan firmware: hapus 'XW' langsung lewat tabel (jalur admin = tak menghitung item terhapus).
+    await env.DB.prepare(
+      "UPDATE cl_firmwares SET removed_at = '2026-11-18T01:00:00.000Z' WHERE brand = 'ubiquiti' AND code = 'XW'",
+    ).run();
+    env.clock.advance(1000);
+    const restoredGone = await rest.post(`/items/${withGone.id as string}/restore`);
+    expect(restoredGone.status).toBe(200);
+    expect(await jsonOf(restoredGone)).toMatchObject({ firmware: '', status: 'inactive' });
+    const restoredLive = await rest.post(`/items/${withLive.id as string}/restore`);
+    expect(await jsonOf(restoredLive)).toMatchObject({ firmware: 'WA' });
+    const audit = await env.DB.prepare(
+      "SELECT `after` AS after_json FROM audit_log WHERE action = 'item.restore' AND target_id = ? ORDER BY id DESC LIMIT 1",
+    )
+      .bind(withGone.id as string)
+      .first<{ after_json: string }>();
+    expect(audit?.after_json).toContain('"firmware":""');
+  });
+
   test('mengubah hanya firmware dihitung sebagai perubahan (updatedAt naik)', async () => {
     const created = (await create({ ...base, firmware: 'WA' })).json;
     const changed = await update(created, { ...base, firmware: 'XW' });
