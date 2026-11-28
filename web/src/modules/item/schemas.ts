@@ -1,6 +1,7 @@
 import type { ItemDto, SaveItemInput } from '@shared/contract';
 import { MARKDOWN_MAX_LENGTH } from '@shared/files';
 import { ITEM_LIMITS, normalizeKey } from '@shared/items';
+import { WAREHOUSE_BOX_LIMITS } from '@shared/serial-warehouse';
 import { SERIAL_PROOF_LIMITS } from '@shared/serials';
 import { INSTRUCTION_LIMITS } from '@shared/stickers';
 import { z } from 'zod';
@@ -13,6 +14,7 @@ export const ITEM_FIELD_KEYS = [
   'model',
   'firmware',
   'proofMin',
+  'boxSize',
   'aliases',
   'stickerPhotos',
   'accessories',
@@ -82,6 +84,12 @@ export const itemFormSchema = z
     proofRequired: z.boolean(),
     /** Hanya bermakna bila `proofRequired`; kolom kosong atau di luar rentang ditolak lewat `superRefine` di bawah. */
     proofMin: z.number(`Minimum foto harus 1–${SERIAL_PROOF_LIMITS.perEntryMax}`),
+    /** Pcs per kardus untuk Stok Ready Gudang; 0 = belum diisi. */
+    boxSize: z
+      .number(`Pcs per kardus harus 0–${WAREHOUSE_BOX_LIMITS.sizeMax}`)
+      .int(`Pcs per kardus harus bilangan bulat`)
+      .min(0, `Pcs per kardus harus 0–${WAREHOUSE_BOX_LIMITS.sizeMax}`)
+      .max(WAREHOUSE_BOX_LIMITS.sizeMax, `Pcs per kardus harus 0–${WAREHOUSE_BOX_LIMITS.sizeMax}`),
     aliasesText: z.string().superRefine((text, ctx) => {
       const lines = text
         .split('\n')
@@ -198,6 +206,7 @@ export function toItemFormDefaults(item?: ItemDto): ItemFormInput {
     firmware: item?.firmware ?? '',
     proofRequired: item?.proofRequired ?? false,
     proofMin: item?.proofMin ?? 1,
+    boxSize: item?.boxSize ?? 0,
     aliasesText: item ? item.aliases.join('\n') : '',
     stickerPhotos: item
       ? item.stickerPhotos.map((photo) => ({
@@ -226,6 +235,7 @@ export function toSaveItemInput(
     firmware: values.isCountryLock ? values.firmware : '',
     proofRequired: values.proofRequired,
     proofMin: values.proofRequired ? values.proofMin : 1,
+    boxSize: values.boxSize,
     aliases: parseAliasLines(values.aliasesText),
     stickerPhotos: values.stickerPhotos.map((photo) => ({
       guideId: photo.guideId,

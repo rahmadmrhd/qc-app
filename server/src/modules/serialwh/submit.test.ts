@@ -233,14 +233,16 @@ describe('submit Keluar Gudang', () => {
     expect(done.data.items[0]).toMatchObject({ serialCount: 2, lastDispatchedOn: '2026-11-10' });
   });
 
-  test('tipe berbeda dilewati: pengeluaran selesai dengan 0 serial', async () => {
+  test('tipe berbeda dilewati: tanpa serial yang dapat dicatat pengeluaran ditolak tanpa menulis apa pun', async () => {
     await seedSerial(env, { id: 'y1', serial: 'OTHER-1', itemId: 'i-a2' });
     const out = await submit(E, [existing('y1', 'OTHER-1')]);
-    expect(out.ok).toBe(true);
-    expect(out.data).toMatchObject({ status: 'done', created: 0, serials: [] });
-    expect(out.data.skipped).toEqual([{ serial: 'OTHER-1', reason: 'Tipe berbeda' }]);
-    expect(out.data.skippedTotal).toEqual(out.data.skipped);
-    expect(await count('SELECT COUNT(*) AS n FROM warehouse_dispatch_serials')).toBe(0);
+    expect(out.ok).toBe(false);
+    expect(out.error.code).toBe('VALIDATION');
+    expect(out.error.fields.rows).toBe(
+      'Tidak ada serial yang dapat dicatat. Dilewati: Tipe berbeda (1)',
+    );
+    expect(await count('SELECT COUNT(*) AS n FROM warehouse_dispatches')).toBe(0);
+    expect(await count('SELECT COUNT(*) AS n FROM warehouse_orders')).toBe(0);
   });
 
   test('potongan campuran: baris bermasalah dilewati, sisanya tersimpan atomik dengan seq asli', async () => {
@@ -311,9 +313,11 @@ describe('submit Keluar Gudang', () => {
     await seedSerial(env, { id: 'd1', serial: 'TWICE-1' });
     expect((await submit(E, [existing('d1', 'TWICE-1')])).ok).toBe(true);
     const again = await submit(E, [existing('d1', 'TWICE-1')]);
-    expect(again.ok).toBe(true);
-    expect(again.data.skipped).toEqual([{ serial: 'TWICE-1', reason: 'Sudah ada di SO ini' }]);
-    expect(again.data.serials).toEqual([]);
+    expect(again.ok).toBe(false);
+    expect(again.error.fields.rows).toBe(
+      'Tidak ada serial yang dapat dicatat. Dilewati: Sudah ada di SO ini (1)',
+    );
+    expect(await count('SELECT COUNT(*) AS n FROM warehouse_dispatches')).toBe(1);
     const other = await submit(E, [existing('d1', 'TWICE-1')], { header: { orderNumber: 'SO-2' } });
     expect(other.ok).toBe(true);
   });
@@ -331,10 +335,11 @@ describe('submit Keluar Gudang', () => {
       ['s-del', 'BAD-3'],
     ] as const) {
       const out = await submit(E, [existing(id, sn)]);
-      expect(out.ok).toBe(true);
-      expect(out.data.skipped).toHaveLength(1);
-      expect(out.data.skipped[0].serial).toBe(sn);
+      expect(out.ok).toBe(false);
+      expect(out.error.code).toBe('VALIDATION');
+      expect(out.error.fields.rows).toContain('Tidak ada serial yang dapat dicatat');
     }
+    expect(await count('SELECT COUNT(*) AS n FROM warehouse_dispatches')).toBe(0);
     expect(await count('SELECT COUNT(*) AS n FROM warehouse_dispatch_serials')).toBe(0);
   });
 

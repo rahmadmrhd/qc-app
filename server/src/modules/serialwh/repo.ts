@@ -54,10 +54,13 @@ export interface DispatchRow {
   dispatched_on: string;
   note: string;
   mode: string;
-  /** `order` atau `ready` (migrasi 0041). */
+  /** `order`, `ready` (migrasi 0041), atau `note` (catatan saja, 2026-11-28). */
   kind: string;
-  /** BU pencatatan; terisi hanya pada `ready` (pada `order` BU ada di catatan SO). */
+  /** BU pencatatan; terisi pada `ready` dan Penjualan tanpa SO (pada Penjualan ber-SO BU ada di catatan SO). */
   bu_id: string;
+  /** Customer pengeluaran; terisi hanya pada Penjualan tanpa SO (migrasi 0044). */
+  customer_id: string;
+  customer_name: string;
   status: string;
   header_hash: string;
   chunk_size: number | string;
@@ -69,10 +72,26 @@ export interface DispatchRow {
   created_by: string;
   completed_at: string;
   cancelled_at: string;
+  /** Nomor kardus awal dan isi per kardus pengeluaran `note` (migrasi 0046); 0 pada jenis lain. */
+  box_start: number | string;
+  box_size: number | string;
 }
 
 const DISPATCH_COLUMNS =
-  'd.id, d.number, d.order_id, d.client_id, d.item_id, d.dispatched_on, d.note, d.mode, d.kind, d.bu_id, d.status, d.header_hash, d.chunk_size, d.chunk_count, d.chunks_received, d.serial_total, d.created_count, d.created_at, d.created_by, d.completed_at, d.cancelled_at';
+  'd.id, d.number, d.order_id, d.client_id, d.item_id, d.dispatched_on, d.note, d.mode, d.kind, d.bu_id, d.customer_id, d.customer_name, d.status, d.header_hash, d.chunk_size, d.chunk_count, d.chunks_received, d.serial_total, d.created_count, d.created_at, d.created_by, d.completed_at, d.cancelled_at, d.box_start, d.box_size';
+
+/**
+ * Penjualan TANPA No SO: `kind` order dan `order_id` = id pengeluaran itu sendiri (tak ada baris `warehouse_orders`). Id
+ * pengeluaran ULID unik, jadi tidak pernah bentrok dengan penanda '' pencatatan Ready pada kunci unik serial per SO.
+ */
+export const isBareSale = (row: { id: string; kind: string; order_id: string }): boolean =>
+  row.kind.trim() === 'order' && row.order_id.trim() === row.id.trim();
+
+/**
+ * Pencatatan `note`: tanpa catatan SO (`order_id` = id pengeluaran itu sendiri, seperti Penjualan tanpa SO, sehingga kunci
+ * unik `(order_id, serial_id)` hanya melarang serial ganda DI DALAM satu catatan), BU di baris pengeluaran.
+ */
+export const isNoteDispatch = (row: { kind: string }): boolean => row.kind.trim() === 'note';
 
 export const loadDispatchRowByClientId = (
   db: Preparer,
@@ -176,16 +195,16 @@ export async function loadDispatchRefs(
     .bind(...serialIds)
     .all<{ serial_id: string }>();
   for (const row of recordedRows.results) recorded.add(row.serial_id.trim());
-  // `refs` hanya pengeluaran mode SO (join ke `warehouse_orders` menyingkirkan `ready`, yang ber-`order_id` kosong).
+  // `refs` = Penjualan (ber-SO atau tanpa SO; Ready tak dihitung). Tanpa SO: `orderId`/`orderNumber` kosong, BU dari pengeluaran.
   const rows = await db
     .prepare(
-      `SELECT wds.serial_id, o.id AS order_id, o.number, o.bu_id, bu.code AS bu_code, d.dispatched_on FROM warehouse_dispatch_serials wds JOIN warehouse_dispatches d ON d.id = wds.dispatch_id JOIN warehouse_orders o ON o.id = wds.order_id JOIN business_units bu ON bu.id = o.bu_id WHERE d.status = 'done' AND wds.serial_id IN (${placeholders(serialIds.length)}) ORDER BY d.dispatched_on DESC, d.created_at DESC`,
+      `SELECT wds.serial_id, o.id AS order_id, o.number, bu.id AS bu_id, bu.code AS bu_code, d.dispatched_on FROM warehouse_dispatch_serials wds JOIN warehouse_dispatches d ON d.id = wds.dispatch_id LEFT JOIN warehouse_orders o ON o.id = wds.order_id JOIN business_units bu ON bu.id = IF(d.bu_id <> '', d.bu_id, o.bu_id) WHERE d.kind = 'order' AND d.status = 'done' AND wds.serial_id IN (${placeholders(serialIds.length)}) ORDER BY d.dispatched_on DESC, d.created_at DESC`,
     )
     .bind(...serialIds)
     .all<{
       serial_id: string;
-      order_id: string;
-      number: string;
+      order_id: string | null;
+      number: string | null;
       bu_id: string;
       bu_code: string;
       dispatched_on: string;
@@ -203,8 +222,8 @@ export async function loadDispatchRefs(
     list.push(
       isReadable
         ? {
-            orderId: row.order_id.trim(),
-            orderNumber: row.number,
+            orderId: (row.order_id ?? '').trim(),
+            orderNumber: row.number ?? '',
             buId: row.bu_id.trim(),
             buCode: row.bu_code.trim(),
             dispatchedOn: row.dispatched_on,

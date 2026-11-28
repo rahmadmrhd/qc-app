@@ -352,6 +352,140 @@
     "status": 200
   },
   {
+    "id": "clBundles.draft",
+    "verb": "GET",
+    "path": "/countrylock/draft",
+    "status": 200
+  },
+  {
+    "id": "clBundles.get",
+    "verb": "GET",
+    "path": "/countrylock/bundles/{number}",
+    "status": 200
+  },
+  {
+    "id": "clBundles.list",
+    "verb": "GET",
+    "path": "/countrylock/bundles",
+    "status": 200
+  },
+  {
+    "id": "clBundles.publish",
+    "verb": "POST",
+    "path": "/countrylock/bundles",
+    "status": 201
+  },
+  {
+    "id": "clBundles.reactivate",
+    "verb": "POST",
+    "path": "/countrylock/bundles/{number}/reactivate",
+    "status": 200
+  },
+  {
+    "id": "clFiles.get",
+    "verb": "GET",
+    "path": "/countrylock/files/{id}",
+    "status": 200,
+    "etag": "updatedAt"
+  },
+  {
+    "id": "clFiles.history",
+    "verb": "GET",
+    "path": "/countrylock/files/{id}/history",
+    "status": 200
+  },
+  {
+    "id": "clFiles.list",
+    "verb": "GET",
+    "path": "/countrylock/files",
+    "status": 200
+  },
+  {
+    "id": "clFiles.remove",
+    "verb": "DELETE",
+    "path": "/countrylock/files/{id}",
+    "status": 200
+  },
+  {
+    "id": "clFiles.revert",
+    "verb": "POST",
+    "path": "/countrylock/files/{id}/revert",
+    "status": 200,
+    "etag": "updatedAt",
+    "ifMatch": "expectedUpdatedAt"
+  },
+  {
+    "id": "clFiles.revision",
+    "verb": "GET",
+    "path": "/countrylock/files/{id}/revisions/{seq}",
+    "status": 200
+  },
+  {
+    "id": "clFiles.save",
+    "verb": "PUT",
+    "path": "/countrylock/files",
+    "status": 200,
+    "etag": "updatedAt",
+    "ifMatch": "expectedUpdatedAt"
+  },
+  {
+    "id": "clFirmwares.list",
+    "verb": "GET",
+    "path": "/countrylock/firmwares",
+    "status": 200
+  },
+  {
+    "id": "clFirmwares.options",
+    "verb": "GET",
+    "path": "/countrylock/firmware-options",
+    "query": {
+      "brand": "string"
+    },
+    "status": 200
+  },
+  {
+    "id": "clFirmwares.remove",
+    "verb": "DELETE",
+    "path": "/countrylock/firmwares/{id}",
+    "status": 200
+  },
+  {
+    "id": "clFirmwares.save",
+    "verb": "PUT",
+    "path": "/countrylock/firmwares",
+    "status": 200,
+    "etag": "updatedAt",
+    "ifMatch": "expectedUpdatedAt"
+  },
+  {
+    "id": "clImport.run",
+    "verb": "POST",
+    "path": "/countrylock/import",
+    "status": 200
+  },
+  {
+    "id": "clUploads.chunk",
+    "verb": "PUT",
+    "path": "/countrylock/uploads/{id}/chunks/{idx}",
+    "status": 200,
+    "rawBody": {
+      "field": "bytes",
+      "contentType": "application/octet-stream"
+    }
+  },
+  {
+    "id": "clUploads.finish",
+    "verb": "POST",
+    "path": "/countrylock/uploads/{id}/finish",
+    "status": 200
+  },
+  {
+    "id": "clUploads.start",
+    "verb": "POST",
+    "path": "/countrylock/uploads",
+    "status": 201
+  },
+  {
     "id": "customers.get",
     "verb": "GET",
     "path": "/customers/{id}",
@@ -1273,6 +1407,7 @@
       "includeFinished": "boolean",
       "itemId": "string",
       "limit": "number",
+      "locationId": "string",
       "orderId": "string",
       "query": "string"
     },
@@ -1306,6 +1441,7 @@
       "cursor": "string",
       "customerIds": "list",
       "from": "string",
+      "itemIds": "list",
       "limit": "number",
       "query": "string",
       "status": "string",
@@ -1355,6 +1491,20 @@
       "limit": "number",
       "status": "string",
       "to": "string"
+    },
+    "status": 200
+  },
+  {
+    "id": "serialWarehouse.readyStock",
+    "verb": "GET",
+    "path": "/serial-warehouse/ready-stock",
+    "query": {
+      "buIds": "list",
+      "cursor": "string",
+      "itemIds": "list",
+      "limit": "number",
+      "pickCount": "number",
+      "query": "string"
     },
     "status": 200
   },

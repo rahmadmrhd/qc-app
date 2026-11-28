@@ -1,4 +1,5 @@
 import type {
+  ListReadyStockInput,
   ListWarehouseDispatchesInput,
   ListWarehouseDispatchSerialsInput,
   ListWarehouseHandoverCandidatesInput,
@@ -27,6 +28,17 @@ export type WarehouseSerialsFilter = Omit<ListWarehouseSerialsInput, 'cursor'>;
 export type WarehouseOrderOptionsFilter = Omit<ListWarehouseOrderOptionsInput, 'cursor'>;
 export type WarehouseCandidatesFilter = Omit<ListWarehouseHandoverCandidatesInput, 'cursor'>;
 export type WarehouseDispatchesFilter = Omit<ListWarehouseDispatchesInput, 'cursor'>;
+export type ReadyStockFilter = Omit<ListReadyStockInput, 'cursor'>;
+
+/** Nomor kardus tertinggi untuk BU dan Tipe (bawaan nomor awal di dialog simpan ready); hanya `totals` yang dipakai. */
+export function readyMaxBoxQueryOptions(buId: string, itemId: string) {
+  const filter: ReadyStockFilter = { buIds: [buId], itemIds: [itemId], limit: 1 };
+  return queryOptions({
+    queryKey: [...serialwhKeys.readyStock(filter), 'max'] as const,
+    queryFn: () => api('serialWarehouse.readyStock', filter),
+    enabled: buId !== '' && itemId !== '',
+  });
+}
 
 /** Pilihan Item pada BU ber-`serialwh: edit` (cari di server, berkursor). */
 export function warehouseItemOptionsQueryOptions(filter: WarehouseItemOptionsFilter = {}) {
@@ -80,13 +92,19 @@ export function warehouseOrderOptionsQueryOptions(filter: WarehouseOrderOptionsF
   });
 }
 
-/** Kandidat task Serah Terima untuk ditautkan ke SO. */
+/** Kandidat task Serah Terima untuk ditautkan (berkursor; `linked` ikut halaman pertama). */
 export function warehouseCandidatesQueryOptions(filter: WarehouseCandidatesFilter, enabled = true) {
-  return queryOptions({
+  return infiniteQueryOptions({
     queryKey: serialwhKeys.candidates(filter),
-    queryFn: () => api('serialWarehouse.handoverCandidates', filter),
+    queryFn: ({ pageParam }) =>
+      api('serialWarehouse.handoverCandidates', {
+        ...filter,
+        ...(pageParam ? { cursor: pageParam } : {}),
+      }),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (last) => last.nextCursor ?? undefined,
     enabled,
-    // Tanpa `keepPreviousData`: task milik customer lain tak boleh tampil selama data baru dimuat.
+    // Tanpa `keepPreviousData`: task milik lokasi atau customer lain tak boleh tampil selama data baru dimuat.
   });
 }
 

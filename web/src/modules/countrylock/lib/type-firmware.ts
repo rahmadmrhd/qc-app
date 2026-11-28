@@ -4,8 +4,8 @@
 
 import type { PackageDto } from '@countrylock/bridge-contract';
 import type { Brand } from '@countrylock/script-template';
+import { countryLockBrandOf } from '@shared/countrylock-bundle';
 import type { CatalogItemDto } from '@shared/desktop-catalog';
-import { firmwareBrandOf } from '@shared/firmware';
 
 export type TypeApplication =
   | { ok: true; brand: Brand; firmwareCode: string; firmwareLabel: string }
@@ -17,7 +17,7 @@ export function resolveTypeApplication(
   pkg: Pick<PackageDto, 'config'> | null,
 ): TypeApplication {
   if (!pkg) return { ok: false, message: 'Pilih folder paket skrip dulu.' };
-  const brand = firmwareBrandOf(item.brand);
+  const brand = countryLockBrandOf(item.brand);
   const brandConfig = brand ? pkg.config.brands[brand] : undefined;
   if (!brand || !brandConfig) {
     return { ok: false, message: `Merk ${item.brand} tidak ada di paket skrip.` };
@@ -46,6 +46,6 @@ export function tipeOptionsFor(
 ): CatalogItemDto[] {
   if (!brand) return [];
   return items
-    .filter((item) => firmwareBrandOf(item.brand) === brand)
+    .filter((item) => countryLockBrandOf(item.brand) === brand)
     .sort((a, b) => a.model.localeCompare(b.model, 'id', { sensitivity: 'base' }));
 }

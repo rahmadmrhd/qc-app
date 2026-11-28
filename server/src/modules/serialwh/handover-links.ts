@@ -14,6 +14,7 @@ import type {
   WarehouseLinkedHandoverDto,
   WarehouseOrderDto,
   WarehouseOrderOptionDto,
+  WarehouseTaskSaleDto,
 } from '@shared/contract';
 import type { HandoverStatus } from '@shared/handover';
 import { detectItemsInNote, itemDisplayName } from '@shared/item-detect';
@@ -206,6 +207,7 @@ export async function handoverContext(
   }
   const editBus = whBuIds(user, 'edit');
   let orders: WarehouseOrderOptionDto[] = [];
+  let sales: WarehouseTaskSaleDto[] = [];
   if (editBus.length > 0) {
     const labels = await buLabels(env);
     const rows = await env.DB.prepare(
@@ -231,6 +233,26 @@ export async function handoverContext(
       lastDispatchedOn: order.last_dispatched_on,
     }));
   }
+  if (editBus.length > 0) {
+    // Penjualan tanpa No SO (`order_id` = id pengeluaran): hanya baca; yang dibatalkan tidak tampil.
+    const labels = await buLabels(env);
+    const rows = await env.DB.prepare(
+      `SELECT d.id, d.number, d.dispatched_on, d.status, d.bu_id FROM warehouse_order_handovers w JOIN warehouse_dispatches d ON d.id = w.order_id WHERE w.handover_id = ? AND d.kind = 'order' AND d.order_id = d.id AND d.status <> 'cancelled' AND d.bu_id IN (${placeholders(editBus.length)}) ORDER BY d.created_at DESC, d.id DESC`,
+    )
+      .bind(row.id, ...editBus)
+      .all<{ id: string; number: string; dispatched_on: string; status: string; bu_id: string }>();
+    sales = rows.results.map((sale) => ({
+      dispatchId: sale.id.trim(),
+      number: sale.number,
+      label: `Penjualan ${sale.dispatched_on} ${sale.number}`.trim(),
+      dispatchedOn: sale.dispatched_on,
+      status: sale.status.trim() === 'done' ? 'done' : 'pending',
+      buId: sale.bu_id.trim(),
+      buCode: labels.get(sale.bu_id.trim())?.code ?? '',
+      buName: labels.get(sale.bu_id.trim())?.name ?? '',
+      orderId: '',
+    }));
+  }
   const items = await loadDetectableItems(env, user);
   const byId = new Map(items.map((item) => [item.id, item]));
   const detected = detectItemsInNote(row.note, items).map((detection) => ({
@@ -246,6 +268,7 @@ export async function handoverContext(
       status: row.board_status as HandoverStatus,
     },
     orders,
+    sales,
     detected,
   };
 }

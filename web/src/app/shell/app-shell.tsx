@@ -5,6 +5,7 @@ import { SidebarInset, SidebarProvider, SidebarTrigger, useSidebar } from '@/com
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { useEdgeSwipe } from '@/hooks/use-edge-swipe';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { useScrollToInvalidOnSubmit } from '@/hooks/use-scroll-to-invalid';
 import { useFocusIntoView, useVisualViewport } from '@/hooks/use-visual-viewport';
 import { isSidebarOverlayViewport, sidebarRange } from '@/lib/layout';
 import { useMe } from '@/modules/auth/use-me';
@@ -47,6 +48,8 @@ export function AppShell({ children }: { children?: ReactNode } = {}) {
   // Papan ketik layar ponsel: variabel --vvh/--vv-top/--kb dan gulir field fokus ke area terlihat.
   useVisualViewport();
   useFocusIntoView();
+  // Simpan dengan isian bergalat yang tak terlihat: gulir ke isian pertama (dan buka tabnya) di semua form.
+  useScrollToInvalidOnSubmit();
   // Ponsel (butir 41): header = ☰ + judul tingkat terakhir + tombol kanan (lokasi, lonceng, akun); tanpa tombol kembali.
   const phone = useIsMobile();
   const matches = useMatches();

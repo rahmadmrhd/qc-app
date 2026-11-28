@@ -64,7 +64,19 @@ test('mengetik di baris checklist memunculkan saran; Tab menyisipkan nama Item s
   await userEvent.type(box, 'tenda ax');
   expect(await screen.findByRole('option', { name: 'Tenda AX300' })).toBeInTheDocument();
   await userEvent.keyboard('{Tab}');
-  await waitFor(() => expect(onValue).toHaveBeenLastCalledWith('- [ ] Tenda AX300'));
+  await waitFor(() => expect(onValue).toHaveBeenLastCalledWith('- [ ] Tenda AX300 '));
+  // Nama yang disisipkan masih cocok dengan pencarian, tetapi daftar harus menutup.
+  await waitFor(() => expect(screen.queryByRole('option', { name: 'Tenda AX300' })).toBeNull());
+});
+
+test('memilih saran dengan klik menutup daftar', async () => {
+  renderEditor({ item: 'view' });
+  await waitFor(() => expect(apiMock).toHaveBeenCalledWith('items.nameOptions', null));
+  await userEvent.click(screen.getByRole('button', { name: 'Checklist' }));
+  const box = screen.getByRole('textbox', { name: 'Catatan' });
+  await userEvent.type(box, 'tenda ax');
+  await userEvent.click(await screen.findByRole('option', { name: 'Tenda AX300' }));
+  await waitFor(() => expect(screen.queryByRole('option', { name: 'Tenda AX300' })).toBeNull());
 });
 
 test('di paragraf biasa (bukan checklist) tidak ada saran', async () => {

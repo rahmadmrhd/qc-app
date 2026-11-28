@@ -22,7 +22,10 @@ export interface ItemSuggestOptions {
 const SUGGEST_KEY = new PluginKey('qcItemSuggest');
 const PASTE_KEY = new PluginKey<boolean>('qcItemSuggestPaste');
 
-/** Saran ditekan setelah tempel sampai ada perubahan dokumen berikutnya (konversi WhatsApp tak diganggu). */
+/** Penanda transaksi: saran baru saja diterima. Nama Item yang disisipkan masih cocok dengan pencarian, jadi tanpa ini daftar tak menutup. */
+const ACCEPTED_META = 'qcItemSuggestAccepted';
+
+/** Saran ditekan setelah tempel atau setelah menerima saran, sampai ada perubahan dokumen berikutnya (konversi WhatsApp tak diganggu). */
 function suppressedByPaste(state: EditorState): boolean {
   return PASTE_KEY.getState(state) === true;
 }
@@ -39,7 +42,8 @@ function insideTaskItem(state: EditorState): boolean {
  * Saran nama Item saat mengetik di baris checklist (Keluar Gudang 5.15): tanpa karakter pemicu, mencocokkan sampai
  * 3 kata terakhir sebelum kursor (`suggestItemsFor`). Tab menerima yang teratas (atau yang disorot), panah
  * menyorot, Enter menerima HANYA bila ada sorotan (selain itu membuat baris baru), Esc menutup. Pilihan
- * mengganti potongan yang diketik dengan nama Item sebagai teks polos.
+ * mengganti potongan yang diketik dengan nama Item sebagai teks polos diikuti satu spasi (seperti autokoreksi papan ketik),
+ * jadi daftar menutup dan kursor siap untuk jumlah.
  */
 export function itemSuggestExtension(options: ItemSuggestOptions) {
   return Extension.create({
@@ -85,7 +89,8 @@ export function itemSuggestExtension(options: ItemSuggestOptions) {
         state: {
           init: () => false,
           apply: (tr, value) => {
-            if (tr.getMeta('uiEvent') === 'paste') return true;
+            if (tr.getMeta('uiEvent') === 'paste' || tr.getMeta(ACCEPTED_META) === true)
+              return true;
             return tr.docChanged ? false : value;
           },
         },
@@ -113,7 +118,11 @@ export function itemSuggestExtension(options: ItemSuggestOptions) {
         command: ({ editor: ed, range, props }) => {
           ed.chain()
             .focus()
-            .insertContentAt(range, { type: 'text', text: itemDisplayName(props) })
+            .insertContentAt(range, { type: 'text', text: `${itemDisplayName(props)} ` })
+            .command(({ tr }) => {
+              tr.setMeta(ACCEPTED_META, true);
+              return true;
+            })
             .run();
         },
         render: () => ({

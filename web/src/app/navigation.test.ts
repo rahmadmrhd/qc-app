@@ -538,6 +538,35 @@ test('Pengguna dan Role di induk Akses; Status Push dan Log Audit di Sistem (acc
   expect(pengaturan('none')).toBeUndefined();
 });
 
+test('admin bundel Country Lock di Sistem: butuh countrylock edit (view hanya memakai aplikasi desktop)', () => {
+  expect(itemTo('/countrylock/files')).toMatchObject({
+    label: 'Berkas Country Lock',
+    permission: { module: 'countrylock', level: 'edit' },
+  });
+  const sistem = (level: 'view' | 'edit') =>
+    visibleNavGroups(NAV_GROUPS, stickerMe({ countrylock: level }))
+      .find((group) => group.label === 'Pengaturan')
+      ?.items.filter(isNavParent)
+      .find((parent) => parent.label === 'Sistem')
+      ?.children.map((child) => child.label);
+  expect(sistem('view')).toBeUndefined();
+  expect(sistem('edit')).toEqual([
+    'Berkas Country Lock',
+    'Pengaturan Router',
+    'Firmware',
+    'Bundel',
+    'Impor',
+  ]);
+  for (const to of [
+    '/countrylock/settings',
+    '/countrylock/firmware',
+    '/countrylock/bundles',
+    '/countrylock/import',
+  ]) {
+    expect(itemTo(to)).toMatchObject({ permission: { module: 'countrylock', level: 'edit' } });
+  }
+});
+
 test('butir Dashboard tepat di bawah Beranda; tampil bagi pemegang izin widget mana pun saja', () => {
   const home = NAV_GROUPS[0]?.items.map((entry) => entry.label);
   expect(home?.slice(0, 2)).toEqual(['Beranda', 'Dashboard']);
@@ -624,4 +653,17 @@ test('Dashboard tak aktif di halaman Laporan terjadwal dan Tautan dibagikan', ()
   expect(isNavItemActive(dashboard, at('/dashboard'))).toBe(true);
   expect(isNavItemActive(itemTo('/dashboard/laporan'), at('/dashboard/laporan/r1'))).toBe(true);
   expect(isNavItemActive(itemTo('/dashboard/tautan'), at('/dashboard/tautan/s1'))).toBe(true);
+});
+
+test('Riwayat Gudang menyala di form pencatatan dan tidak ada butir Stok Ready', () => {
+  const children = flattenNavItems(NAV_GROUPS);
+  const history = children.find((entry) => entry.to === '/serial/gudang/riwayat');
+  expect(history).toBeDefined();
+  expect(children.some((entry) => entry.to === ('/serial/gudang/ready' as string))).toBe(false);
+  const at = (path: string) => (to: string, fuzzy: boolean) =>
+    fuzzy ? path === to || path.startsWith(`${to}/`) : path === to;
+  if (history) {
+    expect(isNavItemActive(history, at('/serial/gudang'))).toBe(true);
+    expect(isNavItemActive(history, at('/serial/gudang/riwayat/d1'))).toBe(true);
+  }
 });

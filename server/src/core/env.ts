@@ -1,4 +1,5 @@
 import type { Db } from '@server/core/db';
+import type { VerifyPorts } from '@server/modules/backup/verify';
 import type { PushSender } from '@server/modules/notification/push';
 import type { ProofStore } from '@server/modules/serial/proof/store';
 import type { BridgeClient } from './bridge-client';
@@ -36,6 +37,11 @@ export interface Env extends GoogleSettings {
   BACKUP_ENABLED?: boolean;
   /** Pembangkit dump (nyata: `mariadb-dump`; tes: tiruan). */
   BACKUP_DUMP?: DumpRunner;
+  /**
+   * Pabrik koneksi uji pemulihan cadangan (nyata: `RESTORE_DATABASE_URL`, pengguna terbatas `qc_restore`; tes: tiruan);
+   * kosong = verifikasi cadangan dinonaktifkan. Hanya berjalan bila `BACKUP_ENABLED`.
+   */
+  BACKUP_VERIFY?: () => Promise<VerifyPorts>;
   /** Folder lokal (volume yang dapat ditulis) tempat dump disimpan sementara; 3 salinan terakhir dipertahankan. */
   BACKUP_LOCAL_DIR?: string;
   /** Penyimpanan sementara foto bukti QC (disk server); `createServer` membuatnya dari `PROOF_STAGING_DIR`, tes memakai folder sementara. */

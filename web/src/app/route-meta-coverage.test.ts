@@ -55,6 +55,9 @@ const INDEX = [
   '/access/push',
   '/access/roles',
   '/access/users',
+  '/countrylock/bundles',
+  '/countrylock/files',
+  '/countrylock/firmware',
   '/customer',
   '/dashboard',
   '/dashboard/laporan',
@@ -78,6 +81,8 @@ const VIEW = [
   '/access/locations/$locationId',
   '/access/roles/$roleId',
   '/access/users/$userId',
+  '/countrylock/bundles/$number',
+  '/countrylock/files/$fileId',
   '/customer/$customerId',
   '/dashboard/laporan/$reportId',
   '/dashboard/tautan/$shareId',
@@ -96,6 +101,8 @@ const VIEW = [
 ];
 /** Form sempit (`FormPage`): konten terpusat `narrow`. */
 const FORM_NARROW = [
+  '/countrylock/import',
+  '/countrylock/settings',
   '/dashboard/laporan/new',
   '/dashboard/laporan/$reportId/edit',
   '/handover/new',

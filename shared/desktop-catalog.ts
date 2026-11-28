@@ -4,7 +4,7 @@
 // Murni (tanpa API runtime/DOM): dipakai server (penyusun), desktop (pemvalidasi cache), dan web (tampilan).
 
 import type { BusinessUnitRefDto, ItemStickerPhotoDto } from './contract';
-import { FIRMWARE_CODE_MAX } from './firmware';
+import { FIRMWARE_CODE_MAX } from './countrylock-bundle';
 import type { StickerRule, StickerStatus, StickerSystemKind } from './stickers';
 
 export const DESKTOP_CATALOG_VERSION = 1;
@@ -42,7 +42,7 @@ export interface CatalogItemDto {
   model: string;
   aliases: string[];
   /**
-   * Kode firmware Country Lock (`shared/firmware.ts`; '' = belum diisi). Server yang belum mengenal field ini tidak
+   * Kode firmware Country Lock (daftar dinamis `cl_firmwares`; '' = belum diisi). Server yang belum mengenal field ini tidak
    * mengirimnya: pembaca memperlakukan tak ada sebagai ''.
    */
   firmware?: string;

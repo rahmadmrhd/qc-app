@@ -47,6 +47,7 @@ const saved = {
   firmware: '',
   proofRequired: false,
   proofMin: 1,
+  boxSize: 0,
   status: 'active',
   aliases: [],
   imageCount: 0,

@@ -10,9 +10,10 @@ import type {
   SaveItemInput,
   SetItemStatusInput,
 } from '@shared/contract';
+import { FIRMWARE_CODE_MAX } from '@shared/countrylock-bundle';
 import { MARKDOWN_MAX_LENGTH } from '@shared/files';
-import { FIRMWARE_CODE_MAX } from '@shared/firmware';
 import { ITEM_LIMITS, normalizeKey, normalizeNewlines } from '@shared/items';
+import { WAREHOUSE_BOX_LIMITS } from '@shared/serial-warehouse';
 import { SERIAL_PROOF_LIMITS } from '@shared/serials';
 import { INSTRUCTION_LIMITS, type StickerMarkTarget } from '@shared/stickers';
 
@@ -375,6 +376,24 @@ function readOptionalProofMin(
   return value;
 }
 
+/** `boxSize` opsional (pcs per kardus): tak dikirim = undefined (tak diubah); bila ada bilangan bulat 0 sampai batas. */
+function readOptionalBoxSize(
+  value: unknown,
+  reader: { fail(key: string, message: string): void },
+): number | undefined {
+  if (value === undefined) return undefined;
+  if (
+    typeof value !== 'number' ||
+    !Number.isInteger(value) ||
+    value < 0 ||
+    value > WAREHOUSE_BOX_LIMITS.sizeMax
+  ) {
+    reader.fail('boxSize', `Pcs per kardus harus 0 sampai ${WAREHOUSE_BOX_LIMITS.sizeMax}`);
+    return undefined;
+  }
+  return value;
+}
+
 export function validateSaveItem(raw: unknown): SaveItemInput {
   const reader = readObject(raw);
   const id = reader.optionalId('id');
@@ -389,6 +408,7 @@ export function validateSaveItem(raw: unknown): SaveItemInput {
   const firmware = readOptionalFirmware(reader.raw('firmware'), reader);
   const proofRequired = readOptionalProofRequired(reader.raw('proofRequired'), reader);
   const proofMin = readOptionalProofMin(reader.raw('proofMin'), reader);
+  const boxSize = readOptionalBoxSize(reader.raw('boxSize'), reader);
   const lists = firstErrorReader(reader);
   const aliases = readItemAliases(reader.raw('aliases'), lists);
   const stickerPhotos = readStickerPhotos(reader.raw('stickerPhotos'), lists);
@@ -407,6 +427,7 @@ export function validateSaveItem(raw: unknown): SaveItemInput {
     ...(firmware !== undefined ? { firmware } : {}),
     ...(proofRequired !== undefined ? { proofRequired } : {}),
     ...(proofMin !== undefined ? { proofMin } : {}),
+    ...(boxSize !== undefined ? { boxSize } : {}),
     aliases,
     stickerPhotos,
     accessories,

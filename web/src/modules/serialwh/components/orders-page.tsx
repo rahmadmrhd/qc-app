@@ -59,7 +59,9 @@ export function OrdersPage({ search, onSearchChange }: OrdersPageProps) {
   const items = list.data?.pages.flatMap((page) => page.items) ?? [];
   const filtered = Object.keys(filter).length > 0;
 
-  const columns: DataColumn<WarehouseDispatchListItemDto>[] = [
+  // Kolom SO dan Customer disembunyikan bila semua baris yang dimuat adalah catatan (tanpa SO dan customer).
+  const showOrder = items.length === 0 || items.some((dispatch) => dispatch.kind !== 'note');
+  const allColumns: DataColumn<WarehouseDispatchListItemDto>[] = [
     {
       id: 'number',
       header: 'No Riwayat',
@@ -107,6 +109,9 @@ export function OrdersPage({ search, onSearchChange }: OrdersPageProps) {
       ),
     },
   ];
+  const columns = showOrder
+    ? allColumns
+    : allColumns.filter((column) => column.id !== 'order' && column.id !== 'customer');
 
   return (
     <ListPage
@@ -143,6 +148,7 @@ export function OrdersPage({ search, onSearchChange }: OrdersPageProps) {
             q: undefined,
             kind: undefined,
             customerIds: undefined,
+            itemIds: undefined,
             buIds: undefined,
             from: undefined,
             to: undefined,

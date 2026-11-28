@@ -14,6 +14,7 @@ import type {
 import { normalizeKey } from '@shared/items';
 import { orderKey, WAREHOUSE_LIMITS } from '@shared/serial-warehouse';
 import { whBuIds, whLiveBuIds } from './access';
+import { readableHandoverLocationIds } from './handover-shared';
 import { placeholders } from './repo';
 
 interface ItemOptionRow {
@@ -23,6 +24,7 @@ interface ItemOptionRow {
   key: string;
   proof_required: number | string;
   proof_min: number | string;
+  box_size: number | string;
 }
 
 /**
@@ -61,7 +63,7 @@ export async function warehouseItemOptions(
   }
   const limit = byIds ? (input.ids?.length ?? 0) : (input.limit ?? WAREHOUSE_LIMITS.itemOptionsMax);
   const rows = await env.DB.prepare(
-    `SELECT i.id, b.name AS brand_name, i.model, i.\`key\`, i.proof_required, i.proof_min FROM items i LEFT JOIN brands b ON b.id = i.brand_id WHERE ${liveWhere('i')} AND ${where.join(' AND ')} ORDER BY i.\`key\` LIMIT ?`,
+    `SELECT i.id, b.name AS brand_name, i.model, i.\`key\`, i.proof_required, i.proof_min, i.box_size FROM items i LEFT JOIN brands b ON b.id = i.brand_id WHERE ${liveWhere('i')} AND ${where.join(' AND ')} ORDER BY i.\`key\` LIMIT ?`,
   )
     .bind(...binds, limit + 1)
     .all<ItemOptionRow>();
@@ -91,6 +93,7 @@ export async function warehouseItemOptions(
       buIds: links.get(row.id.trim()) ?? [],
       proofRequired: Number(row.proof_required) === 1,
       proofMin: Number(row.proof_min),
+      boxSize: Number(row.box_size),
     };
   });
   return {
@@ -134,8 +137,8 @@ interface OrderOptionRow {
 
 /**
  * SO pada BU ber-`serialwh: edit` untuk combobox No SO. Urut: kecocokan persis No SO lebih dulu (agar tak tersingkir
- * 50 hasil awalan), lalu BU yang dipilih (`buId`), lalu terbaru diubah;
- * `query` = awalan kunci No SO (tanpa beda huruf besar/kecil). Kursor = jumlah baris yang dilewati.
+ * 50 hasil lain), lalu yang cocok di awalan kunci, lalu BU yang dipilih (`buId`), lalu terbaru diubah;
+ * `query` = bagian mana pun dari kunci No SO (tanpa beda huruf besar/kecil). Kursor = jumlah baris yang dilewati.
  */
 export async function warehouseOrderOptions(
   env: Env,
@@ -156,7 +159,7 @@ export async function warehouseOrderOptions(
     const query = orderKey(input.query ?? '');
     if (query !== '') {
       where.push("o.`key` LIKE ? ESCAPE '!'");
-      binds.push(`${escapeLike(query)}%`);
+      binds.push(`%${escapeLike(query)}%`);
     }
   }
   const limit = byIds ? (input.ids?.length ?? 0) : (input.limit ?? WAREHOUSE_LIMITS.itemOptionsMax);
@@ -165,14 +168,38 @@ export async function warehouseOrderOptions(
       ? Math.min(CURSOR_OFFSET_MAX, Math.max(0, Math.trunc(Number(input.cursor)) || 0))
       : 0;
   const rows = await env.DB.prepare(
-    `SELECT o.id, o.number, o.bu_id, bu.code AS bu_code, bu.name AS bu_name, o.customer_id, o.customer_name, o.last_dispatched_on FROM warehouse_orders o JOIN business_units bu ON bu.id = o.bu_id WHERE ${where.join(' AND ')} ORDER BY (o.\`key\` = ?) DESC, (o.bu_id = ?) DESC, o.updated_at DESC, o.id DESC LIMIT ? OFFSET ?`,
+    `SELECT o.id, o.number, o.bu_id, bu.code AS bu_code, bu.name AS bu_name, o.customer_id, o.customer_name, o.last_dispatched_on FROM warehouse_orders o JOIN business_units bu ON bu.id = o.bu_id WHERE ${where.join(' AND ')} ORDER BY (o.\`key\` = ?) DESC, (o.\`key\` LIKE ? ESCAPE '!') DESC, (o.bu_id = ?) DESC, o.updated_at DESC, o.id DESC LIMIT ? OFFSET ?`,
   )
-    .bind(...binds, orderKey(input.query ?? ''), input.buId ?? '', limit + 1, offset)
+    .bind(
+      ...binds,
+      orderKey(input.query ?? ''),
+      `${escapeLike(orderKey(input.query ?? ''))}%`,
+      input.buId ?? '',
+      limit + 1,
+      offset,
+    )
     .all<OrderOptionRow>();
   const page = rows.results.slice(0, limit);
+  // Lokasi SO dari task tertaut (satu kueri teragregasi untuk seluruh halaman).
+  const locationOf = new Map<string, string>();
+  if (page.length > 0) {
+    const readable = new Set(readableHandoverLocationIds(user));
+    const agg = await env.DB.prepare(
+      `SELECT w.order_id, MIN(h.location_id) AS loc_min, MAX(h.location_id) AS loc_max FROM warehouse_order_handovers w JOIN handovers h ON h.id = w.handover_id WHERE ${liveWhere('h')} AND h.board_status <> 'cancelled' AND w.order_id IN (${placeholders(page.length)}) GROUP BY w.order_id`,
+    )
+      .bind(...page.map((row) => row.id))
+      .all<{ order_id: string; loc_min: string; loc_max: string }>();
+    for (const row of agg.results) {
+      const location = row.loc_min.trim();
+      if (location === row.loc_max.trim() && readable.has(location)) {
+        locationOf.set(row.order_id.trim(), location);
+      }
+    }
+  }
   return {
     items: page.map(
       (row): WarehouseOrderOptionDto => ({
+        ...(locationOf.has(row.id.trim()) ? { locationId: locationOf.get(row.id.trim()) } : {}),
         id: row.id.trim(),
         number: row.number,
         buId: row.bu_id.trim(),

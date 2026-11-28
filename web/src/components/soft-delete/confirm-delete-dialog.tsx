@@ -22,6 +22,7 @@ export function ConfirmDeleteDialog({
   subject,
   usage,
   permanent = false,
+  blockedReason,
   onConfirm,
   busy = false,
 }: {
@@ -31,6 +32,8 @@ export function ConfirmDeleteDialog({
   subject: string;
   usage?: string;
   permanent?: boolean;
+  /** Alasan hapus tidak mungkin (mis. masih dipakai): tampil di dialog dan tombol Hapus nonaktif. */
+  blockedReason?: string;
   onConfirm: () => void;
   busy?: boolean;
 }) {
@@ -52,6 +55,9 @@ export function ConfirmDeleteDialog({
               ? 'Dihapus permanen dan tidak dapat dikembalikan.'
               : 'Data dapat dipulihkan dari tampilan Terhapus.'}
             {usage ? <span className="mt-1 block">{usage}</span> : null}
+            {blockedReason ? (
+              <span className="mt-1 block text-destructive-text">{blockedReason}</span>
+            ) : null}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
@@ -59,7 +65,7 @@ export function ConfirmDeleteDialog({
           <AlertDialogAction
             color="destructive"
             variant="solid"
-            disabled={busy}
+            disabled={busy || Boolean(blockedReason)}
             onClick={(event) => {
               // Dialog ditutup induk setelah proses selesai (bukan otomatis oleh Radix).
               event.preventDefault();

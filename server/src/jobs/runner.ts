@@ -2,6 +2,9 @@ import type { Env } from '@server/core/env';
 import { nowOf } from '@server/core/env';
 import { checkBackupAlerts } from '@server/modules/backup/alert';
 import { scheduleBackupJob } from '@server/modules/backup/service';
+import { checkBackupVerifyAlerts } from '@server/modules/backup/verify-alert';
+import { scheduleBackupVerifyJob } from '@server/modules/backup/verify-schedule';
+import { sweepCountryLockUploads, sweepOrphanBlobs } from '@server/modules/countrylock/sweep';
 import { checkDashboardReports } from '@server/modules/dashboard/report/run';
 import { sweepReportShares } from '@server/modules/dashboard/report/sweep';
 import { sweepExpiredShares } from '@server/modules/dashboard/share-expiry';
@@ -160,6 +163,8 @@ async function schedulerTick(env: Env): Promise<void> {
     purgeExpiredRateLimits,
     scheduleBackupJob,
     checkBackupAlerts,
+    scheduleBackupVerifyJob,
+    checkBackupVerifyAlerts,
     checkLowStockDigest,
     checkPostelExpiryDigest,
     purgeOldNotifications,
@@ -169,6 +174,8 @@ async function schedulerTick(env: Env): Promise<void> {
     sweepExpiredShares,
     sweepReportShares,
     sweepStaleDispatches,
+    sweepCountryLockUploads,
+    sweepOrphanBlobs,
   ]) {
     try {
       await step(env);

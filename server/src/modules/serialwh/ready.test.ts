@@ -27,9 +27,14 @@ beforeEach(async () => {
 const count = async (sql: string): Promise<number> =>
   Number((await env.DB.prepare(sql).first<{ n: number | string }>())?.n ?? 0);
 
+let boxCursor = 1;
+
 function readyHeader(total: number, over: Record<string, unknown> = {}) {
+  boxCursor += 100;
   return {
     mode: 'ready',
+    boxStart: boxCursor,
+    boxSize: 10,
     dispatchedOn: '2026-11-12',
     orderNumber: '',
     buId: 'bu-a',
@@ -107,6 +112,8 @@ describe('Catat ready: simpan', () => {
       chunkIndex: 0,
       header: {
         mode: 'ready',
+        boxStart: 7,
+        boxSize: 10,
         dispatchedOn: '2026-11-12',
         buId: 'bu-a',
         itemId: 'i-a1',
@@ -187,7 +194,10 @@ describe('Catat ready: simpan', () => {
       orderNumber: 'SO-LATER',
       existing: [{ id: 'x1', serial: 'LATER-1' }],
     });
-    expect(again.data?.skipped).toEqual([{ serial: 'LATER-1', reason: 'Sudah ada di SO ini' }]);
+    expect(again.ok).toBe(false);
+    expect(again.error?.message).toBe(
+      'Tidak ada serial yang dapat dicatat. Dilewati: Sudah ada di SO ini (1)',
+    );
   });
 
   test('lanjutan ready tetap jalan walau BU dihapus di tengah kiriman; pencatatan baru ke BU terhapus ditolak', async () => {
@@ -304,7 +314,8 @@ describe('Catat ready: simpan', () => {
     });
     const row = { kind: 'existing', serialId: 'sw1', serial: 'SWEEP-SO' };
     const blocked = await submitReady(E, [row]);
-    expect(blocked.data.skipped).toHaveLength(1);
+    expect(blocked.ok).toBe(false);
+    expect(blocked.error.fields.rows).toContain('Sudah tercatat WH (1)');
     env.clock.set(Date.parse('2026-11-20T03:00:00.000Z'));
     expect(await sweepStaleDispatches(env)).toBe(1);
     const freed = await submitReady(E, [row]);
@@ -319,22 +330,27 @@ describe('Catat ready: simpan', () => {
       { kind: 'existing', serialId: 'b1', serial: 'BAD-R1' },
       { kind: 'existing', serialId: 'b2', serial: 'BAD-R2' },
     ]);
-    expect(out.ok).toBe(true);
-    expect(out.data.serials).toEqual([]);
-    expect(out.data.skipped).toHaveLength(2);
+    expect(out.ok).toBe(false);
+    expect(out.error.code).toBe('VALIDATION');
+    expect(out.error.fields.rows).toBe(
+      'Tidak ada serial yang dapat dicatat. Dilewati: Bukan berstatus Lolos di posisi QC (1); Tipe berbeda (1)',
+    );
+    expect(await count('SELECT COUNT(*) AS n FROM warehouse_dispatches')).toBe(0);
   });
 
   test('idempoten per clientId: kirim ulang tak menggandakan; mode atau isi beda ditolak', async () => {
     const clientId = crypto.randomUUID();
     const rows = [fresh('IDEM-1')];
-    const first = await submitReady(E, rows, { clientId });
-    const second = await submitReady(E, rows, { clientId });
+    // Header kiriman ulang harus identik, termasuk nomor kardus.
+    const same = { boxStart: 900 };
+    const first = await submitReady(E, rows, { clientId, header: same });
+    const second = await submitReady(E, rows, { clientId, header: same });
     expect(second.ok).toBe(true);
     expect(second.data.dispatchId).toBe(first.data.dispatchId);
     expect(second.data.created).toBe(0);
     expect(await count('SELECT COUNT(*) AS n FROM warehouse_dispatch_serials')).toBe(1);
     expect(await count("SELECT COUNT(*) AS n FROM serial_events WHERE type = 'recorded'")).toBe(1);
-    const changed = await submitReady(E, rows, { clientId, header: { note: 'lain' } });
+    const changed = await submitReady(E, rows, { clientId, header: { ...same, note: 'lain' } });
     expect(changed.ok).toBe(false);
     expect(changed.error.code).toBe('VALIDATION');
     const asOrder = await call(E, 'serialWarehouse.submit', {
@@ -345,7 +361,7 @@ describe('Catat ready: simpan', () => {
     });
     expect(asOrder.ok).toBe(false);
     // Pelaku lain dijawab generik.
-    const foreign = await submitReady(WH_USERS.both, rows, { clientId });
+    const foreign = await submitReady(WH_USERS.both, rows, { clientId, header: same });
     expect(foreign.error.code).toBe('CONFLICT');
   });
 

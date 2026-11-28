@@ -2,7 +2,16 @@ import { CAS_FAIL_SQL, isGuardFailure } from '@server/core/cas';
 import type { Env } from '@server/core/env';
 import { nowIso, nowOf } from '@server/core/env';
 import { WAREHOUSE_LIMITS } from '@shared/serial-warehouse';
-import { orderAuditTarget, readyAuditTarget, WAREHOUSE_AUDIT, warehouseAuditStmt } from './audit';
+import {
+  noteAuditTarget,
+  orderAuditTarget,
+  readyAuditTarget,
+  saleAuditTarget,
+  WAREHOUSE_AUDIT,
+  warehouseAuditStmt,
+} from './audit';
+import { cancelReadyStatements } from './boxes';
+import { isBareSale, isNoteDispatch } from './repo';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 /** Pengeluaran dibatalkan per tik penjadwal (sisanya menyusul pada tik berikutnya). */
@@ -37,13 +46,18 @@ export async function sweepStaleDispatches(env: Env): Promise<number> {
     const target =
       row.kind.trim() === 'ready'
         ? readyAuditTarget(row.id.trim(), row.dispatched_on)
-        : orderAuditTarget(row.order_id.trim(), row.number ?? '');
+        : isNoteDispatch(row)
+          ? noteAuditTarget(row.id.trim(), row.dispatched_on)
+          : isBareSale(row)
+            ? saleAuditTarget(row.id.trim(), row.dispatched_on)
+            : orderAuditTarget(row.order_id.trim(), row.number ?? '');
     try {
       await env.DB.batch([
         env.DB.prepare(
           `UPDATE warehouse_dispatches SET cancelled_at = CASE WHEN status = 'pending' THEN ? ELSE ${CAS_FAIL_SQL} END, status = 'cancelled' WHERE id = ?`,
         ).bind(now, row.id),
         env.DB.prepare('DELETE FROM warehouse_dispatch_serials WHERE dispatch_id = ?').bind(row.id),
+        ...(row.kind.trim() === 'ready' ? cancelReadyStatements(env, row.id.trim()) : []),
         warehouseAuditStmt(env.DB, {
           action: WAREHOUSE_AUDIT.dispatchCancel,
           actor: 'system',

@@ -76,6 +76,7 @@ COPY server/migrations server/migrations
 COPY server/CHANGELOG.md server/CHANGELOG.md
 # CLI pemulihan cadangan (T31): dijalankan lewat `docker exec`; logikanya ada di server/src/modules/backup/restore.ts.
 COPY scripts/restore-backup.ts scripts/restore-backup.ts
+COPY scripts/verify-backup.ts scripts/verify-backup.ts
 COPY --from=web-build /app/server/dist server/dist
 # Berkas tes tidak dibutuhkan runtime.
 RUN find shared server/src -name '*.test.ts' -delete

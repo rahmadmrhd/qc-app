@@ -127,12 +127,13 @@ export async function warehouseSerials(
   }
   // Hanya BU yang terbaca pemanggil yang boleh dijadikan penyaring (selain itu diabaikan: tanpa oracle lintas BU).
   if (input.hideRecordedBuId !== undefined && readable.includes(input.hideRecordedBuId)) {
-    if (input.forMode === 'ready') {
-      // Mode ready: catatan WH selesai mana pun (SO atau ready) membuat serial itu dilewati saat kirim, jadi disembunyikan.
+    if (input.forMode === 'ready' || input.forMode === 'note') {
+      // Mode ready dan note: tercatat WH = pengeluaran selesai mana pun (SO, ready, atau catatan); filter ini hanya
+      // pilihan tampilan pengguna (mode note boleh mencatat ulang serial yang sama).
       where.push(`NOT ${whRecordedSql('s')}`);
     } else {
       where.push(
-        "NOT EXISTS (SELECT 1 FROM warehouse_dispatch_serials hw JOIN warehouse_dispatches hd ON hd.id = hw.dispatch_id JOIN warehouse_orders ho ON ho.id = hw.order_id WHERE hw.serial_id = s.id AND hd.status = 'done' AND ho.bu_id = ?)",
+        "NOT EXISTS (SELECT 1 FROM warehouse_dispatch_serials hw JOIN warehouse_dispatches hd ON hd.id = hw.dispatch_id LEFT JOIN warehouse_orders ho ON ho.id = hw.order_id WHERE hw.serial_id = s.id AND hd.kind = 'order' AND hd.status = 'done' AND IF(hd.bu_id <> '', hd.bu_id, ho.bu_id) = ?)",
       );
       binds.push(input.hideRecordedBuId);
     }

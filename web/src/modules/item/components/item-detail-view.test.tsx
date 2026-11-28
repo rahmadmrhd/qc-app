@@ -24,6 +24,7 @@ const item: ItemDto = {
   firmware: '',
   proofRequired: false,
   proofMin: 1,
+  boxSize: 0,
   status: 'active',
   aliases: ['AirFiber 5XHD', 'AF-5XHD'],
   imageCount: 2,
@@ -113,6 +114,16 @@ test('berpindah tab menampilkan isinya dan memanggil onTabChange', async () => {
   expect(screen.getAllByText('Label SNI')).toHaveLength(2);
   expect(screen.getByText('Bagian belakang')).toBeInTheDocument();
   expect(screen.getByAltText('Contoh Label SNI')).toBeInTheDocument();
+});
+
+test('firmware tampil dengan label dari pilihan server; tanpa pilihan tampil kodenya', async () => {
+  const withFirmware = { ...item, firmware: 'af5xhd' };
+  const options = { mikrotik: [], ubiquiti: [{ code: 'af5xhd', label: 'AF-5XHD' }] };
+  const { unmount } = await renderView({ item: withFirmware, firmwareOptions: options });
+  expect(screen.getByText('AF-5XHD')).toBeInTheDocument();
+  unmount();
+  await renderView({ item: withFirmware });
+  expect(screen.getByText('af5xhd')).toBeInTheDocument();
 });
 
 test('tab terkendali: prop tab menentukan tab aktif', async () => {

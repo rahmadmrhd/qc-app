@@ -16,6 +16,14 @@ const EXPECTED_TABLES = [
   'brand_default_business_units',
   'brands',
   'business_units',
+  'cl_blobs',
+  'cl_bundle_files',
+  'cl_bundles',
+  'cl_files',
+  'cl_firmwares',
+  'cl_revisions',
+  'cl_upload_chunks',
+  'cl_uploads',
   'counters',
   'customers',
   'dashboard_reports',
@@ -67,6 +75,8 @@ const EXPECTED_TABLES = [
   'warehouse_dispatches',
   'warehouse_order_handovers',
   'warehouse_orders',
+  'warehouse_ready_boxes',
+  'warehouse_ready_serials',
 ];
 
 let admin: Db;
@@ -310,7 +320,7 @@ describe('skema baseline', () => {
     await db.close();
   });
 
-  test('51 tabel aplikasi + schema_migrations; terapan dua kali tak mengubah apa pun', async () => {
+  test('61 tabel aplikasi + schema_migrations; terapan dua kali tak mengubah apa pun', async () => {
     const before = await tableNames(db);
     expect(before).toEqual(EXPECTED_TABLES);
     expect(await applyMigrations(db)).toEqual([]);
@@ -365,6 +375,11 @@ describe('skema baseline', () => {
       { name: '0040_serial_keluar_gudang.sql' },
       { name: '0041_serial_ready_wh.sql' },
       { name: '0042_serial_wh_nomor_riwayat.sql' },
+      { name: '0043_stok_ready_kardus.sql' },
+      { name: '0044_wh_penjualan_tanpa_so.sql' },
+      { name: '0045_indeks_kandidat_task_gudang.sql' },
+      { name: '0046_country_lock_bundel.sql' },
+      { name: '0047_wh_catatan.sql' },
     ]);
   });
 
@@ -509,6 +524,12 @@ describe('skema baseline', () => {
         'brands.brands_key_live',
         'business_units.business_units_code_unique_live',
         'business_units.business_units_name_unique_live',
+        'cl_bundle_files.cl_bundle_files_sha',
+        'cl_bundles.cl_bundles_number',
+        'cl_files.cl_files_path_live',
+        'cl_firmwares.cl_firmwares_code_live',
+        'cl_revisions.cl_revisions_file_seq',
+        'cl_uploads.cl_uploads_state',
         'customers.customers_key_live',
         'dashboard_reports.dashboard_reports_owner',
         'dashboard_share_visits.dashboard_share_visits_share',
@@ -522,6 +543,7 @@ describe('skema baseline', () => {
         'handover_comments.handover_comments_seq',
         'handovers.handovers_board',
         'handovers.handovers_board_live',
+        'handovers.handovers_candidates',
         'handovers.handovers_client_id',
         'handovers.handovers_customer',
         'handovers.handovers_number_live',
@@ -598,6 +620,11 @@ describe('skema baseline', () => {
         'warehouse_orders.warehouse_orders_bu_updated',
         'warehouse_orders.warehouse_orders_customer',
         'warehouse_orders.warehouse_orders_key',
+        'warehouse_ready_boxes.warehouse_ready_boxes_dispatch',
+        'warehouse_ready_boxes.warehouse_ready_boxes_open',
+        'warehouse_ready_serials.warehouse_ready_serials_box',
+        'warehouse_ready_serials.warehouse_ready_serials_dispatch',
+        'warehouse_ready_serials.warehouse_ready_serials_released',
       ].sort(),
     );
     const pk = await db
@@ -626,6 +653,9 @@ describe('skema baseline', () => {
     expect(pks.push_subscriptions).toBe('endpoint_hash,recipient');
     expect(pks.notification_prefs).toBe('recipient');
     expect(pks.guide_progress).toBe('recipient,guide_id');
+    expect(pks.cl_blobs).toBe('sha256');
+    expect(pks.cl_bundle_files).toBe('bundle_id,path');
+    expect(pks.cl_upload_chunks).toBe('upload_id,idx');
   });
 
   const UNIQUE_KEY_CASES: { table: string; insert: string; label: string }[] = [

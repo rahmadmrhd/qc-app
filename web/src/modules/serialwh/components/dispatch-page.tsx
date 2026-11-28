@@ -8,11 +8,12 @@ import type {
 import { clipboardText } from '@shared/serial-warehouse';
 import { normalizeSerial, splitSerialInput } from '@shared/serials';
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
-import { Ellipsis } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
+import { BulkBar } from '@/components/data-table/bulk-bar';
 import type { LinkOption } from '@/components/link-field';
 import { FormPage } from '@/components/page/form-page';
+import { SelectModeProvider } from '@/components/page/select-mode';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import {
   AlertDialog,
@@ -25,17 +26,13 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+import { useIsDesktop } from '@/hooks/use-is-desktop';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useStackNavigation } from '@/hooks/use-stack-navigation';
 import { api } from '@/lib/api';
 import { canReadWarehouse, warehouseBuIds } from '@/modules/auth/permissions';
 import { useMe } from '@/modules/auth/use-me';
+import { useOptionalActiveLocations } from '@/modules/location/active-locations-context';
 import { useScanFeedback } from '@/modules/serial/lib/scan-feedback';
 import { beginWarehouseSubmit } from '../lib/active-submission';
 import { copyLines } from '../lib/clipboard';
@@ -71,10 +68,11 @@ import {
   warehouseSerialsQueryOptions,
 } from '../queries';
 import { ClipboardResultDialog } from './clipboard-result-dialog';
-import { ConfirmDialog, type ConfirmValues, type WarehousePurpose } from './confirm-dialog';
+import { ConfirmDialog, type ConfirmValues } from './confirm-dialog';
 import { type DispatchFilters, DispatchHeader } from './dispatch-header';
 import { DispatchTable } from './dispatch-table';
 import { ScanBar, type ScanLine } from './scan-bar';
+import { SelectionSummary } from './selection-summary';
 import { type ProgressState, SubmitProgressDialog } from './submit-progress-dialog';
 import { type TypeDialogState, TypeMismatchDialog } from './type-mismatch-dialog';
 import { WarningBanners } from './warning-banners';
@@ -100,13 +98,19 @@ function mergeSkipped(
   return [...bySerial.values()];
 }
 
+/** Pesan server bila nomor kardus awal bentrok dengan kardus yang sudah ada (potongan pertama ditolak). */
+const BOX_TAKEN = /Nomor kardus sudah dipakai/;
+
 /** Form Keluar Gudang (spek 5.3-5.6, 5.11, 5.12, 5.14 pemakaian 1). */
 export function DispatchPage({ handoverId, onCancel }: DispatchPageProps) {
   const me = useMe();
   const email = me.email;
   const stack = useStackNavigation();
   const phone = useIsMobile();
+  const desktop = useIsDesktop();
   const { announce, unlock } = useScanFeedback();
+  const [allSelected, setAllSelected] = useState(false);
+  const selectAllRef = useRef<(() => void) | null>(null);
   const { mutateAsync: sendChunk } = useSubmitWarehouseChunk();
 
   const allowedBuIds = useMemo(() => warehouseBuIds(me, 'edit'), [me]);
@@ -123,6 +127,9 @@ export function DispatchPage({ handoverId, onCancel }: DispatchPageProps) {
   );
   const buCodeOf = useCallback((id: string) => buCodes.get(id) ?? '', [buCodes]);
 
+  // Lokasi aktif pengguna (cadangan Lokasi di dialog simpan); tanpa penyedia (mis. tes) = tidak ada.
+  const activeLocations = useOptionalActiveLocations();
+  const activeLocationIds = useMemo(() => activeLocations?.selectedIds ?? [], [activeLocations]);
   const options = useQuery(warehouseOptionsQueryOptions());
   const locationOptions = useMemo<LinkOption[]>(
     () => (options.data?.locations ?? []).map((l) => ({ id: l.id, label: l.name })),
@@ -151,10 +158,6 @@ export function DispatchPage({ handoverId, onCancel }: DispatchPageProps) {
   );
 
   const [skipped, setSkipped] = useState<readonly WarehouseSkippedRowDto[]>(initial?.skipped ?? []);
-  // Tujuan pengeluaran (dipilih di dialog simpan); kiriman yang dilanjutkan memakai mode headernya.
-  const [purpose, setPurpose] = useState<WarehousePurpose>(
-    initial?.submission?.header.mode === 'ready' ? 'ready' : 'order',
-  );
 
   // Nilai terkini yang dibaca antrean scan (berjalan setelah render ulang) dan penulis draf.
   const live = useRef({ itemId, filters, rows, submission, skipped });
@@ -183,7 +186,7 @@ export function DispatchPage({ handoverId, onCancel }: DispatchPageProps) {
       // Kuota penyimpanan penuh atau diblokir: draf hanya di memori, hilang bila halaman dimuat ulang.
       writeFailedRef.current = true;
       toast.warning(
-        'Draf tidak dapat disimpan di perangkat ini. Selesaikan pengeluaran sebelum menutup halaman.',
+        'Draf tidak dapat disimpan di perangkat ini. Selesaikan catatan sebelum menutup halaman.',
       );
     }
   }, []);
@@ -259,7 +262,7 @@ export function DispatchPage({ handoverId, onCancel }: DispatchPageProps) {
       ...(filters.testDate !== '' ? { testDate: filters.testDate } : {}),
       ...(queryText !== '' ? { query: queryText } : {}),
       ...(filters.hideRecorded && filters.buId !== '' ? { hideRecordedBuId: filters.buId } : {}),
-      ...(purpose === 'ready' ? { forMode: 'ready' as const } : {}),
+      forMode: 'note' as const,
     }),
   );
   const candidates = useMemo(
@@ -291,6 +294,8 @@ export function DispatchPage({ handoverId, onCancel }: DispatchPageProps) {
   const [line, setLine] = useState<ScanLine | null>(null);
   const [typeDialog, setTypeDialog] = useState<TypeDialogState | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  // Galat nomor kardus dari server: dialog simpan dibuka lagi dengan pesan pada field nomor kardus awal.
+  const [boxStartError, setBoxStartError] = useState<string | undefined>(undefined);
   const [clearOpen, setClearOpen] = useState(false);
   const [progress, setProgress] = useState<ProgressState | null>(null);
   const [result, setResult] = useState<{
@@ -323,11 +328,16 @@ export function DispatchPage({ handoverId, onCancel }: DispatchPageProps) {
   // --- Scan (antrean berurutan: pemindai fisik lebih cepat dari lookup) ---
   const queue = useRef<Promise<void>>(Promise.resolve());
   const processScans = useCallback(
-    async (text: string) => {
+    async (text: string, silent = false) => {
+      // `silent`: hasil dari dialog kamera, yang sudah membunyikan nada saat membaca; tanpa ini tiap baris yang
+      // disimpan membunyikan nada lagi (50 serial = 50 bunyi).
+      const ring = (tone: ScanLine['tone']) => {
+        if (!silent) announce(tone);
+      };
       const split = splitSerialInput(text);
       const wanted = split.serials;
       if (wanted.length === 0) {
-        announce('rejected');
+        ring('rejected');
         setLine({ tone: 'rejected', text: 'Serial Number tidak sah' });
         return;
       }
@@ -343,7 +353,7 @@ export function DispatchPage({ handoverId, onCancel }: DispatchPageProps) {
           for (const dto of output.found) found.set(normalizeSerial(dto.serial), dto);
         }
       } catch {
-        announce('rejected');
+        ring('rejected');
         setLine({ tone: 'rejected', text: 'Tidak bisa mencari ke server. Coba lagi.' });
         return;
       }
@@ -393,6 +403,7 @@ export function DispatchPage({ handoverId, onCancel }: DispatchPageProps) {
                 buIds: [],
                 proofRequired: false,
                 proofMin: 0,
+                boxSize: 0,
               });
             }
             addAcc(makeExistingRow(dto));
@@ -467,16 +478,18 @@ export function DispatchPage({ handoverId, onCancel }: DispatchPageProps) {
               }${stats.skipped > 0 ? `, ${stats.skipped} ditahan` : ''}`,
             };
       setLine(summary);
-      announce(summary.tone);
+      ring(summary.tone);
       setFlash(summary.tone === 'rejected' ? 'rejected' : null);
       if (dialog) setTypeDialog(dialog);
     },
     [announce, commitItem, commitRows, highlightKeys],
   );
   const handleScan = useCallback(
-    (text: string) => {
+    (text: string, options?: { silent?: boolean }) => {
       unlock();
-      queue.current = queue.current.then(() => processScans(text)).catch(() => undefined);
+      queue.current = queue.current
+        .then(() => processScans(text, options?.silent === true))
+        .catch(() => undefined);
     },
     [processScans, unlock],
   );
@@ -585,7 +598,7 @@ export function DispatchPage({ handoverId, onCancel }: DispatchPageProps) {
             });
             return;
           }
-          rejectText(new Error('Pengeluaran belum selesai'));
+          rejectText(new Error('Catatan belum selesai'));
           if (outcome.status === 'paused') {
             setProgress({ phase: 'paused', sent: outcome.sentChunks, chunkCount });
             return;
@@ -594,6 +607,12 @@ export function DispatchPage({ handoverId, onCancel }: DispatchPageProps) {
             // Potongan pertama atomik: tidak ada yang tersimpan, jadi kiriman dibuka lagi dan baris bisa diperbaiki.
             live.current.submission = undefined;
             setSubmission(undefined);
+            if (BOX_TAKEN.test(outcome.message)) {
+              setBoxStartError(outcome.message);
+              setProgress(null);
+              setConfirmOpen(true);
+              return;
+            }
           }
           if (outcome.serial) setFailedSerial({ serial: outcome.serial, message: outcome.message });
           setProgress({
@@ -614,13 +633,38 @@ export function DispatchPage({ handoverId, onCancel }: DispatchPageProps) {
   function startSubmit(values: ConfirmValues) {
     // Kiriman baru: tanda "dilewati" dari kiriman sebelumnya tidak berlaku lagi.
     commitSkipped([]);
+    setBoxStartError(undefined);
+    // Lokasi dialog menjadi lokasi SEMUA serial baru (menimpa lokasi chip saat scan); tanggal uji hanya mengisi yang
+    // kosong: chip Tanggal uji bila terisi, selain itu tanggal keluar. Urutan baris TIDAK diubah (= urutan masuk ke
+    // pilihan = urutan `seq` dan penomoran kardus).
+    if (live.current.rows.some((row) => row.kind === 'new')) {
+      const chipTestDate = live.current.filters.testDate;
+      commitRows(
+        live.current.rows.map((row) =>
+          row.kind === 'new'
+            ? {
+                ...row,
+                buId: row.buId === '' ? values.buId : row.buId,
+                locationId: values.locationId,
+                testDate:
+                  row.testDate === ''
+                    ? chipTestDate !== ''
+                      ? chipTestDate
+                      : values.dispatchedOn
+                    : row.testDate,
+              }
+            : row,
+        ),
+      );
+    }
     const sub = freezeSubmission(live.current.rows, {
-      ...(values.mode === 'ready' ? { mode: 'ready' as const } : {}),
+      mode: 'note' as const,
+      boxStart: values.boxStart,
+      boxSize: values.boxSize,
       dispatchedOn: values.dispatchedOn,
-      ...(values.orderId ? { orderId: values.orderId } : {}),
-      orderNumber: values.orderNumber,
+      orderNumber: '',
       buId: values.buId,
-      customerName: values.customerName,
+      customerName: '',
       itemId: live.current.itemId,
       note: values.note,
       handoverIds: values.handoverIds,
@@ -667,36 +711,6 @@ export function DispatchPage({ handoverId, onCancel }: DispatchPageProps) {
     [rows, formBuId],
   );
 
-  const menu = (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button
-          type="button"
-          variant="outline"
-          color="primary"
-          size="icon"
-          aria-label="Aksi lainnya"
-        >
-          <Ellipsis aria-hidden />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
-        {canReadWarehouse(me) ? (
-          <DropdownMenuItem onSelect={() => stack.push({ to: '/serial/gudang/riwayat' })}>
-            Riwayat
-          </DropdownMenuItem>
-        ) : null}
-        <DropdownMenuItem
-          variant="destructive"
-          disabled={rows.length === 0 || frozen}
-          onSelect={requestClear}
-        >
-          Kosongkan pilihan
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-
   const detected = handoverContext?.detected ?? [];
   const itemExtra = (
     <>
@@ -735,7 +749,19 @@ export function DispatchPage({ handoverId, onCancel }: DispatchPageProps) {
         onCancel={onCancel}
         submitLabel={`Salin ke clipboard (${selectedCount})`}
         submitDisabled={selectedCount === 0 || frozen}
-        extra={menu}
+        {...(phone && selectedCount > 0
+          ? {
+              selectionBar: (
+                <SelectionSummary
+                  count={selectedCount}
+                  allSelected={allSelected}
+                  disabled={frozen}
+                  onClear={requestClear}
+                  onToggleAll={() => (allSelected ? requestClear() : selectAllRef.current?.())}
+                />
+              ),
+            }
+          : {})}
       >
         <form
           id="warehouse-dispatch-form"
@@ -768,7 +794,8 @@ export function DispatchPage({ handoverId, onCancel }: DispatchPageProps) {
                 onFilterChange={onFilterChange}
                 onScan={handleScan}
                 isKnown={isKnown}
-                disabled={frozen}
+                disabled={frozen || itemId === ''}
+                lockedPlaceholder={frozen ? undefined : 'Pilih Item dulu'}
                 line={line}
                 flash={flash}
                 sticky={phone}
@@ -780,7 +807,7 @@ export function DispatchPage({ handoverId, onCancel }: DispatchPageProps) {
             <Alert color="info">
               <AlertDescription className="flex flex-wrap items-center justify-between gap-2">
                 <span>
-                  Pengeluaran belum selesai dikirim ({submission.sentChunks} dari{' '}
+                  Catatan belum selesai dikirim ({submission.sentChunks} dari{' '}
                   {Math.ceil(submission.header.total / submission.chunkSize)} potongan). Pilihan
                   dikunci sampai selesai.
                 </span>
@@ -836,42 +863,54 @@ export function DispatchPage({ handoverId, onCancel }: DispatchPageProps) {
             </Alert>
           ) : null}
 
-          <p className="text-sm text-muted-foreground" aria-live="polite">
-            {selectedCount} dipilih{newCount > 0 ? ` · ${newCount} draf baru` : ''}
-          </p>
+          {newCount > 0 ? (
+            <p className="text-sm text-muted-foreground" aria-live="polite">
+              {newCount} draf baru
+            </p>
+          ) : null}
           <WarningBanners counts={counts} serials={warningSerials} />
 
-          <DispatchTable
-            draftRows={rows}
-            candidates={itemId === '' ? [] : candidates}
-            item={item}
-            formBuId={formBuId}
-            buCodeOf={resolvedBuCode}
-            locationNameOf={locationNameOf}
-            frozen={frozen}
-            skippedReasons={skippedReasons}
-            highlighted={highlighted}
-            onAdd={addDtos}
-            onRemove={removeKeys}
-            isLoading={itemId !== '' && serialsQuery.isPending}
-            isError={serialsQuery.isLoadingError}
-            onRetry={() => void serialsQuery.refetch()}
-            hasMore={serialsQuery.hasNextPage}
-            loadingMore={serialsQuery.isFetchingNextPage}
-            onLoadMore={() => void serialsQuery.fetchNextPage()}
-            empty={
-              itemId === ''
-                ? 'Pilih Item atau scan serial untuk mulai'
-                : 'Tidak ada serial yang cocok'
-            }
-            filtered={
-              itemId !== '' &&
-              (queryText !== '' ||
-                filters.buId !== '' ||
-                filters.locationId !== '' ||
-                filters.testDate !== '')
-            }
-          />
+          {/* Desktop: aksi pilihan langsung di atas tabel (Batalkan pilihan + jumlah). Ponsel: bar bawah form. */}
+          {desktop && selectedCount > 0 ? (
+            <BulkBar count={selectedCount} onClear={requestClear} busy={frozen}>
+              {null}
+            </BulkBar>
+          ) : null}
+          <SelectModeProvider>
+            <DispatchTable
+              onAllSelectedChange={setAllSelected}
+              selectAllRef={selectAllRef}
+              draftRows={rows}
+              candidates={itemId === '' ? [] : candidates}
+              item={item}
+              formBuId={formBuId}
+              buCodeOf={resolvedBuCode}
+              locationNameOf={locationNameOf}
+              frozen={frozen}
+              skippedReasons={skippedReasons}
+              highlighted={highlighted}
+              onAdd={addDtos}
+              onRemove={removeKeys}
+              isLoading={itemId !== '' && serialsQuery.isPending}
+              isError={serialsQuery.isLoadingError}
+              onRetry={() => void serialsQuery.refetch()}
+              hasMore={serialsQuery.hasNextPage}
+              loadingMore={serialsQuery.isFetchingNextPage}
+              onLoadMore={() => void serialsQuery.fetchNextPage()}
+              empty={
+                itemId === ''
+                  ? 'Pilih Item atau scan serial untuk mulai'
+                  : 'Tidak ada serial yang cocok'
+              }
+              filtered={
+                itemId !== '' &&
+                (queryText !== '' ||
+                  filters.buId !== '' ||
+                  filters.locationId !== '' ||
+                  filters.testDate !== '')
+              }
+            />
+          </SelectModeProvider>
         </form>
       </FormPage>
 
@@ -882,13 +921,13 @@ export function DispatchPage({ handoverId, onCancel }: DispatchPageProps) {
         item={item}
         formBuId={formBuId}
         buOptions={buOptions}
-        options={options.data}
+        locationOptions={locationOptions}
+        defaultLocationId={filters.locationId}
+        activeLocationIds={activeLocationIds}
         handoverContext={handoverContext}
         originHandoverId={handoverId}
-        purpose={purpose}
-        onPurposeChange={setPurpose}
-        onRemoveRows={(ids) => removeKeys(ids)}
         onConfirm={startSubmit}
+        boxStartError={boxStartError}
       />
       <TypeMismatchDialog
         state={typeDialog}
@@ -904,6 +943,7 @@ export function DispatchPage({ handoverId, onCancel }: DispatchPageProps) {
             buIds: [],
             proofRequired: false,
             proofMin: 0,
+            boxSize: 0,
           });
           commitRows(addRow(live.current.rows, makeExistingRow(dto)) as WarehouseDraftRow[]);
           setTypeDialog(null);

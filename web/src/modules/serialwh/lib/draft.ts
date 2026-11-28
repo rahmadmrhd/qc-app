@@ -46,29 +46,22 @@ export function removeRows(
   return rows.filter((row) => !keys.has(rowKey(row)));
 }
 
-export type MissingField = 'item' | 'bu' | 'location' | 'testDate';
+/**
+ * Isian yang menahan scan. Hanya Item: BU, Lokasi, dan Tanggal uji adalah chip FILTER (boleh kosong); serial baru yang
+ * belum punya lokasi atau tanggal uji melengkapinya di dialog Simpan.
+ */
+export type MissingField = 'item';
 
 /** Isian bawaan yang masih kosong untuk membuat serial baru dari scan. */
 export function missingDefaults(
   itemId: string,
-  filters: WarehouseDraft['filters'],
+  _filters?: WarehouseDraft['filters'],
 ): MissingField[] {
-  const missing: MissingField[] = [];
-  if (itemId === '') missing.push('item');
-  if (filters.buId === '') missing.push('bu');
-  if (filters.locationId === '') missing.push('location');
-  if (filters.testDate === '') missing.push('testDate');
-  return missing;
+  return itemId === '' ? ['item'] : [];
 }
 
 export function missingMessage(missing: readonly MissingField[]): string {
-  if (missing.includes('item')) return 'Pilih Item dulu';
-  const names = missing.map((name) =>
-    name === 'bu' ? 'BU' : name === 'location' ? 'Lokasi' : 'Tanggal uji',
-  );
-  if (names.length === 0) return '';
-  if (names.length === 1) return `Isi ${names[0]} dulu`;
-  return `Isi ${names.slice(0, -1).join(', ')} dan ${names[names.length - 1]} dulu`;
+  return missing.includes('item') ? 'Pilih Item dulu' : '';
 }
 
 export interface DraftSummary {

@@ -32,6 +32,14 @@ describe('pilihan Keluar Gudang', () => {
     expect(viewer.ok).toBe(false);
   });
 
+  test('itemOptions: boxSize dari master Item (0 bila belum diisi)', async () => {
+    await env.DB.prepare("UPDATE items SET box_size = 12 WHERE id = 'i-a1'").run();
+    const out = await call(WH_USERS.edit, 'serialWarehouse.itemOptions', {});
+    const size = (id: string) => out.data.items.find((i: Json) => i.id === id).boxSize;
+    expect(size('i-a1')).toBe(12);
+    expect(size('i-a2')).toBe(0);
+  });
+
   test('orderOptions: kecocokan persis No SO paling depan; kursor liar dijepit', async () => {
     for (const number of ['SO-1', 'SO-10', 'SO-11']) {
       await submitDispatch(env, WH_USERS.edit, { orderNumber: number, fresh: [`E-${number}`] });
@@ -43,6 +51,22 @@ describe('pilihan Keluar Gudang', () => {
     expect(out.data.items[0].number).toBe('SO-1');
     const wild = await call(WH_USERS.edit, 'serialWarehouse.orderOptions', { cursor: '1e30' });
     expect(wild.ok).toBe(true);
+    expect(wild.data.items).toEqual([]);
+  });
+
+  test('orderOptions: cocok di bagian mana pun kunci; persis, lalu awalan, lalu tengah/akhir', async () => {
+    for (const number of ['X-AB', 'AB-1', 'ZAB', 'AB']) {
+      await submitDispatch(env, WH_USERS.edit, { orderNumber: number, fresh: [`M-${number}`] });
+    }
+    const out = await call(WH_USERS.edit, 'serialWarehouse.orderOptions', { query: 'ab' });
+    const numbers = out.data.items.map((o: Json) => o.number);
+    expect(numbers[0]).toBe('AB');
+    expect(numbers[1]).toBe('AB-1');
+    expect(numbers.slice(2).sort()).toEqual(['X-AB', 'ZAB']);
+    const tail = await call(WH_USERS.edit, 'serialWarehouse.orderOptions', { query: 'b-1' });
+    expect(tail.data.items.map((o: Json) => o.number)).toEqual(['AB-1']);
+    // Karakter pola LIKE diperlakukan harfiah.
+    const wild = await call(WH_USERS.edit, 'serialWarehouse.orderOptions', { query: '%' });
     expect(wild.data.items).toEqual([]);
   });
 
@@ -68,6 +92,8 @@ describe('pilihan Keluar Gudang', () => {
     expect(all.data.items.map((o: Json) => o.number)).toEqual(['SO-200', 'SO-100']);
     const prefix = await call(WH_USERS.both, 'serialWarehouse.orderOptions', { query: 'SO-1' });
     expect(prefix.data.items.map((o: Json) => o.number)).toEqual(['SO-100']);
+    const middle = await call(WH_USERS.both, 'serialWarehouse.orderOptions', { query: '00' });
+    expect(middle.data.items.map((o: Json) => o.number)).toEqual(['SO-200', 'SO-100']);
     const own = await call(WH_USERS.edit, 'serialWarehouse.orderOptions', {});
     expect(own.data.items.map((o: Json) => o.number)).toEqual(['SO-100']);
   });

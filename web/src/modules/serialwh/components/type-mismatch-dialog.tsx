@@ -39,7 +39,7 @@ export function TypeMismatchDialog({
               <DialogTitle>Ganti Item ke {state.serial.itemLabel}?</DialogTitle>
               <DialogDescription>
                 {state.serial.serial} bertipe {state.serial.itemLabel}, beda dari Item di form. Satu
-                pengeluaran hanya satu Tipe.
+                catatan hanya satu Tipe.
               </DialogDescription>
             </DialogHeader>
             <DialogFooter>
@@ -56,8 +56,8 @@ export function TypeMismatchDialog({
             <DialogHeader>
               <DialogTitle>Beda Tipe</DialogTitle>
               <DialogDescription>
-                {state.serial.serial} bertipe {state.serial.itemLabel}, sedangkan pengeluaran ini
-                untuk {state.itemLabel}. Selesaikan pengeluaran Tipe ini atau batalkan pilihan.
+                {state.serial.serial} bertipe {state.serial.itemLabel}, sedangkan catatan ini untuk{' '}
+                {state.itemLabel}. Selesaikan catatan Tipe ini atau batalkan pilihan.
               </DialogDescription>
             </DialogHeader>
             <DialogFooter>

@@ -183,4 +183,75 @@ describe('tautan SO-task', () => {
     expect(qc[0]?.readable).toBe(true);
     expect(qc[0]?.customerName).toBe('Rahasia');
   });
+  test('Penjualan tanpa No SO menautkan task ke id pengeluaran; daftar Riwayat memuatnya', async () => {
+    await seedTask(env, { id: 't-ns', customerName: 'PT Maju' });
+    const out = (await restCall(env, WH_USERS.wh, 'serialWarehouse.submit', {
+      clientId: crypto.randomUUID(),
+      chunkIndex: 0,
+      header: {
+        dispatchedOn: '2026-01-05',
+        orderNumber: '',
+        buId: 'bu-a',
+        customerName: '',
+        itemId: 'i-ax300',
+        note: '',
+        handoverIds: ['t-ns'],
+        total: 1,
+        chunkSize: 200,
+      },
+      rows: [
+        {
+          kind: 'new',
+          clientId: crypto.randomUUID(),
+          serial: 'NS-LINK',
+          locationId: ENV.locA,
+          testDate: '2026-01-05',
+        },
+      ],
+    })) as Json;
+    expect(out.ok).toBe(true);
+    expect(await linked(out.data.dispatchId)).toEqual(['t-ns']);
+    const list = (await restCall(env, WH_USERS.wh, 'serialWarehouse.dispatchList', {})) as Json;
+    const item = list.data.items.find((row: Json) => row.id === out.data.dispatchId);
+    expect(item.handovers.map((h: Json) => h.id)).toEqual(['t-ns']);
+    expect(item.orderId).toBe('');
+  });
+  test('orderOptions.locationId: lokasi bersama task tertaut, hanya bila satu lokasi dan terbaca', async () => {
+    const opts = async (email: string, extra: Record<string, unknown> = {}) => {
+      const out = (await restCall(env, email, 'serialWarehouse.orderOptions', extra)) as Json;
+      expect(out.ok).toBe(true);
+      return new Map<string, string | undefined>(
+        out.data.items.map((o: Json) => [o.id, o.locationId]),
+      );
+    };
+    for (const id of ['o-one', 'o-two', 'o-none', 'o-hidden', 'o-cancel']) {
+      await seedOrder(env, { id });
+    }
+    await seedTask(env, { id: 'a1', locationId: ENV.locA });
+    await seedTask(env, { id: 'a2', locationId: ENV.locA });
+    await seedTask(env, { id: 'b1', locationId: ENV.locB });
+    await seedTask(env, { id: 'b-off', locationId: ENV.locB, boardStatus: 'cancelled' });
+    await linkOrder(env, 'o-one', 'a1');
+    await linkOrder(env, 'o-one', 'a2');
+    await linkOrder(env, 'o-two', 'a1');
+    await linkOrder(env, 'o-two', 'b1');
+    await linkOrder(env, 'o-hidden', 'b1');
+    await linkOrder(env, 'o-cancel', 'a1');
+    await linkOrder(env, 'o-cancel', 'b-off');
+    // Pengguna WH hanya membaca loc-a.
+    const wh = await opts(WH_USERS.wh);
+    expect(wh.get('o-one')).toBe(ENV.locA);
+    expect(wh.get('o-two')).toBeUndefined();
+    expect(wh.get('o-none')).toBeUndefined();
+    expect(wh.get('o-hidden')).toBeUndefined();
+    expect(wh.get('o-cancel')).toBe(ENV.locA);
+    // Pengguna QC membaca loc-a dan loc-b: lokasi tak terbaca bagi WH kini terbaca, dua lokasi tetap kosong.
+    const qc = await opts(WH_USERS.qc);
+    expect(qc.get('o-hidden')).toBe(ENV.locB);
+    expect(qc.get('o-two')).toBeUndefined();
+    // Jalur ids memakai perhitungan yang sama.
+    const byIds = await opts(WH_USERS.wh, { ids: ['o-one', 'o-hidden'] });
+    expect(byIds.get('o-one')).toBe(ENV.locA);
+    expect(byIds.get('o-hidden')).toBeUndefined();
+  });
 });

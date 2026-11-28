@@ -19,6 +19,9 @@ import { Route as DashboardPublikTokenRouteImport } from './routes/dashboard-pub
 import { Route as LaporanTokenRouteImport } from './routes/laporan.$token'
 import { Route as AppAccessAuditRouteImport } from './routes/_app/access/audit'
 import { Route as AppAccessPushRouteImport } from './routes/_app/access/push'
+import { Route as AppCountrylockFirmwareRouteImport } from './routes/_app/countrylock/firmware'
+import { Route as AppCountrylockImportRouteImport } from './routes/_app/countrylock/import'
+import { Route as AppCountrylockSettingsRouteImport } from './routes/_app/countrylock/settings'
 import { Route as AppCustomerIndexRouteImport } from './routes/_app/customer/index'
 import { Route as AppCustomerCustomerIdRouteImport } from './routes/_app/customer/$customerId'
 import { Route as AppDashboardIndexRouteImport } from './routes/_app/dashboard/index'
@@ -49,6 +52,9 @@ import { Route as AppAccessRolesIndexRouteImport } from './routes/_app/access/ro
 import { Route as AppAccessRolesRoleIdRouteImport } from './routes/_app/access/roles/$roleId'
 import { Route as AppAccessUsersIndexRouteImport } from './routes/_app/access/users/index'
 import { Route as AppAccessUsersUserIdRouteImport } from './routes/_app/access/users/$userId'
+import { Route as AppCountrylockBundlesIndexRouteImport } from './routes/_app/countrylock/bundles/index'
+import { Route as AppCountrylockBundlesNumberRouteImport } from './routes/_app/countrylock/bundles/$number'
+import { Route as AppCountrylockFilesIndexRouteImport } from './routes/_app/countrylock/files/index'
 import { Route as AppDashboardLaporanIndexRouteImport } from './routes/_app/dashboard/laporan/index'
 import { Route as AppDashboardLaporanNewRouteImport } from './routes/_app/dashboard/laporan/new'
 import { Route as AppDashboardTautanIndexRouteImport } from './routes/_app/dashboard/tautan/index'
@@ -71,6 +77,7 @@ import { Route as AppSerialReportsIndexRouteImport } from './routes/_app/serial/
 import { Route as AppSerialReportsCaseIdRouteImport } from './routes/_app/serial/reports/$caseId'
 import { Route as AppStickerTypesIndexRouteImport } from './routes/_app/sticker/types/index'
 import { Route as AppStickerTypesTypeIdRouteImport } from './routes/_app/sticker/types/$typeId'
+import { Route as AppCountrylockFilesFileIdIndexRouteImport } from './routes/_app/countrylock/files/$fileId/index'
 import { Route as AppDashboardLaporanReportIdIndexRouteImport } from './routes/_app/dashboard/laporan/$reportId/index'
 import { Route as AppDashboardLaporanReportIdEditRouteImport } from './routes/_app/dashboard/laporan/$reportId/edit'
 import { Route as AppQrcodeDefaultPresetIdIndexRouteImport } from './routes/_app/qrcode/default/$presetId/index'
@@ -126,6 +133,21 @@ const AppAccessAuditRoute = AppAccessAuditRouteImport.update({
 const AppAccessPushRoute = AppAccessPushRouteImport.update({
   id: '/access/push',
   path: '/access/push',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppCountrylockFirmwareRoute = AppCountrylockFirmwareRouteImport.update({
+  id: '/countrylock/firmware',
+  path: '/countrylock/firmware',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppCountrylockImportRoute = AppCountrylockImportRouteImport.update({
+  id: '/countrylock/import',
+  path: '/countrylock/import',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppCountrylockSettingsRoute = AppCountrylockSettingsRouteImport.update({
+  id: '/countrylock/settings',
+  path: '/countrylock/settings',
   getParentRoute: () => AppRoute,
 } as any)
 const AppCustomerIndexRoute = AppCustomerIndexRouteImport.update({
@@ -281,6 +303,24 @@ const AppAccessUsersUserIdRoute = AppAccessUsersUserIdRouteImport.update({
   path: '/access/users/$userId',
   getParentRoute: () => AppRoute,
 } as any)
+const AppCountrylockBundlesIndexRoute =
+  AppCountrylockBundlesIndexRouteImport.update({
+    id: '/countrylock/bundles/',
+    path: '/countrylock/bundles/',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppCountrylockBundlesNumberRoute =
+  AppCountrylockBundlesNumberRouteImport.update({
+    id: '/countrylock/bundles/$number',
+    path: '/countrylock/bundles/$number',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppCountrylockFilesIndexRoute =
+  AppCountrylockFilesIndexRouteImport.update({
+    id: '/countrylock/files/',
+    path: '/countrylock/files/',
+    getParentRoute: () => AppRoute,
+  } as any)
 const AppDashboardLaporanIndexRoute =
   AppDashboardLaporanIndexRouteImport.update({
     id: '/dashboard/laporan/',
@@ -395,6 +435,12 @@ const AppStickerTypesTypeIdRoute = AppStickerTypesTypeIdRouteImport.update({
   path: '/sticker/types/$typeId',
   getParentRoute: () => AppRoute,
 } as any)
+const AppCountrylockFilesFileIdIndexRoute =
+  AppCountrylockFilesFileIdIndexRouteImport.update({
+    id: '/countrylock/files/$fileId/',
+    path: '/countrylock/files/$fileId/',
+    getParentRoute: () => AppRoute,
+  } as any)
 const AppDashboardLaporanReportIdIndexRoute =
   AppDashboardLaporanReportIdIndexRouteImport.update({
     id: '/dashboard/laporan/$reportId/',
@@ -448,6 +494,9 @@ export interface FileRoutesByFullPath {
   '/laporan/$token': typeof LaporanTokenRoute
   '/access/audit': typeof AppAccessAuditRoute
   '/access/push': typeof AppAccessPushRoute
+  '/countrylock/firmware': typeof AppCountrylockFirmwareRoute
+  '/countrylock/import': typeof AppCountrylockImportRoute
+  '/countrylock/settings': typeof AppCountrylockSettingsRoute
   '/customer/$customerId': typeof AppCustomerCustomerIdRoute
   '/handover/new': typeof AppHandoverNewRoute
   '/item/new': typeof AppItemNewRoute
@@ -474,6 +523,7 @@ export interface FileRoutesByFullPath {
   '/access/locations/$locationId': typeof AppAccessLocationsLocationIdRoute
   '/access/roles/$roleId': typeof AppAccessRolesRoleIdRoute
   '/access/users/$userId': typeof AppAccessUsersUserIdRoute
+  '/countrylock/bundles/$number': typeof AppCountrylockBundlesNumberRoute
   '/dashboard/laporan/new': typeof AppDashboardLaporanNewRoute
   '/dashboard/tautan/$shareId': typeof AppDashboardTautanShareIdRoute
   '/handover/$handoverId/edit': typeof AppHandoverHandoverIdEditRoute
@@ -488,6 +538,8 @@ export interface FileRoutesByFullPath {
   '/access/locations/': typeof AppAccessLocationsIndexRoute
   '/access/roles/': typeof AppAccessRolesIndexRoute
   '/access/users/': typeof AppAccessUsersIndexRoute
+  '/countrylock/bundles/': typeof AppCountrylockBundlesIndexRoute
+  '/countrylock/files/': typeof AppCountrylockFilesIndexRoute
   '/dashboard/laporan/': typeof AppDashboardLaporanIndexRoute
   '/dashboard/tautan/': typeof AppDashboardTautanIndexRoute
   '/handover/$handoverId/': typeof AppHandoverHandoverIdIndexRoute
@@ -503,6 +555,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/laporan/$reportId/edit': typeof AppDashboardLaporanReportIdEditRoute
   '/qrcode/default/$presetId/edit': typeof AppQrcodeDefaultPresetIdEditRoute
   '/serial/gudang/riwayat/$dispatchId': typeof AppSerialGudangRiwayatDispatchIdRoute
+  '/countrylock/files/$fileId/': typeof AppCountrylockFilesFileIdIndexRoute
   '/dashboard/laporan/$reportId/': typeof AppDashboardLaporanReportIdIndexRoute
   '/qrcode/default/$presetId/': typeof AppQrcodeDefaultPresetIdIndexRoute
   '/serial/gudang/riwayat/': typeof AppSerialGudangRiwayatIndexRoute
@@ -518,6 +571,9 @@ export interface FileRoutesByTo {
   '/': typeof AppIndexRoute
   '/access/audit': typeof AppAccessAuditRoute
   '/access/push': typeof AppAccessPushRoute
+  '/countrylock/firmware': typeof AppCountrylockFirmwareRoute
+  '/countrylock/import': typeof AppCountrylockImportRoute
+  '/countrylock/settings': typeof AppCountrylockSettingsRoute
   '/customer/$customerId': typeof AppCustomerCustomerIdRoute
   '/handover/new': typeof AppHandoverNewRoute
   '/item/new': typeof AppItemNewRoute
@@ -544,6 +600,7 @@ export interface FileRoutesByTo {
   '/access/locations/$locationId': typeof AppAccessLocationsLocationIdRoute
   '/access/roles/$roleId': typeof AppAccessRolesRoleIdRoute
   '/access/users/$userId': typeof AppAccessUsersUserIdRoute
+  '/countrylock/bundles/$number': typeof AppCountrylockBundlesNumberRoute
   '/dashboard/laporan/new': typeof AppDashboardLaporanNewRoute
   '/dashboard/tautan/$shareId': typeof AppDashboardTautanShareIdRoute
   '/handover/$handoverId/edit': typeof AppHandoverHandoverIdEditRoute
@@ -558,6 +615,8 @@ export interface FileRoutesByTo {
   '/access/locations': typeof AppAccessLocationsIndexRoute
   '/access/roles': typeof AppAccessRolesIndexRoute
   '/access/users': typeof AppAccessUsersIndexRoute
+  '/countrylock/bundles': typeof AppCountrylockBundlesIndexRoute
+  '/countrylock/files': typeof AppCountrylockFilesIndexRoute
   '/dashboard/laporan': typeof AppDashboardLaporanIndexRoute
   '/dashboard/tautan': typeof AppDashboardTautanIndexRoute
   '/handover/$handoverId': typeof AppHandoverHandoverIdIndexRoute
@@ -573,6 +632,7 @@ export interface FileRoutesByTo {
   '/dashboard/laporan/$reportId/edit': typeof AppDashboardLaporanReportIdEditRoute
   '/qrcode/default/$presetId/edit': typeof AppQrcodeDefaultPresetIdEditRoute
   '/serial/gudang/riwayat/$dispatchId': typeof AppSerialGudangRiwayatDispatchIdRoute
+  '/countrylock/files/$fileId': typeof AppCountrylockFilesFileIdIndexRoute
   '/dashboard/laporan/$reportId': typeof AppDashboardLaporanReportIdIndexRoute
   '/qrcode/default/$presetId': typeof AppQrcodeDefaultPresetIdIndexRoute
   '/serial/gudang/riwayat': typeof AppSerialGudangRiwayatIndexRoute
@@ -590,6 +650,9 @@ export interface FileRoutesById {
   '/_app/': typeof AppIndexRoute
   '/_app/access/audit': typeof AppAccessAuditRoute
   '/_app/access/push': typeof AppAccessPushRoute
+  '/_app/countrylock/firmware': typeof AppCountrylockFirmwareRoute
+  '/_app/countrylock/import': typeof AppCountrylockImportRoute
+  '/_app/countrylock/settings': typeof AppCountrylockSettingsRoute
   '/_app/customer/$customerId': typeof AppCustomerCustomerIdRoute
   '/_app/handover/new': typeof AppHandoverNewRoute
   '/_app/item/new': typeof AppItemNewRoute
@@ -616,6 +679,7 @@ export interface FileRoutesById {
   '/_app/access/locations/$locationId': typeof AppAccessLocationsLocationIdRoute
   '/_app/access/roles/$roleId': typeof AppAccessRolesRoleIdRoute
   '/_app/access/users/$userId': typeof AppAccessUsersUserIdRoute
+  '/_app/countrylock/bundles/$number': typeof AppCountrylockBundlesNumberRoute
   '/_app/dashboard/laporan/new': typeof AppDashboardLaporanNewRoute
   '/_app/dashboard/tautan/$shareId': typeof AppDashboardTautanShareIdRoute
   '/_app/handover/$handoverId/edit': typeof AppHandoverHandoverIdEditRoute
@@ -630,6 +694,8 @@ export interface FileRoutesById {
   '/_app/access/locations/': typeof AppAccessLocationsIndexRoute
   '/_app/access/roles/': typeof AppAccessRolesIndexRoute
   '/_app/access/users/': typeof AppAccessUsersIndexRoute
+  '/_app/countrylock/bundles/': typeof AppCountrylockBundlesIndexRoute
+  '/_app/countrylock/files/': typeof AppCountrylockFilesIndexRoute
   '/_app/dashboard/laporan/': typeof AppDashboardLaporanIndexRoute
   '/_app/dashboard/tautan/': typeof AppDashboardTautanIndexRoute
   '/_app/handover/$handoverId/': typeof AppHandoverHandoverIdIndexRoute
@@ -645,6 +711,7 @@ export interface FileRoutesById {
   '/_app/dashboard/laporan/$reportId/edit': typeof AppDashboardLaporanReportIdEditRoute
   '/_app/qrcode/default/$presetId/edit': typeof AppQrcodeDefaultPresetIdEditRoute
   '/_app/serial/gudang/riwayat/$dispatchId': typeof AppSerialGudangRiwayatDispatchIdRoute
+  '/_app/countrylock/files/$fileId/': typeof AppCountrylockFilesFileIdIndexRoute
   '/_app/dashboard/laporan/$reportId/': typeof AppDashboardLaporanReportIdIndexRoute
   '/_app/qrcode/default/$presetId/': typeof AppQrcodeDefaultPresetIdIndexRoute
   '/_app/serial/gudang/riwayat/': typeof AppSerialGudangRiwayatIndexRoute
@@ -662,6 +729,9 @@ export interface FileRouteTypes {
     | '/laporan/$token'
     | '/access/audit'
     | '/access/push'
+    | '/countrylock/firmware'
+    | '/countrylock/import'
+    | '/countrylock/settings'
     | '/customer/$customerId'
     | '/handover/new'
     | '/item/new'
@@ -688,6 +758,7 @@ export interface FileRouteTypes {
     | '/access/locations/$locationId'
     | '/access/roles/$roleId'
     | '/access/users/$userId'
+    | '/countrylock/bundles/$number'
     | '/dashboard/laporan/new'
     | '/dashboard/tautan/$shareId'
     | '/handover/$handoverId/edit'
@@ -702,6 +773,8 @@ export interface FileRouteTypes {
     | '/access/locations/'
     | '/access/roles/'
     | '/access/users/'
+    | '/countrylock/bundles/'
+    | '/countrylock/files/'
     | '/dashboard/laporan/'
     | '/dashboard/tautan/'
     | '/handover/$handoverId/'
@@ -717,6 +790,7 @@ export interface FileRouteTypes {
     | '/dashboard/laporan/$reportId/edit'
     | '/qrcode/default/$presetId/edit'
     | '/serial/gudang/riwayat/$dispatchId'
+    | '/countrylock/files/$fileId/'
     | '/dashboard/laporan/$reportId/'
     | '/qrcode/default/$presetId/'
     | '/serial/gudang/riwayat/'
@@ -732,6 +806,9 @@ export interface FileRouteTypes {
     | '/'
     | '/access/audit'
     | '/access/push'
+    | '/countrylock/firmware'
+    | '/countrylock/import'
+    | '/countrylock/settings'
     | '/customer/$customerId'
     | '/handover/new'
     | '/item/new'
@@ -758,6 +835,7 @@ export interface FileRouteTypes {
     | '/access/locations/$locationId'
     | '/access/roles/$roleId'
     | '/access/users/$userId'
+    | '/countrylock/bundles/$number'
     | '/dashboard/laporan/new'
     | '/dashboard/tautan/$shareId'
     | '/handover/$handoverId/edit'
@@ -772,6 +850,8 @@ export interface FileRouteTypes {
     | '/access/locations'
     | '/access/roles'
     | '/access/users'
+    | '/countrylock/bundles'
+    | '/countrylock/files'
     | '/dashboard/laporan'
     | '/dashboard/tautan'
     | '/handover/$handoverId'
@@ -787,6 +867,7 @@ export interface FileRouteTypes {
     | '/dashboard/laporan/$reportId/edit'
     | '/qrcode/default/$presetId/edit'
     | '/serial/gudang/riwayat/$dispatchId'
+    | '/countrylock/files/$fileId'
     | '/dashboard/laporan/$reportId'
     | '/qrcode/default/$presetId'
     | '/serial/gudang/riwayat'
@@ -803,6 +884,9 @@ export interface FileRouteTypes {
     | '/_app/'
     | '/_app/access/audit'
     | '/_app/access/push'
+    | '/_app/countrylock/firmware'
+    | '/_app/countrylock/import'
+    | '/_app/countrylock/settings'
     | '/_app/customer/$customerId'
     | '/_app/handover/new'
     | '/_app/item/new'
@@ -829,6 +913,7 @@ export interface FileRouteTypes {
     | '/_app/access/locations/$locationId'
     | '/_app/access/roles/$roleId'
     | '/_app/access/users/$userId'
+    | '/_app/countrylock/bundles/$number'
     | '/_app/dashboard/laporan/new'
     | '/_app/dashboard/tautan/$shareId'
     | '/_app/handover/$handoverId/edit'
@@ -843,6 +928,8 @@ export interface FileRouteTypes {
     | '/_app/access/locations/'
     | '/_app/access/roles/'
     | '/_app/access/users/'
+    | '/_app/countrylock/bundles/'
+    | '/_app/countrylock/files/'
     | '/_app/dashboard/laporan/'
     | '/_app/dashboard/tautan/'
     | '/_app/handover/$handoverId/'
@@ -858,6 +945,7 @@ export interface FileRouteTypes {
     | '/_app/dashboard/laporan/$reportId/edit'
     | '/_app/qrcode/default/$presetId/edit'
     | '/_app/serial/gudang/riwayat/$dispatchId'
+    | '/_app/countrylock/files/$fileId/'
     | '/_app/dashboard/laporan/$reportId/'
     | '/_app/qrcode/default/$presetId/'
     | '/_app/serial/gudang/riwayat/'
@@ -942,6 +1030,27 @@ declare module '@tanstack/react-router' {
       path: '/access/push'
       fullPath: '/access/push'
       preLoaderRoute: typeof AppAccessPushRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/countrylock/firmware': {
+      id: '/_app/countrylock/firmware'
+      path: '/countrylock/firmware'
+      fullPath: '/countrylock/firmware'
+      preLoaderRoute: typeof AppCountrylockFirmwareRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/countrylock/import': {
+      id: '/_app/countrylock/import'
+      path: '/countrylock/import'
+      fullPath: '/countrylock/import'
+      preLoaderRoute: typeof AppCountrylockImportRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/countrylock/settings': {
+      id: '/_app/countrylock/settings'
+      path: '/countrylock/settings'
+      fullPath: '/countrylock/settings'
+      preLoaderRoute: typeof AppCountrylockSettingsRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/customer/': {
@@ -1154,6 +1263,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAccessUsersUserIdRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/countrylock/bundles/': {
+      id: '/_app/countrylock/bundles/'
+      path: '/countrylock/bundles'
+      fullPath: '/countrylock/bundles/'
+      preLoaderRoute: typeof AppCountrylockBundlesIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/countrylock/bundles/$number': {
+      id: '/_app/countrylock/bundles/$number'
+      path: '/countrylock/bundles/$number'
+      fullPath: '/countrylock/bundles/$number'
+      preLoaderRoute: typeof AppCountrylockBundlesNumberRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/countrylock/files/': {
+      id: '/_app/countrylock/files/'
+      path: '/countrylock/files'
+      fullPath: '/countrylock/files/'
+      preLoaderRoute: typeof AppCountrylockFilesIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/dashboard/laporan/': {
       id: '/_app/dashboard/laporan/'
       path: '/dashboard/laporan'
@@ -1308,6 +1438,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppStickerTypesTypeIdRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/countrylock/files/$fileId/': {
+      id: '/_app/countrylock/files/$fileId/'
+      path: '/countrylock/files/$fileId'
+      fullPath: '/countrylock/files/$fileId/'
+      preLoaderRoute: typeof AppCountrylockFilesFileIdIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/dashboard/laporan/$reportId/': {
       id: '/_app/dashboard/laporan/$reportId/'
       path: '/dashboard/laporan/$reportId'
@@ -1366,6 +1503,9 @@ interface AppRouteChildren {
   AppIndexRoute: typeof AppIndexRoute
   AppAccessAuditRoute: typeof AppAccessAuditRoute
   AppAccessPushRoute: typeof AppAccessPushRoute
+  AppCountrylockFirmwareRoute: typeof AppCountrylockFirmwareRoute
+  AppCountrylockImportRoute: typeof AppCountrylockImportRoute
+  AppCountrylockSettingsRoute: typeof AppCountrylockSettingsRoute
   AppCustomerCustomerIdRoute: typeof AppCustomerCustomerIdRoute
   AppHandoverNewRoute: typeof AppHandoverNewRoute
   AppItemNewRoute: typeof AppItemNewRoute
@@ -1392,6 +1532,7 @@ interface AppRouteChildren {
   AppAccessLocationsLocationIdRoute: typeof AppAccessLocationsLocationIdRoute
   AppAccessRolesRoleIdRoute: typeof AppAccessRolesRoleIdRoute
   AppAccessUsersUserIdRoute: typeof AppAccessUsersUserIdRoute
+  AppCountrylockBundlesNumberRoute: typeof AppCountrylockBundlesNumberRoute
   AppDashboardLaporanNewRoute: typeof AppDashboardLaporanNewRoute
   AppDashboardTautanShareIdRoute: typeof AppDashboardTautanShareIdRoute
   AppHandoverHandoverIdEditRoute: typeof AppHandoverHandoverIdEditRoute
@@ -1406,6 +1547,8 @@ interface AppRouteChildren {
   AppAccessLocationsIndexRoute: typeof AppAccessLocationsIndexRoute
   AppAccessRolesIndexRoute: typeof AppAccessRolesIndexRoute
   AppAccessUsersIndexRoute: typeof AppAccessUsersIndexRoute
+  AppCountrylockBundlesIndexRoute: typeof AppCountrylockBundlesIndexRoute
+  AppCountrylockFilesIndexRoute: typeof AppCountrylockFilesIndexRoute
   AppDashboardLaporanIndexRoute: typeof AppDashboardLaporanIndexRoute
   AppDashboardTautanIndexRoute: typeof AppDashboardTautanIndexRoute
   AppHandoverHandoverIdIndexRoute: typeof AppHandoverHandoverIdIndexRoute
@@ -1421,6 +1564,7 @@ interface AppRouteChildren {
   AppDashboardLaporanReportIdEditRoute: typeof AppDashboardLaporanReportIdEditRoute
   AppQrcodeDefaultPresetIdEditRoute: typeof AppQrcodeDefaultPresetIdEditRoute
   AppSerialGudangRiwayatDispatchIdRoute: typeof AppSerialGudangRiwayatDispatchIdRoute
+  AppCountrylockFilesFileIdIndexRoute: typeof AppCountrylockFilesFileIdIndexRoute
   AppDashboardLaporanReportIdIndexRoute: typeof AppDashboardLaporanReportIdIndexRoute
   AppQrcodeDefaultPresetIdIndexRoute: typeof AppQrcodeDefaultPresetIdIndexRoute
   AppSerialGudangRiwayatIndexRoute: typeof AppSerialGudangRiwayatIndexRoute
@@ -1433,6 +1577,9 @@ const AppRouteChildren: AppRouteChildren = {
   AppIndexRoute: AppIndexRoute,
   AppAccessAuditRoute: AppAccessAuditRoute,
   AppAccessPushRoute: AppAccessPushRoute,
+  AppCountrylockFirmwareRoute: AppCountrylockFirmwareRoute,
+  AppCountrylockImportRoute: AppCountrylockImportRoute,
+  AppCountrylockSettingsRoute: AppCountrylockSettingsRoute,
   AppCustomerCustomerIdRoute: AppCustomerCustomerIdRoute,
   AppHandoverNewRoute: AppHandoverNewRoute,
   AppItemNewRoute: AppItemNewRoute,
@@ -1460,6 +1607,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppAccessLocationsLocationIdRoute: AppAccessLocationsLocationIdRoute,
   AppAccessRolesRoleIdRoute: AppAccessRolesRoleIdRoute,
   AppAccessUsersUserIdRoute: AppAccessUsersUserIdRoute,
+  AppCountrylockBundlesNumberRoute: AppCountrylockBundlesNumberRoute,
   AppDashboardLaporanNewRoute: AppDashboardLaporanNewRoute,
   AppDashboardTautanShareIdRoute: AppDashboardTautanShareIdRoute,
   AppHandoverHandoverIdEditRoute: AppHandoverHandoverIdEditRoute,
@@ -1474,6 +1622,8 @@ const AppRouteChildren: AppRouteChildren = {
   AppAccessLocationsIndexRoute: AppAccessLocationsIndexRoute,
   AppAccessRolesIndexRoute: AppAccessRolesIndexRoute,
   AppAccessUsersIndexRoute: AppAccessUsersIndexRoute,
+  AppCountrylockBundlesIndexRoute: AppCountrylockBundlesIndexRoute,
+  AppCountrylockFilesIndexRoute: AppCountrylockFilesIndexRoute,
   AppDashboardLaporanIndexRoute: AppDashboardLaporanIndexRoute,
   AppDashboardTautanIndexRoute: AppDashboardTautanIndexRoute,
   AppHandoverHandoverIdIndexRoute: AppHandoverHandoverIdIndexRoute,
@@ -1489,6 +1639,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppDashboardLaporanReportIdEditRoute: AppDashboardLaporanReportIdEditRoute,
   AppQrcodeDefaultPresetIdEditRoute: AppQrcodeDefaultPresetIdEditRoute,
   AppSerialGudangRiwayatDispatchIdRoute: AppSerialGudangRiwayatDispatchIdRoute,
+  AppCountrylockFilesFileIdIndexRoute: AppCountrylockFilesFileIdIndexRoute,
   AppDashboardLaporanReportIdIndexRoute: AppDashboardLaporanReportIdIndexRoute,
   AppQrcodeDefaultPresetIdIndexRoute: AppQrcodeDefaultPresetIdIndexRoute,
   AppSerialGudangRiwayatIndexRoute: AppSerialGudangRiwayatIndexRoute,

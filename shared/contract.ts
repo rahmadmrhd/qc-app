@@ -10,6 +10,7 @@ import type {
   StatusBatchInput,
 } from './batch';
 import type { BuAssignment, BuPermissionMap } from './business-units';
+import type { ClBrand, ClFileRole, ClIssue, ClSettings } from './countrylock-bundle';
 import type {
   DashboardOptionsDto,
   DashboardOptionsInput,
@@ -898,12 +899,14 @@ export interface ItemDto extends ItemSummaryDto {
   attachments: string[];
   /** Detail Markdown. */
   detail: string;
-  /** Kode firmware Country Lock (`shared/firmware.ts`); '' = belum diisi atau bukan item Country lock. */
+  /** Kode firmware Country Lock (daftar dinamis `cl_firmwares`); '' = belum diisi atau bukan item Country lock. */
   firmware: string;
   /** Item wajib foto bukti pada Catat Serial (spek 2026-11-18); `proofMin` selalu 1 bila tidak wajib. */
   proofRequired: boolean;
   /** Jumlah foto bukti minimum (1 sampai `SERIAL_PROOF_LIMITS.perEntryMax`). */
   proofMin: number;
+  /** Pcs per kardus untuk Stok Ready Gudang; 0 = belum diisi. */
+  boxSize: number;
   createdAt: string;
   updatedBy: string;
 }
@@ -917,7 +920,7 @@ export interface SaveItemInput {
   model: string;
   isCountryLock: boolean;
   /**
-   * Kode firmware Country Lock; harus salah satu kode merk itu (`shared/firmware.ts`) atau '' dan hanya untuk item
+   * Kode firmware Country Lock; harus kode firmware HIDUP milik merk itu (`cl_firmwares`) atau '' dan hanya untuk item
    * Country lock (selain itu ditolak). Tidak dikirim = tak diubah (klien lama), dan dikosongkan bila item bukan Country
    * lock atau kodenya tak berlaku bagi merk baru.
    */
@@ -926,6 +929,8 @@ export interface SaveItemInput {
   proofRequired?: boolean;
   /** Minimum foto (1 sampai 5); tidak dikirim = tak diubah, item baru = 1; disimpan 1 bila `proofRequired` salah. */
   proofMin?: number;
+  /** Pcs per kardus (0 sampai `WAREHOUSE_BOX_LIMITS.sizeMax`); tidak dikirim = tak diubah, item baru = 0. */
+  boxSize?: number;
   aliases: string[];
   /** Instruksi stiker; PUT utuh (daftar kosong = tanpa instruksi). */
   stickerPhotos: ItemStickerPhotoInput[];
@@ -1483,6 +1488,8 @@ export interface WarehouseItemOptionDto {
   buIds: string[];
   proofRequired: boolean;
   proofMin: number;
+  /** Pcs per kardus dari master Item (0 = belum diisi). */
+  boxSize: number;
 }
 export interface ListWarehouseItemOptionsInput {
   query?: string;
@@ -1573,6 +1580,11 @@ export interface WarehouseOrderOptionDto {
   customerId: string;
   customerName: string;
   lastDispatchedOn: string;
+  /**
+   * Lokasi SO: lokasi bersama semua task hidup (bukan Dibatalkan) yang tertaut ke SO, hanya bila semuanya satu lokasi
+   * DAN lokasi itu terbaca pemanggil. Tanpa tautan, lokasi berbeda-beda, atau tak terbaca = tidak diisi.
+   */
+  locationId?: string;
 }
 export interface ListWarehouseOrderOptionsInput {
   query?: string;
@@ -1587,8 +1599,13 @@ export interface WarehouseOrderOptionsPageDto {
 }
 export interface WarehouseSubmitHeader {
   /**
-   * `order` (bawaan bila tiada) = keluar ke SO; `ready` = catat ready tanpa SO: `orderId` harus tiada, `orderNumber` dan
+   * `note` (satu-satunya yang ditawarkan web sejak 2026-11-28) = catatan saja: sama dengan `ready` (tanpa `orderId`,
+   * `orderNumber`/`customerName` kosong, `boxStart` dan `boxSize` wajib bersama) tetapi `handoverIds` boleh terisi, `note`
+   * berisi Markdown (maks. 5.000 karakter), dan serial yang sama boleh dicatat ulang di catatan lain (tak masuk stok ready).
+   * `order` (bawaan bila tiada) = Penjualan; `ready` = catat ready tanpa SO: `orderId` harus tiada, `orderNumber` dan
    * `customerName` kosong (`''`), `handoverIds` kosong (`[]`); selain itu `VALIDATION`. `buId` wajib (BU `serialwh: edit`).
+   * Penjualan boleh TANPA No SO (`orderNumber: ''`, tanpa `orderId`): tidak membuat catatan SO, customer opsional
+   * (hanya dicatat pada pengeluaran), tautan task boleh terisi. Dengan No SO, customer tetap wajib.
    */
   mode?: WarehouseSubmitMode;
   dispatchedOn: string;
@@ -1601,10 +1618,57 @@ export interface WarehouseSubmitHeader {
   handoverIds: string[];
   total: number;
   chunkSize: number;
+  /** Mode ready dan note: nomor kardus pertama dan pcs per kardus (wajib bersama); ditolak pada mode `order`. */
+  boxStart?: number;
+  boxSize?: number;
 }
 export type WarehouseSubmitRow =
   | { kind: 'existing'; serialId: string; serial: string }
   | { kind: 'new'; clientId: string; serial: string; locationId: string; testDate: string };
+export interface ReadyStockSerialDto {
+  id: string;
+  serial: string;
+  boxId: string;
+  boxNumber: number;
+  capacity: number;
+  recordedOn: string;
+  /** Sedang di pengeluaran Penjualan yang belum selesai. */
+  processing: boolean;
+  /** Nilai mentah `serials.status` dan `serials.custody`; hanya `good` di `qc` yang boleh dipilih. */
+  status: string;
+  custody: string;
+}
+export interface ReadyStockBoxDto {
+  id: string;
+  number: number;
+  capacity: number;
+  remaining: number;
+  kind: 'full' | 'loose';
+  itemId: string;
+  itemLabel: string;
+  /** BU pemilik kardus (kode dan nama untuk tampilan; BU terhapus tetap terbaca). */
+  buId: string;
+  buCode: string;
+  buName: string;
+  serials: ReadyStockSerialDto[];
+}
+export interface ListReadyStockInput {
+  buIds?: string[];
+  itemIds?: string[];
+  query?: string;
+  cursor?: string;
+  limit?: number;
+  /** Bila diisi, `picked` memuat id serial pilihan otomatis (kardus penuh dulu) atas seluruh stok terfilter. */
+  pickCount?: number;
+}
+export interface ReadyStockPageDto {
+  boxes: ReadyStockBoxDto[];
+  nextCursor: string | null;
+  totals: { units: number; fullBoxes: number; looseBoxes: number; maxBoxNumber: number };
+  /** Tipe yang ada di stok terbaca (BU terbaca, diiris `buIds`, tidak diiris `itemIds`), urut label: bahan filter Tipe. */
+  itemFacets: { id: string; label: string }[];
+  picked?: string[];
+}
 export interface WarehouseSubmitInput {
   clientId: string;
   chunkIndex: number;
@@ -1723,10 +1787,10 @@ export interface WarehouseReadyPageDto {
 /** Satu pengeluaran Gudang pada riwayat gabungan: Penjualan (`order`, punya SO) atau Ready Stock (`ready`, tanpa SO). */
 export interface WarehouseDispatchListItemDto {
   id: string;
-  /** Nomor riwayat `OUT|RS/<kode BU>/<YYMM>-<urutan>`. */
+  /** Nomor riwayat `OUT|RS|WH/<kode BU>/<YYMM>-<urutan>` (WH = catatan). */
   number: string;
   kind: WarehouseDispatchKind;
-  /** Kosong pada Ready Stock. */
+  /** Kosong pada Ready Stock dan pada Penjualan tanpa No SO. */
   orderId: string;
   orderNumber: string;
   buId: string;
@@ -1761,6 +1825,8 @@ export interface ListWarehouseDispatchesInput {
   query?: string;
   kind?: WarehouseDispatchKind;
   customerIds?: string[];
+  /** Tipe (Item) pengeluaran; jamak, hanya menyempit. */
+  itemIds?: string[];
   buIds?: string[];
   from?: string;
   to?: string;
@@ -1787,6 +1853,11 @@ export interface ListWarehouseDispatchSerialsInput {
   limit?: number;
 }
 export interface WarehouseDispatchSerialDto {
+  /** Kardus (hanya pencatatan ready): id, nomor, kapasitas, dan isi kardus pada pencatatan ini. */
+  boxId?: string;
+  boxNumber?: number;
+  capacity?: number;
+  boxCount?: number;
   seq: number;
   serialId: string;
   serial: string;
@@ -1808,7 +1879,10 @@ export interface ListWarehouseHandoverCandidatesInput {
   customerId?: string;
   customerName?: string;
   query?: string;
+  /** Diterima demi klien lama; tidak berpengaruh lagi (Selesai selalu tampil, Dibatalkan selalu disembunyikan). */
   includeFinished?: boolean;
+  /** Lokasi task; di luar lokasi terbaca pemanggil = daftar kosong. Tanpa ini = semua lokasi terbaca. */
+  locationId?: string;
   orderId?: string;
   itemId?: string;
   cursor?: string;
@@ -1822,6 +1896,13 @@ export interface WarehouseHandoverCandidateDto {
   status: HandoverStatus;
   linked: boolean;
   mentionsItem: boolean;
+  /** Catatan penuh dan checklist (untuk render hanya-baca dengan centang). */
+  note: string;
+  checklist: HandoverChecklistItemDto[];
+  /** Teks polos baris catatan yang menyebut Item terpilih (`itemId`); kosong bila `itemId` tiada. */
+  matchedLines: string[];
+  /** Teks polos baris yang menyebut Item LAIN dan tidak menyebut Item terpilih (maks. 10); kosong bila `itemId` tiada. */
+  mismatchLines: string[];
 }
 export interface WarehouseHandoverCandidatesDto {
   /** Tertaut ke `orderId` (terbaca), selalu di depan. */
@@ -1840,6 +1921,23 @@ export interface ItemDetectionDto extends ItemDetection {
 export interface WarehouseHandoverContextInput {
   handoverId: string;
 }
+/** Penjualan tanpa No SO yang menaut task ini (hanya baca; tidak dapat diubah dari sisi task). */
+export interface WarehouseTaskSaleDto {
+  /** Id pengeluaran. */
+  dispatchId: string;
+  /** Nomor riwayat `OUT/<kode BU>/<YYMM>-<urutan>`. */
+  number: string;
+  /** Label tampil: `Penjualan <tanggal keluar> <nomor riwayat>`. */
+  label: string;
+  dispatchedOn: string;
+  /** `pending` atau `done` (yang dibatalkan tidak tampil). */
+  status: WarehouseDispatchStatus;
+  buId: string;
+  buCode: string;
+  buName?: string;
+  /** Selalu kosong: tak ada catatan SO. */
+  orderId: string;
+}
 export interface WarehouseHandoverContextDto {
   handover: {
     id: string;
@@ -1850,6 +1948,8 @@ export interface WarehouseHandoverContextDto {
   };
   /** SO tertaut task ini pada BU ber-`serialwh: edit`. */
   orders: WarehouseOrderOptionDto[];
+  /** Penjualan tanpa No SO tertaut task ini (BU ber-`serialwh: edit`, tidak dibatalkan), terbaru dulu. */
+  sales: WarehouseTaskSaleDto[];
   /** Item hidup aktif pada BU ber-`serialwh: edit`. */
   detected: ItemDetectionDto[];
 }
@@ -1863,6 +1963,220 @@ export interface ItemNameOptionDto {
 export interface ItemNameOptionsDto {
   items: ItemNameOptionDto[];
   truncated: boolean;
+}
+
+// --- Country Lock: berkas draf bundel (fase 1; spek 2026-11-28-country-lock-sync-bundel-design.md §5.2) ---------------
+
+/** Satu berkas draf Country Lock (teks atau biner); ukuran/hash/penulis dari revisi terbaru. */
+export interface ClFileDto {
+  id: string;
+  path: string;
+  role: ClFileRole;
+  kind: 'text' | 'binary';
+  /** Nomor revisi terbaru. */
+  headRev: number;
+  size: number;
+  sha256: string;
+  /** ISO UTC; dasar `If-Match`/ETag penyimpanan. */
+  updatedAt: string;
+  /** Penulis revisi terbaru. */
+  updatedBy: string;
+  /** Berkas sudah dihapus (riwayatnya tetap). */
+  removed: boolean;
+  /**
+   * Hanya berkas peran `router` (dan tak terhapus): kode firmware yang skripnya merujuk `/temp/<nama dasar berkas>`
+   * (urut abjad; kosong = tak dirujuk skrip mana pun). Tidak ada untuk berkas lain.
+   */
+  usedBy?: string[];
+}
+
+export interface ClRevisionDto {
+  seq: number;
+  sha256: string;
+  size: number;
+  message: string;
+  author: string;
+  createdAt: string;
+}
+
+/** Berkas beserta isi teks terbaru (`null` untuk biner). */
+export interface ClFileDetailDto extends ClFileDto {
+  text: string | null;
+}
+
+export interface ClRevisionDetailDto extends ClRevisionDto {
+  text: string | null;
+}
+
+export interface GetClFileInput {
+  id: string;
+}
+
+export interface SaveClFileInput {
+  path: string;
+  role: ClFileRole;
+  text: string;
+  message?: string;
+  /** Revisi terbaru yang dilihat editor; WAJIB untuk berkas yang sudah ada, kosong untuk berkas baru. */
+  baseSeq?: number;
+  /** `updatedAt` berkas yang dilihat editor (header `If-Match`); kosong untuk berkas baru. */
+  expectedUpdatedAt?: string;
+}
+
+export type RemoveClFileInput = GetClFileInput;
+export type ListClFileHistoryInput = GetClFileInput;
+
+/** `seq` ikut jalur URL (`/revisions/{seq}`), jadi berupa teks angka. */
+export interface GetClRevisionInput {
+  id: string;
+  seq: string;
+}
+
+export interface RevertClFileInput {
+  id: string;
+  /** Revisi lama yang isinya dijadikan revisi BARU. */
+  seq: number;
+  /** Revisi terbaru yang dilihat pemanggil; WAJIB. Tak sama dengan revisi terbaru sekarang = 412 (basi). */
+  baseSeq: number;
+  /** `updatedAt` berkas yang dilihat pemanggil (header `If-Match`); bila ada dan tak sama = 412. */
+  expectedUpdatedAt?: string;
+  message?: string;
+}
+
+/** Membuka sesi unggah biner bertahap (peran `router` saja). */
+export interface StartClUploadInput {
+  path: string;
+  role: 'router';
+  size: number;
+  /** 64 heksadesimal huruf kecil. */
+  sha256: string;
+}
+
+export interface ClUploadSessionDto {
+  uploadId: string;
+  /** Ukuran potongan yang harus dikirim klien (potongan terakhir boleh lebih kecil). */
+  chunkBytes: number;
+}
+
+/** `idx` ikut jalur URL (`/chunks/{idx}`), jadi berupa teks angka. */
+export interface ChunkClUploadInput {
+  id: string;
+  idx: string;
+  bytes: Uint8Array;
+}
+
+export interface FinishClUploadInput {
+  id: string;
+}
+
+/** Satu firmware Country Lock (daftar dinamis, spek §5.2); `inUseCount` = item hidup yang memakainya. */
+export interface ClFirmwareDto {
+  id: string;
+  brand: ClBrand;
+  code: string;
+  label: string;
+  /** Jalur berkas skrip (role `script`) di draf; `null` = belum punya skrip. */
+  scriptPath: string | null;
+  parallel: boolean;
+  sort: number;
+  inUseCount: number;
+  updatedAt: string;
+}
+
+export interface ClFirmwareOptionDto {
+  code: string;
+  label: string;
+}
+
+export interface ListClFirmwareOptionsInput {
+  brand: ClBrand;
+}
+
+export interface SaveClFirmwareInput {
+  /** Tanpa `id` = firmware baru. */
+  id?: string;
+  brand: ClBrand;
+  code: string;
+  label: string;
+  scriptPath: string | null;
+  parallel: boolean;
+  sort: number;
+  expectedUpdatedAt?: string;
+}
+
+export interface RemoveClFirmwareInput {
+  id: string;
+}
+
+/** Firmware dalam foto bundel (tanpa id/urutan: mengikuti manifest). */
+export interface ClBundleFirmwareDto {
+  brand: ClBrand;
+  code: string;
+  label: string;
+  scriptPath: string | null;
+  parallel: boolean;
+}
+
+/** Hasil validasi draf: berkas hidup, firmware, temuan, hash kandidat bundel, dan apakah berbeda dari bundel terbit terakhir. */
+export interface ClDraftDto {
+  files: ClFileDto[];
+  firmwares: ClFirmwareDto[];
+  issues: ClIssue[];
+  computerHash: string;
+  routerHash: string;
+  /** Berbeda dari bundel terbit terakhir (belum ada bundel = true). */
+  changed: boolean;
+}
+
+export interface ClBundleDto {
+  number: number;
+  computerHash: string;
+  routerHash: string;
+  minApp: string;
+  note: string;
+  publishedBy: string;
+  createdAt: string;
+  /** Nomor bundel asal bila ini hasil mengaktifkan ulang bundel lama. */
+  sourceNumber: number | null;
+  fileCount: number;
+}
+
+export interface ClBundleDetailDto extends ClBundleDto {
+  files: { path: string; role: ClFileRole; sha256: string; size: number }[];
+  firmwares: ClBundleFirmwareDto[];
+}
+
+export interface PublishClBundleInput {
+  note: string;
+}
+
+/** `number` ikut jalur URL, jadi berupa teks angka bulat positif. */
+export interface GetClBundleInput {
+  number: string;
+}
+
+export interface ReactivateClBundleInput {
+  number: string;
+  note: string;
+}
+
+/**
+ * Impor sekali pakai dari `config.QC` dan folder skrip lama (diparse di web). Seluruh JSON permintaan dibatasi
+ * `CL_IMPORT_MAX_JSON_BYTES`; impor lebih besar dipecah klien ke beberapa panggilan (idempoten: berkas yang sudah ada dilewati).
+ */
+export interface ImportClInput {
+  settings: ClSettings;
+  scripts: { path: string; text: string; brand: ClBrand }[];
+  firmwares: { brand: ClBrand; code: string; label: string; scriptPath: string | null }[];
+}
+
+export interface ImportClResult {
+  filesCreated: number;
+  /** Berkas yang tidak dibuat (sudah ada: isinya sama, atau berbeda dan dilaporkan di `issues`). */
+  filesSkipped: number;
+  /** Firmware yang `scriptPath`-nya baru dikaitkan pada panggilan ini. */
+  firmwaresLinked: number;
+  issues: ClIssue[];
 }
 
 export interface ApiContract {
@@ -2124,6 +2438,7 @@ export interface ApiContract {
     input: ListWarehouseDispatchesInput;
     output: WarehouseDispatchesPageDto;
   };
+  'serialWarehouse.readyStock': { input: ListReadyStockInput; output: ReadyStockPageDto };
   'serialWarehouse.dispatchGet': {
     input: GetWarehouseDispatchInput;
     output: WarehouseDispatchDetailDto;
@@ -2175,6 +2490,26 @@ export interface ApiContract {
     input: GetDashboardReportInput;
     output: DashboardReportPreviewDto;
   };
+  'clFiles.list': { input: null; output: ClFileDto[] };
+  'clFiles.get': { input: GetClFileInput; output: ClFileDetailDto };
+  'clFiles.save': { input: SaveClFileInput; output: ClFileDetailDto };
+  'clFiles.remove': { input: RemoveClFileInput; output: null };
+  'clFiles.history': { input: ListClFileHistoryInput; output: ClRevisionDto[] };
+  'clFiles.revision': { input: GetClRevisionInput; output: ClRevisionDetailDto };
+  'clFiles.revert': { input: RevertClFileInput; output: ClFileDetailDto };
+  'clFirmwares.list': { input: null; output: ClFirmwareDto[] };
+  'clFirmwares.options': { input: ListClFirmwareOptionsInput; output: ClFirmwareOptionDto[] };
+  'clFirmwares.save': { input: SaveClFirmwareInput; output: ClFirmwareDto };
+  'clFirmwares.remove': { input: RemoveClFirmwareInput; output: null };
+  'clUploads.start': { input: StartClUploadInput; output: ClUploadSessionDto };
+  'clUploads.chunk': { input: ChunkClUploadInput; output: { received: number } };
+  'clUploads.finish': { input: FinishClUploadInput; output: ClFileDto };
+  'clBundles.draft': { input: null; output: ClDraftDto };
+  'clBundles.publish': { input: PublishClBundleInput; output: ClBundleDto };
+  'clBundles.list': { input: null; output: ClBundleDto[] };
+  'clBundles.get': { input: GetClBundleInput; output: ClBundleDetailDto };
+  'clBundles.reactivate': { input: ReactivateClBundleInput; output: ClBundleDto };
+  'clImport.run': { input: ImportClInput; output: ImportClResult };
 }
 
 export type ApiId = keyof ApiContract;
@@ -2978,6 +3313,7 @@ export type JobKind =
   | 'sheets_export'
   | 'cleanup_qr'
   | 'db_backup'
+  | 'backup_verify'
   | 'serial_alert'
   | 'serial_proof';
 export type JobStatus = 'queued' | 'running' | 'done' | 'failed';

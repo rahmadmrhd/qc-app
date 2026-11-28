@@ -24,6 +24,7 @@ import {
   chunkRowsOf,
   normalizeOrderNumber,
   orderNumberProblem,
+  WAREHOUSE_BOX_LIMITS,
   WAREHOUSE_LIMITS,
   type WarehouseDispatchStatus,
 } from '@shared/serial-warehouse';
@@ -33,6 +34,18 @@ import { isIsoDate, normalizeSerial, serialProblem } from '@shared/serials';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 type Obj = Record<string, unknown>;
+
+/** Karakter kontrol selain baris baru dan tab, atau pengatur arah teks (bidi). */
+function hasNoteControlChars(text: string): boolean {
+  for (let i = 0; i < text.length; i++) {
+    const code = text.charCodeAt(i);
+    if (code === 0x09 || code === 0x0a || code === 0x0d) continue;
+    if (code < 0x20 || (code >= 0x7f && code <= 0x9f)) return true;
+    if (code === 0x200e || code === 0x200f) return true;
+    if ((code >= 0x202a && code <= 0x202e) || (code >= 0x2066 && code <= 0x2069)) return true;
+  }
+  return false;
+}
 
 const isObj = (value: unknown): value is Obj =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -83,7 +96,7 @@ export function validateWarehouseSerials(raw: unknown): ListWarehouseSerialsInpu
   const query = reader.str('query', { max: 100 });
   const hideRecordedBuId = reader.str('hideRecordedBuId', { max: 100 });
   const forMode = reader.str('forMode', { max: 10 });
-  if (forMode !== '' && forMode !== 'order' && forMode !== 'ready') {
+  if (forMode !== '' && forMode !== 'order' && forMode !== 'ready' && forMode !== 'note') {
     reader.fail('forMode', 'Mode tidak valid');
   }
   const cursor = reader.str('cursor', { max: 200 });
@@ -96,7 +109,7 @@ export function validateWarehouseSerials(raw: unknown): ListWarehouseSerialsInpu
     ...(testDate !== '' ? { testDate } : {}),
     ...(query !== '' ? { query } : {}),
     ...(hideRecordedBuId !== '' ? { hideRecordedBuId } : {}),
-    ...(forMode === 'order' || forMode === 'ready' ? { forMode } : {}),
+    ...(forMode === 'order' || forMode === 'ready' || forMode === 'note' ? { forMode } : {}),
     ...(cursor !== '' ? { cursor } : {}),
     ...(limit !== undefined ? { limit } : {}),
   };
@@ -160,10 +173,18 @@ function parseHeader(raw: unknown): WarehouseSubmitHeader {
     return invalid('dispatchedOn', 'Tanggal keluar tidak valid');
   }
   const modeRaw = raw.mode;
-  if (modeRaw !== undefined && modeRaw !== null && modeRaw !== 'order' && modeRaw !== 'ready') {
+  if (
+    modeRaw !== undefined &&
+    modeRaw !== null &&
+    modeRaw !== 'order' &&
+    modeRaw !== 'ready' &&
+    modeRaw !== 'note'
+  ) {
     return invalid('mode', 'Mode tidak valid');
   }
-  const ready = modeRaw === 'ready';
+  const note = modeRaw === 'note';
+  // `ready` dan `note` sama-sama tanpa SO/customer dan memakai nomor kardus; beda: `note` boleh menaut task dan memuat Markdown.
+  const ready = modeRaw === 'ready' || note;
   let orderNumber = '';
   if (ready) {
     // Catat ready tidak punya SO: isian SO/customer/task ditolak bila terisi (kosong/tiada diterima).
@@ -176,7 +197,16 @@ function parseHeader(raw: unknown): WarehouseSubmitHeader {
   } else {
     if (typeof raw.orderNumber !== 'string') return invalid('orderNumber', 'No SO tidak valid');
     orderNumber = normalizeOrderNumber(raw.orderNumber);
-    const problem = orderNumberProblem(orderNumber);
+    // No SO kosong = Penjualan tanpa SO (tanpa catatan SO, tanpa `orderId`).
+    const problem = orderNumber === '' ? null : orderNumberProblem(orderNumber);
+    if (
+      orderNumber === '' &&
+      raw.orderId !== undefined &&
+      raw.orderId !== null &&
+      raw.orderId !== ''
+    ) {
+      return invalid('orderId', 'Tanpa No SO tidak memakai catatan SO');
+    }
     if (problem !== null) {
       return invalid(
         'orderNumber',
@@ -205,20 +235,23 @@ function parseHeader(raw: unknown): WarehouseSubmitHeader {
     if (typeof raw.customerName !== 'string') {
       return invalid('customerName', 'Customer tidak valid');
     }
-    const customerProblem = customerNameProblem(customerName);
+    // Tanpa No SO customer opsional (hanya penyaring task); dengan No SO tetap wajib.
+    const customerProblem =
+      orderNumber === '' && customerName === '' ? null : customerNameProblem(customerName);
     if (customerProblem !== null) return invalid('customerName', customerProblem);
   }
   if (!isText(raw.itemId, 100)) return invalid('itemId', 'Item tidak valid');
-  const note = typeof raw.note === 'string' ? raw.note.trim() : '';
+  const noteText = typeof raw.note === 'string' ? raw.note.trim() : '';
   if (
     typeof raw.note !== 'string' ||
-    [...note].length > WAREHOUSE_LIMITS.noteMax ||
-    hasControlChars(note)
+    [...noteText].length > WAREHOUSE_LIMITS.noteMax ||
+    // Mode catatan berisi Markdown: baris baru dan tab sah, karakter kontrol lain dan pengatur arah teks tidak.
+    (note ? hasNoteControlChars(noteText) : hasControlChars(noteText))
   ) {
     return invalid('note', 'Catatan tidak valid');
   }
   const handoverIds = ready && raw.handoverIds === undefined ? [] : raw.handoverIds;
-  if (ready && Array.isArray(handoverIds) && handoverIds.length > 0) {
+  if (!note && ready && Array.isArray(handoverIds) && handoverIds.length > 0) {
     return invalid('handoverIds', 'Catat ready tidak memakai task Serah Terima');
   }
   if (
@@ -242,8 +275,38 @@ function parseHeader(raw: unknown): WarehouseSubmitHeader {
   ) {
     return invalid('chunkSize', `Ukuran potongan harus 1-${WAREHOUSE_LIMITS.chunkMax}`);
   }
+  // Nomor kardus pertama dan pcs per kardus: wajib bersama pada ready, ditolak pada mode SO.
+  let box: { boxStart: number; boxSize: number } | null = null;
+  if (ready) {
+    const { boxStart, boxSize } = raw;
+    if (
+      typeof boxStart !== 'number' ||
+      !Number.isInteger(boxStart) ||
+      boxStart < 1 ||
+      boxStart > WAREHOUSE_BOX_LIMITS.numberMax
+    ) {
+      return invalid('boxStart', `Nomor kardus harus 1-${WAREHOUSE_BOX_LIMITS.numberMax}`);
+    }
+    if (
+      typeof boxSize !== 'number' ||
+      !Number.isInteger(boxSize) ||
+      boxSize < 1 ||
+      boxSize > WAREHOUSE_BOX_LIMITS.sizeMax
+    ) {
+      return invalid('boxSize', `Pcs per kardus harus 1-${WAREHOUSE_BOX_LIMITS.sizeMax}`);
+    }
+    box = { boxStart, boxSize };
+  } else {
+    if (raw.boxStart !== undefined && raw.boxStart !== null) {
+      return invalid('boxStart', 'Hanya untuk catat ready');
+    }
+    if (raw.boxSize !== undefined && raw.boxSize !== null) {
+      return invalid('boxSize', 'Hanya untuk catat ready');
+    }
+  }
   return {
-    ...(ready ? { mode: 'ready' as const } : {}),
+    ...(ready ? { mode: note ? ('note' as const) : ('ready' as const) } : {}),
+    ...(box ?? {}),
     dispatchedOn: raw.dispatchedOn,
     ...(!ready && typeof raw.orderId === 'string' && raw.orderId !== ''
       ? { orderId: raw.orderId }
@@ -252,7 +315,7 @@ function parseHeader(raw: unknown): WarehouseSubmitHeader {
     buId: raw.buId,
     customerName,
     itemId: raw.itemId,
-    note,
+    note: noteText,
     handoverIds: [...handoverIds] as string[],
     total,
     chunkSize,
@@ -395,8 +458,11 @@ export function validateWarehouseListDispatches(raw: unknown): ListWarehouseDisp
   const reader = readObject(raw ?? {});
   const query = reader.str('query', { max: 100 });
   const kind = reader.str('kind', { max: 10 });
-  if (kind !== '' && kind !== 'order' && kind !== 'ready') reader.fail('kind', 'Jenis tidak valid');
+  if (kind !== '' && kind !== 'order' && kind !== 'ready' && kind !== 'note') {
+    reader.fail('kind', 'Jenis tidak valid');
+  }
   const customerIds = readFilterList(reader, 'customerIds');
+  const itemIds = readFilterList(reader, 'itemIds');
   const buIds = readFilterList(reader, 'buIds');
   const from = reader.str('from', { max: 10 });
   if (from !== '' && !isIsoDate(from)) reader.fail('from', 'Tanggal tidak valid');
@@ -411,8 +477,9 @@ export function validateWarehouseListDispatches(raw: unknown): ListWarehouseDisp
   reader.done();
   return {
     ...(query !== '' ? { query } : {}),
-    ...(kind === 'order' || kind === 'ready' ? { kind } : {}),
+    ...(kind === 'order' || kind === 'ready' || kind === 'note' ? { kind } : {}),
     ...(customerIds ? { customerIds } : {}),
+    ...(itemIds ? { itemIds } : {}),
     ...(buIds ? { buIds } : {}),
     ...(from !== '' ? { from } : {}),
     ...(to !== '' ? { to } : {}),

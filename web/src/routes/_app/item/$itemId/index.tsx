@@ -21,6 +21,7 @@ import {
 } from '@/modules/item/components/item-detail-view';
 import {
   itemQueryOptions,
+  useFirmwareOptions,
   useRemoveItems,
   useRestoreItems,
   useSetItemStatus,
@@ -49,6 +50,7 @@ function ItemDetailPage() {
   const { tab } = Route.useSearch();
   const navigate = useNavigate({ from: Route.fullPath });
   const me = useMe();
+  const firmwareOptions = useFirmwareOptions();
   const { data: item } = useSuspenseQuery(itemQueryOptions(itemId));
   const setStatus = useSetItemStatus();
   const removeItems = useRemoveItems();
@@ -121,6 +123,7 @@ function ItemDetailPage() {
         canViewSerial={can(me, 'serial', 'view')}
         statusPending={setStatus.isPending}
         restorePending={restoreItems.isPending}
+        firmwareOptions={firmwareOptions}
         openBrandHref={brandLinkAccess(me).openBrandHref}
         openBusinessUnitHref={businessUnitLinkAccess(me).openBusinessUnitHref}
         openManualBookHref={manualBookLinkAccess(me).openManualBookHref}

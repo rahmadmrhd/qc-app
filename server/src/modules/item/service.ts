@@ -23,6 +23,7 @@ import {
   brandByIdStatement,
   brandsFromResult,
 } from '@server/modules/brand/repo';
+import { firmwareExists, firmwareKeyGuardStmt } from '@server/modules/countrylock/repo';
 import type { FileRecord } from '@server/modules/files/repo';
 import { activeFilesFromResults, activeFilesStatements } from '@server/modules/files/repo';
 import { planAttachFiles } from '@server/modules/files/service';
@@ -58,7 +59,7 @@ import type {
   SaveItemInput,
   SetItemStatusInput,
 } from '@shared/contract';
-import { isValidFirmware } from '@shared/firmware';
+import { countryLockBrandOf } from '@shared/countrylock-bundle';
 import { extractFileRefs, hashText, itemKey, normalizeKey } from '@shared/items';
 import { hasLevel } from '@shared/permissions';
 import { wibDateIso } from '@shared/postel';
@@ -165,6 +166,7 @@ export function toItemDto(
     firmware: item.firmware,
     proofRequired: item.proofRequired,
     proofMin: item.proofMin,
+    boxSize: item.boxSize,
     createdAt: item.createdAt,
     updatedBy: item.updatedBy,
   };
@@ -183,6 +185,7 @@ export function itemSnapshot(item: ItemView, detailHash?: string): Record<string
     firmware: item.firmware,
     proofRequired: item.proofRequired,
     proofMin: item.proofMin,
+    boxSize: item.boxSize,
     status: item.status,
     aliases: [...item.aliases],
     // Skalar teks (bukan objek) agar terbaca di UI Log Audit.
@@ -608,15 +611,17 @@ async function assertItemFilesUsable(
 }
 
 /**
- * Kode firmware yang akan disimpan (spek desktop §6.6): hanya untuk item Country lock dan hanya kode milik merk itu.
+ * Kode firmware yang akan disimpan (spek desktop §6.6): hanya untuk item Country lock dan hanya firmware HIDUP milik merk
+ * itu di daftar dinamis `cl_firmwares` (Bundel Country Lock; kepastian saat komit dijaga `firmwareKeyGuardStmt`).
  * Dikirim eksplisit tetapi tak berlaku = VALIDATION; tidak dikirim (klien lama) = pertahankan nilai tersimpan bila
  * masih berlaku bagi merk, selain itu dikosongkan.
  */
-function resolveItemFirmware(
+async function resolveItemFirmware(
+  env: Env,
   input: SaveItemInput,
   brandName: string,
   existing: ItemRecord | undefined,
-): string {
+): Promise<string> {
   if (!input.isCountryLock) {
     if (input.firmware !== undefined && input.firmware !== '') {
       const message = 'Firmware hanya untuk item Country lock';
@@ -624,15 +629,18 @@ function resolveItemFirmware(
     }
     return '';
   }
+  const clBrand = countryLockBrandOf(brandName);
+  const isLive = async (code: string): Promise<boolean> =>
+    clBrand !== null && (await firmwareExists(env.DB, clBrand, code));
   if (input.firmware !== undefined) {
-    if (!isValidFirmware(brandName, input.firmware)) {
+    if (input.firmware !== '' && !(await isLive(input.firmware))) {
       const message = 'Firmware tidak dikenal untuk merk ini';
       throw appError('VALIDATION', message, { firmware: message });
     }
     return input.firmware;
   }
   const kept = existing?.firmware ?? '';
-  return isValidFirmware(brandName, kept) ? kept : '';
+  return kept !== '' && (await isLive(kept)) ? kept : '';
 }
 
 /**
@@ -656,6 +664,7 @@ type ComparableItem = {
   firmware: string;
   proofRequired: boolean;
   proofMin: number;
+  boxSize: number;
   attachments: readonly string[];
   detail: string;
   accessories: readonly ItemAccessoryDto[];
@@ -674,6 +683,7 @@ export function itemContentEquals(a: ComparableItem, b: ComparableItem): boolean
     a.firmware !== b.firmware ||
     a.proofRequired !== b.proofRequired ||
     a.proofMin !== b.proofMin ||
+    a.boxSize !== b.boxSize ||
     a.status !== b.status ||
     a.detail !== b.detail ||
     a.attachments.length !== b.attachments.length ||
@@ -967,7 +977,7 @@ export async function planItemWrite(
     throw appError('VALIDATION', message, { brandId: message });
   }
   const key = itemKey(brand.name, input.model);
-  const firmware = resolveItemFirmware(input, brand.name, existing);
+  const firmware = await resolveItemFirmware(env, input, brand.name, existing);
   const proof = resolveItemProof(input, existing);
   const id = existing?.id ?? options.id ?? newId();
   const owners = await loadNameOwners(env, input, key, id, existing);
@@ -993,6 +1003,7 @@ export async function planItemWrite(
     firmware,
     proofRequired: proof.proofRequired,
     proofMin: proof.proofMin,
+    boxSize: input.boxSize ?? existing?.boxSize ?? 0,
     aliases: [...input.aliases],
     accessories: input.accessories.map((accessory) => ({ ...accessory })),
     attachments: [...input.attachments],
@@ -1021,6 +1032,16 @@ export async function planItemWrite(
   const statements: DbStatement[] = [
     brandKeyGuardStmt(env.DB, brand.id, brand.key, existing?.brandId !== brand.id),
   ];
+  // Firmware yang BARU disetel harus masih hidup saat komit (penghapusan firmware yang menyela membatalkan batch).
+  // Firmware yang tak berubah TETAP di merk yang sama tidak dijaga (item ini sendiri mencegah penghapusannya); kode yang
+  // sama tetapi merk BERPINDAH adalah rujukan baru ke firmware merk baru, jadi tetap dijaga (review akhir M7).
+  const firmwareBrand = countryLockBrandOf(brand.name);
+  const firmwareChanged =
+    firmware !== (existing?.firmware ?? '') ||
+    (existing !== undefined && existing.brandId !== brand.id);
+  if (firmware !== '' && firmwareChanged && firmwareBrand !== null) {
+    statements.push(firmwareKeyGuardStmt(env.DB, firmwareBrand, firmware));
+  }
 
   if (existing) {
     const merged: ItemRecord = { ...existing, ...fields, status };
@@ -1311,6 +1332,10 @@ const RESTORE_COLLISION_MESSAGE =
  * Perencana pulihkan: kembali Nonaktif; belum terhapus = `unchanged`. Tabrakan merk+tipe atau nama lain dengan item
  * HIDUP ditolak generik (`CONFLICT`, tanpa menyebut item lain); tanpa tabrakan, baris kunci nama lain dibangun ulang
  * dan `brands.item_count` naik dalam `batch()` yang sama. Indeks unik `_live` dan PK `item_alias_keys` tetap pagar.
+ * Firmware Country Lock: penghapusan firmware hanya memeriksa item HIDUP, jadi item terhapus dapat menyimpan kode yang
+ * kemudian dihapus. Saat pulih, kode yang tak lagi hidup bagi merknya DIKOSONGKAN (jejaknya ada di snapshot Log Audit:
+ * firmware sebelum terisi, sesudah kosong); kode yang masih hidup dijaga `firmwareKeyGuardStmt` sampai komit (review akhir
+ * M6).
  */
 export async function planItemRestore(
   env: Env,
@@ -1323,9 +1348,17 @@ export async function planItemRestore(
   const hit = await nameCheckStatement(env, [item.key, ...aliasKeys], item.id).first();
   if (hit) throw appError('CONFLICT', RESTORE_COLLISION_MESSAGE);
   const now = nowIso(env);
+  const firmwareBrand = countryLockBrandOf(loaded.found.brandName);
+  const firmwareLive =
+    item.firmware !== '' &&
+    item.isCountryLock &&
+    firmwareBrand !== null &&
+    (await firmwareExists(env.DB, firmwareBrand, item.firmware));
+  const firmware = firmwareLive ? item.firmware : '';
   const restored: ItemRecord = {
     ...item,
     status: 'inactive',
+    firmware,
     updatedAt: now,
     updatedBy: actor.email,
     deletedAt: '',
@@ -1336,8 +1369,14 @@ export async function planItemRestore(
     stmts: [
       brandKeyGuardStmt(env.DB, item.brandId, brandKey),
       versionGuardStmt(env.DB, 'items', item.id, item.updatedAt, 'deleted'),
+      ...(firmwareLive && firmwareBrand !== null
+        ? [firmwareKeyGuardStmt(env.DB, firmwareBrand, item.firmware)]
+        : []),
       restoreStmt(env.DB, 'items', item.id),
-      env.DB.prepare("UPDATE items SET status = 'inactive' WHERE id = ?").bind(item.id),
+      env.DB.prepare("UPDATE items SET status = 'inactive', firmware = ? WHERE id = ?").bind(
+        firmware,
+        item.id,
+      ),
       stampStmt(env.DB, 'items', item.id, now, actor.email),
       ...insertAliasKeyStmts(env.DB, item.id, aliasKeys),
       adjustItemCountStmt(env.DB, item.brandId, 1),

@@ -13,6 +13,8 @@ import {
   startScheduler,
 } from '@server/jobs/runner';
 import { createMariadbDumpRunner, parseDatabaseUrl } from '@server/modules/backup/dump';
+import { createVerifyPortsFactory } from '@server/modules/backup/verify-ports';
+import { seedCountryLockFirmwares } from '@server/modules/countrylock/seed';
 import { drainVisitRecordings } from '@server/modules/dashboard/share-visits';
 import { closeAllNotificationStreams } from '@server/modules/notification/stream-hub';
 import { createWebPushSender } from '@server/modules/notification/web-push';
@@ -51,6 +53,7 @@ export interface QcServer {
 
 /** Menyusun `Env` aplikasi dari konfigurasi dan sebuah `Db`. */
 export function envFromConfig(config: Config, db: Db): Env {
+  const backupVerify = createVerifyPortsFactory(config.restoreDatabaseUrl);
   const google = {
     GOOGLE_SA_KEY_FILE: config.googleSaKeyFile,
     GOOGLE_ROOT_FOLDER_ID: config.googleRootFolderId,
@@ -84,6 +87,7 @@ export function envFromConfig(config: Config, db: Db): Env {
     PROOF_STAGING_MAX_BYTES: config.proofStagingMaxBytes,
     BACKUP_DUMP: (outputPath) =>
       createMariadbDumpRunner(parseDatabaseUrl(config.databaseUrl))(outputPath),
+    ...(backupVerify === undefined ? {} : { BACKUP_VERIFY: backupVerify }),
     ...(config.smtp === null ? {} : { MAILER: createSmtpMailer(config.smtp) }),
     ALERT_TO: config.alertTo,
     ...(config.vapid === null
@@ -125,6 +129,12 @@ export function createServer(config: Config, options: ServerOptions = {}): QcSer
       if (options.prepare) {
         // Jenis sistem Manual Book dan Postel dijamin ada sejak start (keputusan pemilik 2026-11-25); tak pernah melempar.
         await ensureSystemStickerTypes(env);
+        // Firmware awal Country Lock (tabel dinamis `cl_firmwares`); idempoten, galat dicatat tanpa menggagalkan start.
+        try {
+          await seedCountryLockFirmwares(env);
+        } catch (error) {
+          console.error('Pengisian firmware awal Country Lock gagal:', error);
+        }
         try {
           await backfillPostelStickers(env);
         } catch (error) {
