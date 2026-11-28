@@ -5,6 +5,7 @@ import { type FormEvent, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { FormDialogShell } from '@/components/form-dialog-shell';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { describeError } from '@/lib/api/describe-error';
@@ -13,21 +14,36 @@ import { clKeys, draftQueryOptions, usePublishBundle } from '../queries';
 const FORM_ID = 'cl-publish-form';
 const NOTE_MAX = 200;
 
+/** Penjelasan akibat per kode temuan (melengkapi pesan server): apa yang terjadi bila tetap terbit. */
+const HINTS: Record<string, string> = {
+  DUPLICATE_ROUTER_NAME:
+    'Dua berkas router bernama sama saling menimpa di /temp router jump, sehingga skrip memakai berkas yang salah. Ganti salah satu namanya.',
+};
+
+/** Akibat perubahan alamat/jaringan yang harus dipahami penerbit sebelum bundel diterbitkan. */
+const ADDRESS_CONSEQUENCES = [
+  'Router yang sudah terpasang masih di alamat lama dan tidak akan ikut berubah sendiri.',
+  'Komputer operator harus pindah segmen/alamat sesuai pengaturan baru agar dapat menjangkau router.',
+];
+
 function IssueList({
   issues,
   color,
+  title,
 }: {
   issues: readonly ClIssue[];
   color: 'destructive' | 'warning';
+  title?: string;
 }) {
   if (issues.length === 0) return null;
   return (
     <Alert color={color}>
       <AlertDescription>
         <span className="mb-1 block font-medium">
-          {color === 'destructive'
-            ? `${issues.length} masalah harus diperbaiki sebelum terbit`
-            : `${issues.length} peringatan (tidak menghalangi terbit)`}
+          {title ??
+            (color === 'destructive'
+              ? `${issues.length} masalah harus diperbaiki sebelum terbit`
+              : `${issues.length} peringatan (tidak menghalangi terbit)`)}
         </span>
         <ul className="list-disc space-y-1 pl-5">
           {issues.map((issue, index) => (
@@ -35,6 +51,9 @@ function IssueList({
             <li key={`${issue.code}-${issue.path ?? ''}-${index}`}>
               {issue.path ? <code className="mr-1 text-xs">{issue.path}</code> : null}
               {issue.message}
+              {HINTS[issue.code] ? (
+                <span className="mt-0.5 block text-xs">{HINTS[issue.code]}</span>
+              ) : null}
             </li>
           ))}
         </ul>
@@ -60,11 +79,13 @@ export function PublishDialog({ open, onOpenChange, onPublished }: PublishDialog
   const publish = usePublishBundle();
   const [note, setNote] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [understood, setUnderstood] = useState(false);
 
   useEffect(() => {
     if (open) {
       setNote('');
       setError(null);
+      setUnderstood(false);
       // Draf dapat berubah sejak halaman dibuka: selalu hitung ulang saat dialog dibuka.
       void client.invalidateQueries({ queryKey: clKeys.draft });
     }
@@ -72,7 +93,13 @@ export function PublishDialog({ open, onOpenChange, onPublished }: PublishDialog
 
   const data = draft.data;
   const errors = data?.issues.filter((issue) => issue.severity === 'error') ?? [];
-  const warnings = data?.issues.filter((issue) => issue.severity === 'warning') ?? [];
+  const addressChanges = data?.issues.filter((issue) => issue.code === 'ADDRESS_CHANGED') ?? [];
+  const warnings =
+    data?.issues.filter(
+      (issue) => issue.severity === 'warning' && issue.code !== 'ADDRESS_CHANGED',
+    ) ?? [];
+  // Perubahan alamat tidak memblokir, tetapi penerbit wajib menyatakan paham akibatnya.
+  const needsAcknowledge = addressChanges.length > 0;
   const blockedReason =
     data === undefined
       ? null
@@ -83,7 +110,11 @@ export function PublishDialog({ open, onOpenChange, onPublished }: PublishDialog
           : 'Tidak ada perubahan dari bundel terbit terakhir';
   // Selama draf dihitung ulang (dialog baru dibuka) hasil lama tidak boleh dipakai memutuskan boleh terbit.
   const canSubmit =
-    data !== undefined && !draft.isFetching && blockedReason === null && note.trim() !== '';
+    data !== undefined &&
+    !draft.isFetching &&
+    blockedReason === null &&
+    note.trim() !== '' &&
+    (!needsAcknowledge || understood);
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -139,6 +170,28 @@ export function PublishDialog({ open, onOpenChange, onPublished }: PublishDialog
               </dd>
             </dl>
             <IssueList issues={errors} color="destructive" />
+            {needsAcknowledge ? (
+              <div className="space-y-2">
+                <IssueList
+                  issues={addressChanges}
+                  color="warning"
+                  title="Alamat atau jaringan berubah dari bundel terbit terakhir"
+                />
+                <ul className="list-disc space-y-1 pl-5 text-sm">
+                  {ADDRESS_CONSEQUENCES.map((text) => (
+                    <li key={text}>{text}</li>
+                  ))}
+                </ul>
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="cl-publish-understood"
+                    checked={understood}
+                    onCheckedChange={(checked) => setUnderstood(checked === true)}
+                  />
+                  <Label htmlFor="cl-publish-understood">Saya paham akibatnya</Label>
+                </div>
+              </div>
+            ) : null}
             <IssueList issues={warnings} color="warning" />
             {data.changed ? null : (
               <Alert color="info">

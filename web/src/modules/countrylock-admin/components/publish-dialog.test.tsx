@@ -88,6 +88,64 @@ describe('PublishDialog', () => {
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
+  test('ADDRESS_CHANGED: peringatan mencolok, tombol Terbitkan butuh centang "Saya paham akibatnya"', async () => {
+    current = draft({
+      issues: [
+        {
+          severity: 'warning',
+          code: 'ADDRESS_CHANGED',
+          path: 'settings.json',
+          message: 'Alamat router berubah dari 192.168.88.2 ke 10.0.0.2.',
+        },
+        {
+          severity: 'warning',
+          code: 'ADDRESS_CHANGED',
+          path: 'settings.json',
+          message: 'IP komputer berubah dari 192.168.88.3 ke 10.0.0.3.',
+        },
+      ],
+    });
+    await dialog();
+    expect(
+      await screen.findByText('Alamat atau jaringan berubah dari bundel terbit terakhir'),
+    ).toBeTruthy();
+    expect(screen.getByText(/Alamat router berubah dari 192\.168\.88\.2/)).toBeTruthy();
+    expect(screen.getByText(/router yang sudah terpasang masih di alamat lama/i)).toBeTruthy();
+    expect(screen.getByText(/komputer operator harus pindah segmen/i)).toBeTruthy();
+    await userEvent.type(screen.getByLabelText(/Catatan/), 'Pindah jaringan');
+    expect((await publishButton()).disabled).toBe(true);
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Saya paham akibatnya' }));
+    await waitFor(async () => expect((await publishButton()).disabled).toBe(false));
+    await userEvent.click(await publishButton());
+    await waitFor(() =>
+      expect(apiMock).toHaveBeenCalledWith('clBundles.publish', { note: 'Pindah jaringan' }),
+    );
+  });
+
+  test('tanpa ADDRESS_CHANGED tidak ada kotak "Saya paham akibatnya"', async () => {
+    await dialog();
+    await screen.findByLabelText(/Catatan/);
+    expect(screen.queryByRole('checkbox', { name: 'Saya paham akibatnya' })).toBeNull();
+  });
+
+  test('DUPLICATE_ROUTER_NAME memblokir seperti error lain dan menjelaskan akibatnya', async () => {
+    current = draft({
+      issues: [
+        {
+          severity: 'error',
+          code: 'DUPLICATE_ROUTER_NAME',
+          path: 'b/system.npk',
+          message: 'Berkas router "b/system.npk" bernama dasar sama dengan "a/system.npk"',
+        },
+      ],
+    });
+    await dialog();
+    expect(await screen.findByText(/bernama dasar sama/)).toBeTruthy();
+    expect(screen.getByText(/saling menimpa di \/temp router jump/i)).toBeTruthy();
+    await userEvent.type(screen.getByLabelText(/Catatan/), 'Rilis');
+    expect((await publishButton()).disabled).toBe(true);
+  });
+
   test('draf sama dengan bundel terbit terakhir: tidak ada yang diterbitkan', async () => {
     current = draft({ changed: false });
     await dialog();
