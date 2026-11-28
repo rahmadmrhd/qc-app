@@ -153,8 +153,10 @@ describe('submit serentak', () => {
       ],
     });
     const out = await call(WH_USERS.edit, 'serialWarehouse.submit', input('PRE-2'));
-    expect(out.ok).toBe(true);
-    expect(out.data.skipped).toEqual([{ serial: 'PRE-2', reason: 'Tipe berbeda' }]);
+    expect(out.ok).toBe(false);
+    expect(out.error.fields.rows).toBe(
+      'Tidak ada serial yang dapat dicatat. Dilewati: Tipe berbeda (1)',
+    );
   });
 
   test('penyapu dan potongan terakhir serentak: tak ada done dengan baris terhapus', async () => {

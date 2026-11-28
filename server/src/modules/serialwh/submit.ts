@@ -216,6 +216,69 @@ async function outputOf(
   };
 }
 
+/** Pesan penolakan bila tak ada serial yang dapat dicatat: ringkasan alasan generik (tanpa data lintas BU). */
+function noRecordableMessage(skipped: readonly WarehouseSkippedRowDto[]): string {
+  const counts = new Map<string, number>();
+  for (const row of skipped) counts.set(row.reason, (counts.get(row.reason) ?? 0) + 1);
+  const summary = [...counts].map(([reason, count]) => `${reason} (${count})`).join('; ');
+  return `Tidak ada serial yang dapat dicatat${summary === '' ? '' : `. Dilewati: ${summary}`}`;
+}
+
+async function countDispatchSerials(env: Env, dispatchId: string): Promise<number> {
+  const row = await env.DB.prepare(
+    'SELECT COUNT(*) AS n FROM warehouse_dispatch_serials WHERE dispatch_id = ?',
+  )
+    .bind(dispatchId)
+    .first<{ n: number | string }>();
+  return Number(row?.n ?? 0);
+}
+
+/**
+ * Membuang pengeluaran bertahap yang pada potongan terakhir ternyata tanpa serial sama sekali: baris pengeluaran,
+ * potongan, kardus ready yang kosong, tautan task yang ditambahkan pengeluaran ini, dan SO yang dibuat khusus olehnya
+ * (bila tak punya pengeluaran atau tautan lain). Satu `batch()` dijaga CAS (pengeluaran masih `pending`, potongan ini
+ * memang yang terakhir, dan belum ada serial). Nomor riwayat yang sudah terpakai tidak dikembalikan (penghitung hanya naik).
+ * Customer baru yang dibuat bersama SO tetap ada (master data).
+ */
+async function discardEmptyDispatch(
+  env: Env,
+  dispatch: DispatchRow,
+  order: OrderRow | null,
+): Promise<void> {
+  const id = dispatch.id.trim();
+  const statements: DbStatement[] = [
+    env.DB.prepare(
+      `UPDATE warehouse_dispatches SET id = CASE WHEN status = 'pending' AND chunks_received + 1 = chunk_count AND NOT EXISTS (SELECT 1 FROM warehouse_dispatch_serials WHERE dispatch_id = warehouse_dispatches.id) THEN id ELSE ${CAS_FAIL_SQL} END WHERE id = ?`,
+    ).bind(id),
+  ];
+  if (dispatch.kind.trim() === 'ready') {
+    statements.push(
+      env.DB.prepare('DELETE FROM warehouse_ready_boxes WHERE dispatch_id = ?').bind(id),
+    );
+  }
+  if (order) {
+    const orderId = order.id.trim();
+    statements.push(
+      env.DB.prepare(
+        'DELETE FROM warehouse_order_handovers WHERE order_id = ? AND created_at = ? AND created_by = ?',
+      ).bind(orderId, dispatch.created_at, dispatch.created_by),
+    );
+  }
+  statements.push(
+    env.DB.prepare('DELETE FROM warehouse_dispatch_chunks WHERE dispatch_id = ?').bind(id),
+    env.DB.prepare('DELETE FROM warehouse_dispatches WHERE id = ?').bind(id),
+  );
+  if (order) {
+    const orderId = order.id.trim();
+    statements.push(
+      env.DB.prepare(
+        'DELETE FROM warehouse_orders WHERE id = ? AND created_at = ? AND created_by = ? AND NOT EXISTS (SELECT 1 FROM warehouse_dispatches WHERE order_id = warehouse_orders.id) AND NOT EXISTS (SELECT 1 FROM warehouse_order_handovers WHERE order_id = warehouse_orders.id)',
+      ).bind(orderId, dispatch.created_at, dispatch.created_by),
+    );
+  }
+  await env.DB.batch(statements);
+}
+
 async function submitOnce(
   env: Env,
   user: UserContext,
@@ -506,6 +569,23 @@ async function submitOnce(
     });
     if (plans.some((plan) => plan.createdNew)) {
       stickers = await applicableStickersOf(env, header.itemId, buId);
+    }
+  }
+
+  // Tanpa serial yang dapat dicatat tidak boleh ada riwayat gudang (aturan pemilik 2026-11-28): pengeluaran satu potongan
+  // ditolak sebelum menulis apa pun, dan pengeluaran bertahap yang total serialnya 0 saat potongan terakhir dibatalkan bersih.
+  if (plans.length === 0) {
+    if (!existing && header.total <= header.chunkSize) {
+      throw fieldError('rows', noRecordableMessage(skipped));
+    }
+    if (
+      existing &&
+      Number(existing.chunks_received) + 1 === Number(existing.chunk_count) &&
+      (await countDispatchSerials(env, existing.id.trim())) === 0
+    ) {
+      const earlier = await skippedTotalOf(env, existing.id.trim());
+      await discardEmptyDispatch(env, existing, order);
+      throw fieldError('rows', noRecordableMessage([...earlier, ...skipped]));
     }
   }
 

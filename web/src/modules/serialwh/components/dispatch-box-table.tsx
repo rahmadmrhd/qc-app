@@ -1,5 +1,5 @@
 import type { WarehouseDispatchSerialDto } from '@shared/contract';
-import { type DataColumn, DataTable } from '@/components/data-table';
+import { type DataColumn, DataTable, type RowSelection } from '@/components/data-table';
 import { Badge } from '@/components/ui/badge';
 
 /** Satu serial pencatatan Ready dengan nada selang-seling per kardus (menurut urutan tampil = urutan `seq`). */
@@ -80,6 +80,8 @@ export interface DispatchBoxTableProps {
   loadingMore?: boolean;
   loadMoreError?: boolean;
   onLoadMore?: () => void;
+  /** Pilihan baris (untuk "Salin terpilih"); tanpa ini tabel tanpa kotak centang. */
+  selection?: RowSelection;
 }
 
 /**
@@ -94,6 +96,7 @@ export function DispatchBoxTable({ rows, ...rest }: DispatchBoxTableProps) {
       columns={COLUMNS}
       label="Serial Number pencatatan per kardus"
       rowTone={(row) => row.tone}
+      selectLabel={(row) => row.serial}
       fit="content"
       empty="Belum ada Serial Number."
       {...rest}

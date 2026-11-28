@@ -631,6 +631,7 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
       customerName: 'string',
       query: 'string',
       includeFinished: 'boolean',
+      locationId: 'string',
       orderId: 'string',
       itemId: 'string',
       cursor: 'string',

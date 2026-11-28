@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, setDefaultTimeout, test } from 'bun:test'
 import { ENV } from '@server-test/handover-env';
 import { seedItem } from '@server-test/item-fixtures';
 import { restCall } from '@server-test/rest-call';
+import { restClient } from '@server-test/rest-client';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import { linkOrder, seedOrder, seedTask, seedWarehouseWorld, WH_USERS } from './handover-test-env';
 
@@ -190,5 +191,20 @@ describe('serialWarehouse.handoverCandidates', () => {
   test('tanpa hak serialwh edit = 403', async () => {
     const res = await call(WH_USERS.viewer, {});
     expect(res.ok).toBe(false);
+  });
+});
+
+describe('GET /serial-warehouse/handover-candidates lewat HTTP (query string sungguhan)', () => {
+  test('locationId, itemId, customerName, dan limit diterima sebagai parameter query', async () => {
+    await seedTask(env, { id: 't-a', locationId: ENV.locA });
+    await seedTask(env, { id: 't-b', locationId: ENV.locB });
+    const client = restClient(env);
+    const res = await client.get(
+      `/serial-warehouse/handover-candidates?locationId=${ENV.locA}&itemId=i-cx500&limit=20`,
+      { email: WH_USERS.qc },
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { items: { id: string }[] };
+    expect(body.items.map((row) => row.id)).toEqual(['t-a']);
   });
 });

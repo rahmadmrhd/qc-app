@@ -1273,6 +1273,7 @@
       "includeFinished": "boolean",
       "itemId": "string",
       "limit": "number",
+      "locationId": "string",
       "orderId": "string",
       "query": "string"
     },
