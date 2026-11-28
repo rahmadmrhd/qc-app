@@ -9,7 +9,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { formatStamp } from '@/lib/format-stamp';
 import { RESCAN_LIST_MAX, type RescanWarning } from '../lib/rescan';
-import { formatCounted, type SaveConfirmSummary } from '../lib/save-confirm';
+import type { CountedValue, SaveConfirmSummary } from '../lib/save-confirm';
 
 export interface RescanWarningDialogProps {
   open: boolean;
@@ -20,24 +20,37 @@ export interface RescanWarningDialogProps {
   onCancel(): void;
 }
 
-function summaryLines(summary: SaveConfirmSummary): { label: string; value: string }[] {
-  let stickers = 'Tidak ada';
+/** Baris ringkasan yang berisi teks biasa (Serial Number dan Stiker). */
+function summaryText(summary: SaveConfirmSummary): { label: string; value: string }[] {
   const parts: string[] = [];
   if (summary.stickerKinds > 0)
     parts.push(`${summary.stickerKinds} jenis, ${summary.stickerQty} pcs`);
   if (summary.stickerPending > 0) parts.push(`${summary.stickerPending} baris bawaan`);
-  if (parts.length > 0) stickers = parts.join('; ');
   return [
     {
       label: 'Serial Number',
       value: `${summary.total}${summary.newCount > 0 ? ` (${summary.newCount} baru)` : ''}`,
     },
-    { label: 'BU', value: formatCounted(summary.bu) },
-    { label: 'Item', value: formatCounted(summary.item) },
-    { label: 'Lokasi', value: formatCounted(summary.location) },
-    { label: 'Tanggal uji', value: formatCounted(summary.testDate) },
-    { label: 'Stiker', value: stickers },
+    { label: 'Stiker', value: parts.length > 0 ? parts.join('; ') : 'Tidak ada' },
   ];
+}
+
+/** Kartu per nilai unik dengan jumlah serialnya (BU, Item, Lokasi, Tanggal uji). */
+function CountedCards({ title, values }: { title: string; values: readonly CountedValue[] }) {
+  return (
+    <div className="space-y-1.5">
+      <p className="text-sm text-muted-foreground">{title}</p>
+      <div className="flex flex-wrap gap-2">
+        {values.length === 0 ? <span className="text-sm">-</span> : null}
+        {values.map((value) => (
+          <div key={value.label} className="rounded-md border bg-muted/40 px-3 py-2 text-sm">
+            <p className="font-medium">{value.label}</p>
+            <p className="text-xs text-muted-foreground">{value.count} serial</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 /** Peringatan saat Simpan: serial yang discan ulang di BU dan lokasi yang sama dengan catatan terakhirnya. */
@@ -65,14 +78,20 @@ export function RescanWarningDialog({
           </AlertDialogDescription>
         </AlertDialogHeader>
         {summary ? (
-          <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
-            {summaryLines(summary).map((line) => (
-              <div key={line.label} className="contents">
-                <dt className="text-muted-foreground">{line.label}</dt>
-                <dd>{line.value}</dd>
-              </div>
-            ))}
-          </dl>
+          <div className="space-y-3">
+            <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
+              {summaryText(summary).map((line) => (
+                <div key={line.label} className="contents">
+                  <dt className="text-muted-foreground">{line.label}</dt>
+                  <dd>{line.value}</dd>
+                </div>
+              ))}
+            </dl>
+            <CountedCards title="BU" values={summary.bu} />
+            <CountedCards title="Item" values={summary.item} />
+            <CountedCards title="Lokasi" values={summary.location} />
+            <CountedCards title="Tanggal uji" values={summary.testDate} />
+          </div>
         ) : null}
         {hasWarnings ? (
           <ul className="space-y-1 text-sm" aria-label="Serial yang sudah dicatat">
