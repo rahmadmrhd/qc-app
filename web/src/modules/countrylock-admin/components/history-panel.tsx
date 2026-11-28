@@ -1,5 +1,5 @@
 import type { ClRevisionDto } from '@shared/contract';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { type DataColumn, DataTable, type RowAction } from '@/components/data-table';
@@ -20,8 +20,9 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { describeError } from '@/lib/api/describe-error';
 import { formatStamp } from '@/lib/format-stamp';
+import { isStaleSaveError } from '@/modules/sticker/lib/stale';
 import type { CodeLanguage } from '../lib/language';
-import { historyQueryOptions, revisionQueryOptions, useRevertFile } from '../queries';
+import { clKeys, historyQueryOptions, revisionQueryOptions, useRevertFile } from '../queries';
 import { DiffView } from './diff-view';
 
 export interface HistoryPanelProps {
@@ -30,6 +31,8 @@ export interface HistoryPanelProps {
   language: CodeLanguage;
   /** Boleh mengembalikan revisi (`countrylock: edit`). */
   canEdit: boolean;
+  /** `updatedAt` berkas yang sedang dilihat; dikirim sebagai `If-Match` saat mengembalikan revisi. */
+  updatedAt: string;
 }
 
 function revisionLabel(revision: ClRevisionDto): string {
@@ -87,7 +90,8 @@ function Compare({
  * "Kembalikan revisi ini" (menjadi revisi BARU berisi isi lama). Berkas biner: daftar versi (hash, ukuran, pengunggah,
  * waktu) tanpa diff; hash dapat disalin.
  */
-export function HistoryPanel({ fileId, kind, language, canEdit }: HistoryPanelProps) {
+export function HistoryPanel({ fileId, kind, language, canEdit, updatedAt }: HistoryPanelProps) {
+  const client = useQueryClient();
   const history = useQuery(historyQueryOptions(fileId));
   const revert = useRevertFile();
   const revisions = useMemo(
@@ -99,6 +103,9 @@ export function HistoryPanel({ fileId, kind, language, canEdit }: HistoryPanelPr
   const [comparing, setComparing] = useState(false);
   const [revertTarget, setRevertTarget] = useState<ClRevisionDto | null>(null);
   const [revertError, setRevertError] = useState<string | null>(null);
+  // Versi yang DILIHAT pengguna saat membuka dialog; dikirim ke server agar suntingan orang lain tak tertimpa.
+  const [revertBase, setRevertBase] = useState<{ seq: number; updatedAt: string } | null>(null);
+  const [revertStale, setRevertStale] = useState(false);
   const latest = revisions[0]?.seq;
   const effectiveTo = toSeq ?? latest ?? null;
   const effectiveFrom = fromSeq ?? revisions[1]?.seq ?? null;
@@ -172,35 +179,43 @@ export function HistoryPanel({ fileId, kind, language, canEdit }: HistoryPanelPr
       disabled: revert.isPending,
       onSelect: () => {
         setRevertError(null);
+        setRevertStale(false);
+        setRevertBase(latest === undefined ? null : { seq: latest, updatedAt });
         setRevertTarget(revision);
       },
     },
   ];
 
-  // Konfirmasi pengembalian: memuat ulang riwayat dulu; bila orang lain sudah menyimpan revisi baru sejak daftar ini
-  // dibuka, pengembalian dibatalkan (server belum mengunci versi pada rute ini, jadi ini penjaga terbaik di klien).
-  const confirmRevert = async () => {
+  // Konfirmasi pengembalian: server menegakkan versi (`baseSeq` + `If-Match`); orang lain yang sudah menyimpan sejak
+  // dialog dibuka = 412, dan dialog menjelaskannya tanpa menimpa apa pun.
+  const confirmRevert = () => {
     const target = revertTarget;
-    if (!target) return;
+    if (!target || revertBase === null) return;
     setRevertError(null);
-    const fresh = await history.refetch();
-    const freshLatest = (fresh.data ?? []).reduce((max, item) => Math.max(max, item.seq), 0);
-    if (fresh.isError || freshLatest !== latest) {
-      setRevertError(
-        fresh.isError
-          ? describeError(fresh.error)
-          : `Berkas sudah diubah orang lain (kini revisi ${freshLatest}). Tinjau riwayat terbaru lalu coba lagi.`,
-      );
-      return;
-    }
     revert.mutate(
-      { id: fileId, seq: target.seq },
+      {
+        id: fileId,
+        seq: target.seq,
+        baseSeq: revertBase.seq,
+        expectedUpdatedAt: revertBase.updatedAt,
+      },
       {
         onSuccess: () => {
           toast.success(`Revisi ${target.seq} dikembalikan sebagai revisi baru`);
           setRevertTarget(null);
         },
-        onError: (error) => setRevertError(describeError(error)),
+        onError: (error) => {
+          if (isStaleSaveError(error)) {
+            setRevertStale(true);
+            setRevertError(
+              'Berkas sudah diubah orang lain sejak dialog ini dibuka, jadi tidak ada yang dikembalikan. Riwayat dimuat ulang: tutup dialog, tinjau revisi terbaru, lalu coba lagi.',
+            );
+            void history.refetch();
+            void client.invalidateQueries({ queryKey: clKeys.file(fileId) });
+          } else {
+            setRevertError(describeError(error));
+          }
+        },
       },
     );
   };
@@ -285,11 +300,11 @@ export function HistoryPanel({ fileId, kind, language, canEdit }: HistoryPanelPr
             <AlertDialogCancel disabled={revert.isPending}>Batal</AlertDialogCancel>
             <AlertDialogAction
               color="primary"
-              disabled={revert.isPending}
+              disabled={revert.isPending || revertStale}
               onClick={(event) => {
                 // Dialog tetap terbuka sampai berhasil: galat dan konflik tampil di dalamnya.
                 event.preventDefault();
-                void confirmRevert();
+                confirmRevert();
               }}
             >
               Kembalikan

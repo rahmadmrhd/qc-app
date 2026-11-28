@@ -9,6 +9,7 @@ import type {
   ClRevisionDto,
   ImportClInput,
   ImportClResult,
+  RevertClFileInput,
   SaveClFileInput,
   SaveClFirmwareInput,
 } from '@shared/contract';
@@ -143,8 +144,7 @@ export function useRevertFile() {
   const client = useQueryClient();
   const after = useAfterFilesChange();
   return useMutation({
-    mutationFn: (input: { id: string; seq: number; message?: string }) =>
-      api('clFiles.revert', input),
+    mutationFn: (input: RevertClFileInput) => api('clFiles.revert', input),
     onSuccess: (file) => {
       client.setQueryData(clKeys.file(file.id), file);
       void client.invalidateQueries({ queryKey: clKeys.history(file.id) });

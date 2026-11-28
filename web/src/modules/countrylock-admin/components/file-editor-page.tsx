@@ -239,7 +239,13 @@ export function FileEditorPage({ fileId, onBack }: FileEditorPageProps) {
   const historyTab = (
     <div className="space-y-4">
       {isText ? null : info}
-      <HistoryPanel fileId={file.id} kind={file.kind} language={language} canEdit />
+      <HistoryPanel
+        fileId={file.id}
+        kind={file.kind}
+        language={language}
+        canEdit
+        updatedAt={file.updatedAt}
+      />
     </div>
   );
 

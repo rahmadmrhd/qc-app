@@ -245,7 +245,12 @@ describe('FileEditorPage: riwayat', () => {
       within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Kembalikan' }),
     );
     await waitFor(() =>
-      expect(apiMock).toHaveBeenCalledWith('clFiles.revert', { id: 'f1', seq: 1 }),
+      expect(apiMock).toHaveBeenCalledWith('clFiles.revert', {
+        id: 'f1',
+        seq: 1,
+        baseSeq: 3,
+        expectedUpdatedAt: '2026-11-28T01:00:00.000Z',
+      }),
     );
   });
 

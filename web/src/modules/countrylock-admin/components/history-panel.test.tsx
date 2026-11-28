@@ -14,6 +14,7 @@ vi.mock('@/lib/api', async (importOriginal) => ({
 import { HistoryPanel } from './history-panel';
 
 const HASH = 'ab'.repeat(32);
+const UPDATED_AT = '2026-11-28T01:00:00.000Z';
 
 function revision(seq: number, overrides: Partial<ClRevisionDto> = {}): ClRevisionDto {
   return {
@@ -43,7 +44,9 @@ beforeEach(() => {
 });
 
 const panel = (kind: 'text' | 'binary' = 'text') =>
-  renderInRouter(<HistoryPanel fileId="f1" kind={kind} language="rsc" canEdit />);
+  renderInRouter(
+    <HistoryPanel fileId="f1" kind={kind} language="rsc" canEdit updatedAt={UPDATED_AT} />,
+  );
 const revertCalls = () => apiMock.mock.calls.filter((call) => call[0] === 'clFiles.revert');
 
 describe('HistoryPanel', () => {
@@ -69,18 +72,36 @@ describe('HistoryPanel', () => {
       within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Kembalikan' }),
     );
     await waitFor(() =>
-      expect(apiMock).toHaveBeenCalledWith('clFiles.revert', { id: 'f1', seq: 1 }),
+      expect(apiMock).toHaveBeenCalledWith('clFiles.revert', {
+        id: 'f1',
+        seq: 1,
+        baseSeq: 3,
+        expectedUpdatedAt: UPDATED_AT,
+      }),
     );
   });
 
-  test('riwayat sudah bertambah sejak dibuka (orang lain menyimpan): pengembalian dibatalkan, bukan menimpa', async () => {
+  test('server menolak (412, orang lain sudah menyimpan): dialog menjelaskan, riwayat dimuat ulang, tidak menimpa', async () => {
+    const { ApiError } = await import('@/lib/api/api-error');
+    apiMock.mockImplementation(async (id: string) => {
+      if (id === 'clFiles.history') return history;
+      if (id === 'clFiles.revert') {
+        throw new ApiError('CONFLICT', 'Data sudah diubah', '-', undefined, { status: 412 });
+      }
+      throw new Error(`api tak terduga: ${id}`);
+    });
     await panel();
     await userEvent.click(await screen.findByRole('button', { name: 'Kembalikan revisi 1' }));
     const dialog = await screen.findByRole('alertdialog');
-    // Orang lain menyimpan revisi 4 selama dialog terbuka.
-    history = [revision(4), ...history];
+    const historyCalls = () =>
+      apiMock.mock.calls.filter((call) => call[0] === 'clFiles.history').length;
+    const before = historyCalls();
     await userEvent.click(within(dialog).getByRole('button', { name: 'Kembalikan' }));
-    expect(await screen.findByText(/sudah diubah orang lain/i)).toBeTruthy();
-    expect(revertCalls()).toHaveLength(0);
+    expect(await within(dialog).findByText(/sudah diubah orang lain/i)).toBeTruthy();
+    await waitFor(() => expect(historyCalls()).toBeGreaterThan(before));
+    // Mengulang dengan dasar yang basi tak diperbolehkan: tutup lalu buka lagi setelah meninjau riwayat.
+    expect(
+      (within(dialog).getByRole('button', { name: 'Kembalikan' }) as HTMLButtonElement).disabled,
+    ).toBe(true);
   });
 });
