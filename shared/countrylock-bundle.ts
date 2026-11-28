@@ -43,7 +43,17 @@ export type ClFileRole = 'settings' | 'script' | 'router';
 
 export type ClBrand = 'mikrotik' | 'ubiquiti';
 
-/** Pesan galat untuk nama jalur yang tak sah, atau `null` bila sah. */
+// Nama perangkat cadangan Windows (tak dapat dipakai sebagai nama berkas, dengan atau tanpa ekstensi, tak peka huruf).
+const WINDOWS_RESERVED = /^(con|prn|aux|nul|com[1-9¹²³]|lpt[1-9¹²³])$/i;
+// Karakter terlarang di nama berkas Windows; `:` juga menutup huruf drive (`C:`) dan alternate data stream (`a:b`).
+const WINDOWS_FORBIDDEN = /[<>:"|?*]/;
+
+/**
+ * Pesan galat untuk nama jalur yang tak sah, atau `null` bila sah. Berkas bundel ditulis ke disk Windows oleh aplikasi
+ * desktop, jadi nama yang berbahaya di Windows ditolak di sini: nama perangkat cadangan (CON, PRN, AUX, NUL, COM1-9,
+ * LPT1-9) per bagian, bagian berakhir titik atau spasi, dan karakter `<>:"|?*`. Hanya dipakai saat MENULIS/menerbitkan;
+ * berkas lama yang sudah tersimpan tetap terbaca dan `validateDraft` memberi galat `INVALID_PATH` saat diterbitkan.
+ */
 export function validateClPath(path: string): string | null {
   if (path === '') return 'Nama berkas kosong';
   if (path.length > CL_PATH_MAX) return `Nama berkas maksimal ${CL_PATH_MAX} karakter`;
@@ -53,6 +63,15 @@ export function validateClPath(path: string): string | null {
   for (const segment of path.split('/')) {
     if (segment === '') return 'Nama berkas tidak boleh punya bagian kosong';
     if (segment === '.' || segment === '..') return 'Nama berkas tidak boleh memuat . atau ..';
+    if (WINDOWS_FORBIDDEN.test(segment)) {
+      return 'Nama berkas tidak boleh memuat karakter < > : " | ? * (tidak sah di Windows)';
+    }
+    if (segment.endsWith('.') || segment.endsWith(' ')) {
+      return 'Bagian nama berkas tidak boleh berakhir titik atau spasi (tidak sah di Windows)';
+    }
+    if (WINDOWS_RESERVED.test((segment.split('.')[0] ?? '').trimEnd())) {
+      return 'Nama berkas memakai nama cadangan Windows (CON, PRN, AUX, NUL, COM1-9, LPT1-9)';
+    }
   }
   return null;
 }
@@ -330,6 +349,19 @@ export function validateDraft(
   previous?: ClPreviousBundle,
 ): ClIssue[] {
   const issues: ClIssue[] = [];
+
+  // Berkas lama dengan nama yang kini ditolak (tetap terbaca, tetapi tak boleh masuk bundel).
+  for (const file of files) {
+    const problem = validateClPath(file.path);
+    if (problem !== null) {
+      issues.push({
+        severity: 'error',
+        code: 'INVALID_PATH',
+        path: file.path,
+        message: `Nama berkas "${file.path}" tidak sah: ${problem}. Buat berkas baru dengan nama yang sah lalu hapus yang lama`,
+      });
+    }
+  }
 
   // Bentrok huruf besar/kecil (atau jalur kembar).
   const seen = new Map<string, string>();

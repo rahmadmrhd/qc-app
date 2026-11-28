@@ -130,6 +130,53 @@ describe('validateClPath', () => {
     expect(validateClPath('a'.repeat(CL_PATH_MAX + 1))).not.toBeNull();
   });
 
+  test('menolak jalur yang berbahaya di Windows (nama cadangan, akhiran titik/spasi, karakter terlarang, drive, ADS)', () => {
+    for (const bad of [
+      'CON',
+      'con.rsc',
+      'mikrotik/PRN.txt',
+      'Aux.tar.gz',
+      'NUL',
+      'a/com1.rsc',
+      'COM9',
+      'lpt3.sh',
+      'x/LPT1',
+      'COM¹.rsc',
+      'a/nama.',
+      'a/nama ',
+      'a./b',
+      'a /b',
+      'a<b',
+      'a>b',
+      'a"b',
+      'a|b',
+      'a?b',
+      'a*b',
+      'C:/x.rsc',
+      'C:x',
+      'a:b',
+      'file.txt:stream',
+    ]) {
+      expect(validateClPath(bad), bad).not.toBeNull();
+    }
+  });
+
+  test('jalur biasa tetap lolos (nama mirip cadangan tetapi bukan, titik di tengah, huruf besar)', () => {
+    for (const good of [
+      'mikrotik/IDN.rsc',
+      'console.rsc',
+      'COM10.rsc',
+      'COM0',
+      'LPT',
+      'nul-x.rsc',
+      'a.b.c',
+      'Mikrotik/AC v2.rsc',
+      '.hidden',
+    ]) {
+      expect(validateClPath(good), good).toBeNull();
+    }
+  });
+
   test('menerima jalur biasa', () => {
     expect(validateClPath('mikrotik/IDN.rsc')).toBeNull();
     expect(validateClPath('settings.json')).toBeNull();
@@ -320,6 +367,14 @@ describe('validateDraft', () => {
     const issue = validateDraft(files, [FIRMWARE]).find((i) => i.code === 'DUPLICATE_ROUTER_NAME');
     expect(issue?.severity).toBe('error');
     expect(issue?.path).toBe('lain/AC.cfg');
+  });
+
+  test('berkas lama bernama berbahaya di Windows -> INVALID_PATH (error) saat diterbitkan', () => {
+    const files = [...healthy(), routerFile('os/CON.cfg')];
+    const issue = validateDraft(files, [FIRMWARE]).find((i) => i.code === 'INVALID_PATH');
+    expect(issue?.severity).toBe('error');
+    expect(issue?.path).toBe('os/CON.cfg');
+    expect(validateDraft(healthy(), [FIRMWARE]).some((i) => i.code === 'INVALID_PATH')).toBe(false);
   });
 });
 
