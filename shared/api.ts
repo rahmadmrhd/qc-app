@@ -718,6 +718,7 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
     },
   },
   'serialWarehouse.dispatchGet': { verb: 'GET', path: '/serial-warehouse/dispatches/{id}' },
+  'serialWarehouse.dispatchUpdate': { verb: 'PUT', path: '/serial-warehouse/dispatches/{id}' },
   // Bukti foto QC Serial Number. `serialProofs.get` TANPA `etag` dan memakai `cache: 'revalidate'` (`private, no-cache`): isi pada
   // id yang sama berubah dari foto asli (draft/antre) menjadi hasil bercap (selesai), jadi ETag `id` atau `immutable`
   // akan menyajikan foto basi; tanpa validator, tiap tampilan mengunduh ulang berkasnya.

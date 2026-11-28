@@ -112,16 +112,20 @@ export function useContentAboveBoard(node: HTMLElement | null, enabled: boolean)
  * Tinggi sisa viewport untuk elemen yang mengisi halaman (papan kanban, pembungkus tabel): `100dvh` dikurangi header
  * dan bar headroom (`--headroom-offset`), spanduk aplikasi yang tampil, `reservedPx` (konten pengikut di bawahnya,
  * mis. tombol "Muat lebih banyak"), konten lain di antara bar dan elemen, padding atas dan bawah `<main>`
- * (`--main-pad`), dan celah bar-isi. Mengembalikan ekspresi `calc(...)` (`undefined` bila tak aktif). Rumus ini
- * mengandaikan halaman TIDAK bleed ke tepi `<main>` (kit daftar dan kanban tak pernah bleed).
+ * (`--main-pad`), dan celah bar-isi. Mengembalikan ekspresi `calc(...)` (`undefined` bila tak aktif).
+ *
+ * `bleed`: halaman yang bleed ke tepi `<main>` (`FormPage` di layar lebar: `wide:-mt/-mb-[--main-pad]`) hanya menyisakan
+ * padding bawah di dalam halamannya, jadi yang dikurangkan cukup satu `--main-pad`. Halaman biasa (daftar) memakai dua.
  */
 export function useViewportFit(
   node: HTMLElement | null,
   enabled: boolean,
   reservedPx = 0,
+  bleed = false,
 ): string | undefined {
   const bannerHeight = useAppBannerHeight(enabled);
   const aboveBoard = useContentAboveBoard(node, enabled);
   if (!enabled) return undefined;
-  return `calc(100dvh - var(--headroom-offset, 3.5rem) - ${bannerHeight + aboveBoard + reservedPx}px - 2 * var(--main-pad, 1.5rem) - ${FRAME_GAP_PX}px)`;
+  const padTerm = bleed ? 'var(--main-pad, 1.5rem)' : '2 * var(--main-pad, 1.5rem)';
+  return `calc(100dvh - var(--headroom-offset, 3.5rem) - ${bannerHeight + aboveBoard + reservedPx}px - ${padTerm} - ${FRAME_GAP_PX}px)`;
 }

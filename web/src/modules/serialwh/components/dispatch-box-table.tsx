@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge';
 /** Satu serial pencatatan Ready dengan nada selang-seling per kardus (menurut urutan tampil = urutan `seq`). */
 export interface BoxSerialRow extends WarehouseDispatchSerialDto {
   tone: 'a' | 'b';
+  boxStart: boolean;
 }
 
 /** Kardus pada urutan `seq` sudah berurutan (penuh dulu, ecer terakhir): nada berganti tiap id kardus berganti. */
@@ -12,9 +13,10 @@ export function toBoxRows(rows: readonly WarehouseDispatchSerialDto[]): BoxSeria
   let tone: 'a' | 'b' = 'a';
   let previous: string | undefined;
   return rows.map((row) => {
-    if (previous !== undefined && row.boxId !== previous) tone = tone === 'a' ? 'b' : 'a';
+    const boxStart = previous !== undefined && row.boxId !== previous;
+    if (boxStart) tone = tone === 'a' ? 'b' : 'a';
     previous = row.boxId;
-    return { ...row, tone };
+    return { ...row, tone, boxStart };
   });
 }
 
@@ -96,6 +98,11 @@ export function DispatchBoxTable({ rows, ...rest }: DispatchBoxTableProps) {
       columns={COLUMNS}
       label="Serial Number pencatatan per kardus"
       rowTone={(row) => row.tone}
+      rowClassName={(row) =>
+        row.boxStart
+          ? '[&_td]:border-b-foreground/20 [&_td]:border-t-2 [&_td]:border-t-foreground/30'
+          : '[&_td]:border-b-foreground/20'
+      }
       selectLabel={(row) => row.serial}
       fit="content"
       empty="Belum ada Serial Number."

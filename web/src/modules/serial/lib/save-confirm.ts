@@ -1,0 +1,54 @@
+import type { StagingRow } from './draft';
+
+/** Satu kartu ringkasan: kombinasi unik BU, Item, Lokasi, dan Tanggal uji, beserta jumlah serialnya. */
+export interface SaveConfirmGroup {
+  bu: string;
+  item: string;
+  location: string;
+  testDate: string;
+  /** Stiker yang tertempel pada kelompok ini (sama untuk semua serial di dalamnya), qty > 0. */
+  stickers: { name: string; qty: number }[];
+  count: number;
+}
+
+/** Ringkasan isian yang ditampilkan di konfirmasi sebelum Simpan (langkah konfirmasi, sama dengan Catat WH). */
+export interface SaveConfirmSummary {
+  total: number;
+  newCount: number;
+  groups: SaveConfirmGroup[];
+}
+
+/** Ringkasan baris draf yang akan dikirim (hanya baris yang dikirim: `rows` sudah disaring pemanggil). */
+export function saveConfirmSummaryOf(rows: readonly StagingRow[]): SaveConfirmSummary {
+  const groups = new Map<string, SaveConfirmGroup>();
+  for (const row of rows) {
+    const stickers = (row.stickers ?? [])
+      .filter((sticker) => sticker.qty > 0)
+      .map((sticker) => ({ name: sticker.name, qty: sticker.qty }));
+    const key = JSON.stringify([
+      row.buLabel,
+      row.itemLabel,
+      row.locationLabel,
+      row.testDate,
+      ...stickers.map((sticker) => [sticker.name, sticker.qty]),
+    ]);
+    const found = groups.get(key);
+    if (found) {
+      found.count++;
+    } else {
+      groups.set(key, {
+        bu: row.buLabel,
+        item: row.itemLabel,
+        location: row.locationLabel,
+        testDate: row.testDate,
+        stickers,
+        count: 1,
+      });
+    }
+  }
+  return {
+    total: rows.length,
+    newCount: rows.filter((row) => row.existing === undefined).length,
+    groups: [...groups.values()],
+  };
+}

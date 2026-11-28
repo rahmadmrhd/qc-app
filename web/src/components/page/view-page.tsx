@@ -14,6 +14,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import type { UiColor, UiVariant } from '@/components/ui/variant-style';
 import { useIsDesktop } from '@/hooks/use-is-desktop';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { onFormTabRequest } from '@/lib/form-tab-request';
@@ -53,6 +54,9 @@ export interface ViewAction {
    * ia jadi grup datar di menu).
    */
   primary?: boolean;
+  /** Menimpa warna/gaya bawaan aksi (mis. tombol Salin ulang berwarna primary). */
+  color?: UiColor;
+  variant?: UiVariant;
   /** Label singkat di menu ponsel (bawaan: `label` lalu label bawaan jenis aksi). */
   shortLabel?: string;
   /**
@@ -346,6 +350,8 @@ export function ViewPage({
                             <ActionButton
                               action={entry.action}
                               label={entry.label}
+                              color={entry.color}
+                              variant={entry.variant}
                               busy={entry.busy}
                               disabled={entry.disabled}
                               onClick={entry.onSelect}
@@ -424,6 +430,8 @@ export function ViewPage({
                 <ActionButton
                   action={entry.action}
                   label={entry.label}
+                  color={entry.color}
+                  variant={entry.variant}
                   emphasis="primary"
                   busy={entry.busy}
                   disabled={entry.disabled}

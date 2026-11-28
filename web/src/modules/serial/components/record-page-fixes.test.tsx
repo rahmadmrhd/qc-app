@@ -269,7 +269,7 @@ test('satu pasangan item/BU NOT_FOUND saat simpan hanya menandai barisnya; baris
       ? Promise.reject(new ApiError('NOT_FOUND', 'Tidak ditemukan', '-'))
       : baseApi(id, input),
   );
-  await userEvent.click(screen.getByRole('button', { name: /^Simpan/ }));
+  await clickSaveRow(/^Simpan/);
   await waitFor(() => expect(saveCalls).toHaveLength(1));
   expect(saveCalls[0]?.rows.map((r) => r.serial)).toEqual(['GOOD1']);
   await waitFor(() => expect(serialValues()).toEqual(['BAD1']));
@@ -284,7 +284,7 @@ test('gangguan jaringan saat memuat stiker menghentikan simpan tanpa menandai ba
   apiMock.mockImplementation((id: string, input: Record<string, unknown>) =>
     id === 'serials.stickerOptions' ? Promise.reject(new Error('putus')) : baseApi(id, input),
   );
-  await userEvent.click(screen.getByRole('button', { name: /^Simpan/ }));
+  await clickSaveRow(/^Simpan/);
   expect(await screen.findByText(/Stiker yang berlaku gagal dimuat: /)).toBeInTheDocument();
   expect(saveCalls).toHaveLength(0);
   expect(dataRows()[0]).toHaveAttribute('data-result', 'ok');
@@ -302,7 +302,7 @@ test('selama simpan tabel terkunci tetapi pemindai tetap menerima serial; yang b
     if (id === 'serials.saveBatch') await gate;
     return baseApi(id, input);
   });
-  await userEvent.click(screen.getByRole('button', { name: /^Simpan/ }));
+  await clickSaveRow(/^Simpan/);
   const tanggal = await screen.findByLabelText('Tanggal uji A1');
   expect(tanggal).toBeDisabled();
   expect(screen.getByRole('button', { name: 'Detail A1' })).toBeDisabled();
@@ -425,7 +425,7 @@ test('bawaan rombongan: bawaan tak diubah = stickers null (semua yang berlaku sa
   await userEvent.click(screen.getByRole('button', { name: 'Tambah Stiker A' }));
   expect(screen.getByLabelText('Jumlah Stiker A')).toHaveTextContent('3');
   await paste('B2');
-  await userEvent.click(screen.getByRole('button', { name: /^Simpan/ }));
+  await clickSaveRow(/^Simpan/);
   await waitFor(() => expect(saveCalls).toHaveLength(1));
   const byserial = new Map(saveCalls[0]?.rows.map((row) => [row.serial, row.stickers]));
   // A1 ditambah sebelum bawaan diubah: semua stiker yang berlaku dengan jumlah awal.
@@ -455,7 +455,18 @@ test('bawaan rombongan: semua stiker dilepas = baris baru tanpa stiker (eksplisi
   await userEvent.click(await screen.findByRole('checkbox', { name: 'Stiker A' }));
   await userEvent.click(screen.getByRole('checkbox', { name: 'Stiker B' }));
   await paste('NONE1');
-  await userEvent.click(screen.getByRole('button', { name: /^Simpan/ }));
+  await clickSaveRow(/^Simpan/);
   await waitFor(() => expect(saveCalls).toHaveLength(1));
   expect(saveCalls[0]?.rows[0]?.stickers).toEqual([]);
 });
+
+/** Klik Simpan pada baris/halaman, lalu konfirmasi ringkasan (dialog `alertdialog`) bila tampil. */
+async function clickSaveRow(namePattern: RegExp) {
+  await userEvent.click(await screen.findByRole('button', { name: namePattern }));
+  const dialog = screen.queryByRole('alertdialog');
+  if (dialog) {
+    await userEvent.click(
+      within(dialog).getByRole('button', { name: /^(Simpan|Lanjut menyimpan)$/ }),
+    );
+  }
+}

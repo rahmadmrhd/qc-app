@@ -1,6 +1,6 @@
 import type { MeDto } from '@shared/contract';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { pickLink } from '@/test/link-field';
@@ -165,7 +165,7 @@ test('draft lama tanpa proofMin tetap dimuat dan baris dapat disimpan', async ()
   seedRow({});
   renderPage();
   expect(await screen.findByRole('textbox', { name: 'Serial AAA111' })).toBeInTheDocument();
-  await userEvent.click(screen.getByRole('button', { name: /^Simpan 1 serial/ }));
+  await clickSaveRow(/^Simpan 1 serial/);
   expect(await screen.findByText(/Dibuat 1/)).toBeInTheDocument();
 });
 
@@ -178,7 +178,7 @@ test('baris item wajib foto yang fotonya kurang berstatus "Butuh n foto lagi" da
   seedRow({});
   renderPage();
   expect(await screen.findByText('Butuh 2 foto lagi')).toBeInTheDocument();
-  await userEvent.click(screen.getByRole('button', { name: /^Simpan/ }));
+  await clickSaveRow(/^Simpan/);
   expect(screen.getByText(/1 baris belum lengkap/)).toBeInTheDocument();
   expect(apiMock.mock.calls.filter((call) => call[0] === 'serials.saveBatch')).toHaveLength(0);
 });
@@ -188,9 +188,20 @@ test('penolakan server "wajib foto bukti" tampil di baris tanpa mengosongkan fot
   seedRow({ proofPhotos: [photo] });
   respond = () => ({ result: 'invalid', message: 'Item ini wajib foto bukti minimal 2' });
   renderPage();
-  await userEvent.click(await screen.findByRole('button', { name: /^Simpan 1 serial/ }));
+  await clickSaveRow(/^Simpan 1 serial/);
   expect(await screen.findByText('Item ini wajib foto bukti minimal 2')).toBeInTheDocument();
   expect(screen.getByRole('textbox', { name: 'Serial AAA111' })).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Foto (1), AAA111' })).toBeInTheDocument();
   expect(apiMock.mock.calls.some((call) => call[0] === 'serialProofs.remove')).toBe(false);
 });
+
+/** Klik Simpan pada baris/halaman, lalu konfirmasi ringkasan (dialog `alertdialog`) bila tampil. */
+async function clickSaveRow(namePattern: RegExp) {
+  await userEvent.click(await screen.findByRole('button', { name: namePattern }));
+  const dialog = screen.queryByRole('alertdialog');
+  if (dialog) {
+    await userEvent.click(
+      within(dialog).getByRole('button', { name: /^(Simpan|Lanjut menyimpan)$/ }),
+    );
+  }
+}

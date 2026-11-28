@@ -9,6 +9,7 @@ export const WAREHOUSE_AUDIT = {
   dispatchCreate: 'serialwh.dispatch_create',
   /** Pengeluaran selesai (potongan terakhir masuk); ringkasan jumlah saja, tanpa daftar SN. */
   dispatchDone: 'serialwh.dispatch_done',
+  dispatchUpdate: 'serialwh.dispatch_update',
   dispatchCancel: 'serialwh.dispatch_cancel',
   linksUpdate: 'serialwh.links_update',
   readyCreate: 'serialwh.ready_create',

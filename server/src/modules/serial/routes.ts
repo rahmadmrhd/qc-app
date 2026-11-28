@@ -121,8 +121,14 @@ export function serialRoutes(): Pick<RouteTable, SerialMethod> {
       validate: expectNull,
       handler: (_input, ctx) => buOptions(ctx.env, ctx.user),
     },
+    // Dipakai juga dialog konfirmasi Catat Serial WH, jadi pemegang `serialwh: edit` ikut diizinkan (cabang di handler).
     'serials.stickerOptions': {
-      permission: { module: 'serial', level: 'edit' },
+      permission: {
+        anyOf: [
+          { module: 'serial', level: 'edit' },
+          { module: 'serialwh', level: 'edit' },
+        ],
+      },
       validate: validateSerialStickerOptions,
       handler: (input, ctx) => stickerOptions(ctx.env, ctx.user, input),
     },

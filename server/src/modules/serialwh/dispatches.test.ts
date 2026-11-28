@@ -204,4 +204,88 @@ describe('riwayat gabungan: daftar dan detail', () => {
     const pendingOnly = await call(E, 'serialWarehouse.dispatchList', { status: 'pending' });
     expect(pendingOnly.data.items.map((item: Json) => item.id)).toEqual([pending.data?.dispatchId]);
   });
+
+  test('ubah catatan Gudang: tanggal, kardus, catatan, dan jika BU diubah nomor riwayat dibuat ulang', async () => {
+    const created = await call(E, 'serialWarehouse.submit', {
+      clientId: crypto.randomUUID(),
+      chunkIndex: 0,
+      header: {
+        mode: 'note',
+        boxStart: 1,
+        boxSize: 10,
+        dispatchedOn: '2026-11-12',
+        orderNumber: '',
+        buId: 'bu-a',
+        customerName: '',
+        itemId: 'i-a1',
+        note: 'Awal',
+        handoverIds: [],
+        locationId: 'loc-sby',
+        total: 1,
+        chunkSize: 200,
+      },
+      rows: [
+        {
+          kind: 'new',
+          clientId: crypto.randomUUID(),
+          serial: 'EDIT-1',
+          locationId: 'loc-sby',
+          testDate: '2026-11-12',
+        },
+      ],
+    });
+    expect(created.ok).toBe(true);
+    const id = created.data.dispatchId as string;
+
+    // Ubah tanpa ganti BU: nomor tetap WH/A/2611-0001.
+    const sameBu = await call(E, 'serialWarehouse.dispatchUpdate', {
+      id,
+      dispatchedOn: '2026-11-11',
+      buId: 'bu-a',
+      boxStart: 3,
+      boxSize: 5,
+      note: 'Diubah',
+      handoverIds: [],
+    });
+    expect(sameBu.ok).toBe(true);
+    expect(sameBu.data).toMatchObject({
+      number: 'WH/A/2611-0001',
+      dispatchedOn: '2026-11-11',
+      boxStart: 3,
+      boxSize: 5,
+      note: 'Diubah',
+    });
+
+    // Ubah BU ke bu-b oleh pengguna yang punya edit di bu-a dan bu-b (WH_USERS.both).
+    await env.DB.prepare('INSERT IGNORE INTO item_business_units (item_id, bu_id) VALUES (?, ?)')
+      .bind('i-a1', 'bu-b')
+      .run();
+    const diffBu = await call(WH_USERS.both, 'serialWarehouse.dispatchUpdate', {
+      id,
+      dispatchedOn: '2026-11-11',
+      buId: 'bu-b',
+      boxStart: 4,
+      boxSize: 6,
+      note: 'Pindah BU',
+      handoverIds: [],
+    });
+    expect(diffBu.ok).toBe(true);
+    expect(diffBu.data.buId).toBe('bu-b');
+    expect(diffBu.data.number).toBe('WH/B/2611-0001');
+  });
+
+  test('ubah catatan Gudang: menolak jenis penjualan atau ready', async () => {
+    const order = await submitDispatch(env, E, { fresh: ['O-1'], orderNumber: 'SO-EDIT' });
+    const res = await call(E, 'serialWarehouse.dispatchUpdate', {
+      id: order.data?.dispatchId,
+      dispatchedOn: '2026-11-12',
+      buId: 'bu-a',
+      boxStart: 1,
+      boxSize: 10,
+      note: 'X',
+      handoverIds: [],
+    });
+    expect(res.ok).toBe(false);
+    expect(res.error.code).toBe('CONFLICT');
+  });
 });

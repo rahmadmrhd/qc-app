@@ -11,6 +11,8 @@ import type {
   ListWarehouseOrdersInput,
   ListWarehouseReadyInput,
   ListWarehouseSerialsInput,
+  SerialStickerPick,
+  UpdateWarehouseDispatchInput,
   WarehouseCopyTextInput,
   WarehouseLookupInput,
   WarehouseSubmitHeader,
@@ -28,7 +30,7 @@ import {
   WAREHOUSE_LIMITS,
   type WarehouseDispatchStatus,
 } from '@shared/serial-warehouse';
-import { isIsoDate, normalizeSerial, serialProblem } from '@shared/serials';
+import { isIsoDate, normalizeSerial, SERIAL_LIMITS, serialProblem } from '@shared/serials';
 
 /** `clientId` pengeluaran dan baris serial baru: UUID huruf kecil. */
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -304,9 +306,43 @@ function parseHeader(raw: unknown): WarehouseSubmitHeader {
       return invalid('boxSize', 'Hanya untuk catat ready');
     }
   }
+  let locationId: string | undefined;
+  if (raw.locationId !== undefined && raw.locationId !== null) {
+    if (typeof raw.locationId !== 'string' || raw.locationId.length > 100) {
+      return invalid('locationId', 'Lokasi tidak valid');
+    }
+    if (raw.locationId !== '') locationId = raw.locationId;
+  }
+  let stickers: SerialStickerPick[] | undefined;
+  if (raw.stickers !== undefined && raw.stickers !== null) {
+    if (!Array.isArray(raw.stickers) || raw.stickers.length > SERIAL_LIMITS.picksMax) {
+      return invalid('stickers', 'Daftar stiker tidak valid');
+    }
+    const seenStickers = new Set<string>();
+    stickers = [];
+    for (const entry of raw.stickers) {
+      if (
+        !isObj(entry) ||
+        !isText(entry.stickerId, 100) ||
+        typeof entry.qty !== 'number' ||
+        !Number.isInteger(entry.qty) ||
+        entry.qty < 1 ||
+        entry.qty > SERIAL_LIMITS.stickerQtyMax
+      ) {
+        return invalid('stickers', 'Pilihan stiker tidak valid');
+      }
+      if (seenStickers.has(entry.stickerId)) {
+        return invalid('stickers', 'Stiker tidak boleh ganda');
+      }
+      seenStickers.add(entry.stickerId);
+      stickers.push({ stickerId: entry.stickerId, qty: entry.qty });
+    }
+  }
   return {
     ...(ready ? { mode: note ? ('note' as const) : ('ready' as const) } : {}),
     ...(box ?? {}),
+    ...(locationId !== undefined ? { locationId } : {}),
+    ...(stickers !== undefined ? { stickers } : {}),
     dispatchedOn: raw.dispatchedOn,
     ...(!ready && typeof raw.orderId === 'string' && raw.orderId !== ''
       ? { orderId: raw.orderId }
@@ -508,4 +544,55 @@ export function validateWarehouseGetOrder(raw: unknown): GetWarehouseOrderInput 
   const id = reader.str('id', { required: true, max: 100 });
   reader.done();
   return { id };
+}
+
+export function validateWarehouseUpdateDispatch(raw: unknown): UpdateWarehouseDispatchInput {
+  if (!isObj(raw)) return invalid('_', 'Input harus berupa objek');
+  if (!isText(raw.id, 100)) return invalid('id', 'ID riwayat tidak valid');
+  if (typeof raw.dispatchedOn !== 'string' || !isIsoDate(raw.dispatchedOn)) {
+    return invalid('dispatchedOn', 'Tanggal catat tidak valid');
+  }
+  if (!isText(raw.buId, 100)) return invalid('buId', 'BU tidak valid');
+  const { boxStart, boxSize } = raw;
+  if (
+    typeof boxStart !== 'number' ||
+    !Number.isInteger(boxStart) ||
+    boxStart < 1 ||
+    boxStart > WAREHOUSE_BOX_LIMITS.numberMax
+  ) {
+    return invalid('boxStart', `Nomor kardus harus 1-${WAREHOUSE_BOX_LIMITS.numberMax}`);
+  }
+  if (
+    typeof boxSize !== 'number' ||
+    !Number.isInteger(boxSize) ||
+    boxSize < 1 ||
+    boxSize > WAREHOUSE_BOX_LIMITS.sizeMax
+  ) {
+    return invalid('boxSize', `Pcs per kardus harus 1-${WAREHOUSE_BOX_LIMITS.sizeMax}`);
+  }
+  const noteText = typeof raw.note === 'string' ? raw.note.trim() : '';
+  if (
+    typeof raw.note !== 'string' ||
+    [...noteText].length > WAREHOUSE_LIMITS.noteMax ||
+    hasNoteControlChars(noteText)
+  ) {
+    return invalid('note', 'Catatan tidak valid');
+  }
+  if (
+    !Array.isArray(raw.handoverIds) ||
+    raw.handoverIds.length > WAREHOUSE_LIMITS.handoverLinksMax ||
+    !raw.handoverIds.every((id) => isText(id, 100)) ||
+    new Set(raw.handoverIds).size !== raw.handoverIds.length
+  ) {
+    return invalid('handoverIds', 'Daftar task tidak valid');
+  }
+  return {
+    id: raw.id,
+    dispatchedOn: raw.dispatchedOn,
+    buId: raw.buId,
+    boxStart,
+    boxSize,
+    note: noteText,
+    handoverIds: [...raw.handoverIds] as string[],
+  };
 }

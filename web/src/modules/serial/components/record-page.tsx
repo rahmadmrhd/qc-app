@@ -50,6 +50,7 @@ import { lockedLocationOf, todayWib, toLocationOptions } from '../lib/locations'
 import { applyProofMins, fetchProofMins, uniqueItemIds } from '../lib/proof-refresh';
 import type { QcsnImport } from '../lib/qcsn';
 import { findRescanWarnings, type RescanWarning } from '../lib/rescan';
+import { type SaveConfirmSummary, saveConfirmSummaryOf } from '../lib/save-confirm';
 import { type ProofSession, useProofSinks, useProofUploads } from '../lib/use-proof-uploads';
 import { useSerialLocations } from '../lib/use-serial-locations';
 import {
@@ -868,20 +869,31 @@ function RecordPageInner({
   }
 
   // Peringatan scan ulang (hanya saat Simpan): resolver menunggu pilihan pengguna di dialog.
-  const [rescanWarnings, setRescanWarnings] = useState<RescanWarning[] | null>(null);
+  // Konfirmasi Simpan (satu dialog): ringkasan isian, dan daftar cek ulang bila ada (keputusan pemilik 2026-11-28).
+  const [saveConfirm, setSaveConfirm] = useState<{
+    summary: SaveConfirmSummary;
+    warnings: RescanWarning[];
+  } | null>(null);
   const rescanResolveRef = useRef<((proceed: boolean) => void) | null>(null);
-  function confirmRescan(warnings: RescanWarning[]): Promise<boolean> {
+  function confirmSave(summary: SaveConfirmSummary, warnings: RescanWarning[]): Promise<boolean> {
     return new Promise((resolve) => {
       rescanResolveRef.current = resolve;
-      setRescanWarnings(warnings);
+      setSaveConfirm({ summary, warnings });
     });
   }
   function answerRescan(proceed: boolean) {
     const resolve = rescanResolveRef.current;
     rescanResolveRef.current = null;
-    setRescanWarnings(null);
+    setSaveConfirm(null);
     resolve?.(proceed);
   }
+  // Progres simpan per batch (`toBatches`, maks. 200 baris): ditampilkan selama kiriman berjalan.
+  const [saveProgress, setSaveProgress] = useState<{
+    done: number;
+    total: number;
+    batch: number;
+    batches: number;
+  } | null>(null);
   useEffect(
     () => () => {
       rescanResolveRef.current?.(false);
@@ -889,6 +901,69 @@ function RecordPageInner({
     },
     [],
   );
+
+  /** Memuat default stiker baris yang belum dipilih dan menandai baris yang pilihannya tak bisa dimuat (sebelum konfirmasi). */
+  async function prepareSave(
+    current: StagingRow[],
+  ): Promise<{ sendIds: Set<string>; skipped: number } | null> {
+    // Hanya baris yang ada saat Simpan ditekan yang dikirim; pindaian yang masuk sesudahnya menunggu simpan berikutnya.
+    const sendIds = new Set(current.map((row) => row.clientId));
+    let skipped = 0;
+    // Baris yang pilihan stikernya belum dimuat memakai bawaan: semua stiker yang berlaku.
+    const pending = new Map<string, { itemId: string; buId: string }>();
+    for (const row of current) {
+      if (row.stickers === null) {
+        pending.set(`${row.itemId}|${row.buId}`, { itemId: row.itemId, buId: row.buId });
+      }
+    }
+    const entries = [...pending];
+    const settled = await Promise.allSettled(
+      entries.map(([, pair]) =>
+        queryClient.fetchQuery(serialStickerOptionsQueryOptions(pair.itemId, pair.buId)),
+      ),
+    );
+    const defaultsByPair = new Map<string, { stickerId: string; name: string; qty: number }[]>();
+    const badPairs = new Set<string>();
+    for (const [index, outcome] of settled.entries()) {
+      const key = entries[index]?.[0] ?? '';
+      if (outcome.status === 'fulfilled') {
+        defaultsByPair.set(
+          key,
+          outcome.value.stickers.map((sticker) => ({
+            stickerId: sticker.id,
+            name: sticker.name,
+            qty: sticker.defaultQty,
+          })),
+        );
+      } else if (isReferenceError(outcome.reason)) {
+        badPairs.add(key);
+      } else {
+        // Gangguan jaringan atau server: tidak ada baris yang ditandai salah; seluruh simpan dihentikan.
+        setNotice({
+          tone: 'error',
+          text: `Stiker yang berlaku gagal dimuat: ${describeError(outcome.reason)}`,
+        });
+        return null;
+      }
+    }
+    setAllRows(
+      rowsRef.current.map((row) => {
+        if (!sendIds.has(row.clientId) || row.stickers !== null) return row;
+        const key = `${row.itemId}|${row.buId}`;
+        if (badPairs.has(key)) {
+          sendIds.delete(row.clientId);
+          skipped++;
+          return {
+            ...clearOutcome(row),
+            unresolved: ['item'] as ('item' | 'location' | 'stickers')[],
+          };
+        }
+        return { ...row, stickers: defaultsByPair.get(key) ?? [] };
+      }),
+    );
+
+    return { sendIds, skipped };
+  }
 
   async function saveRows(external: boolean): Promise<boolean> {
     const current = rowsRef.current;
@@ -909,12 +984,18 @@ function RecordPageInner({
       });
       return false;
     }
+    // Default stiker dimuat sebelum konfirmasi agar ringkasan memuat stiker yang akan tertempel.
+    const prepared = await prepareSave(current);
+    if (!prepared) return false;
+    const sendRows = rowsRef.current.filter((row) => prepared.sendIds.has(row.clientId));
+    if (sendRows.length === 0) return false;
     const rescans = findRescanWarnings(current);
-    if (rescans.length > 0) {
+    // Konfirmasi selalu muncul sebelum kirim; cek ulang (bila ada) digabung di dialog yang sama.
+    {
       preparingRef.current = true;
       let proceed: boolean;
       try {
-        proceed = await confirmRescan(rescans);
+        proceed = await confirmSave(saveConfirmSummaryOf(sendRows), rescans);
       } finally {
         preparingRef.current = false;
       }
@@ -929,67 +1010,22 @@ function RecordPageInner({
     let savedCount = 0;
     let recheckedCount = 0;
     try {
-      // Hanya baris yang ada saat Simpan ditekan yang dikirim; pindaian yang masuk sesudahnya menunggu simpan berikutnya.
-      const sendIds = new Set(current.map((row) => row.clientId));
-      // Baris yang pilihan stikernya belum dimuat memakai bawaan: semua stiker yang berlaku.
-      const pending = new Map<string, { itemId: string; buId: string }>();
-      for (const row of current) {
-        if (row.stickers === null) {
-          pending.set(`${row.itemId}|${row.buId}`, { itemId: row.itemId, buId: row.buId });
-        }
-      }
-      const entries = [...pending];
-      const settled = await Promise.allSettled(
-        entries.map(([, pair]) =>
-          queryClient.fetchQuery(serialStickerOptionsQueryOptions(pair.itemId, pair.buId)),
-        ),
-      );
-      const defaultsByPair = new Map<string, { stickerId: string; name: string; qty: number }[]>();
-      const badPairs = new Set<string>();
-      for (const [index, outcome] of settled.entries()) {
-        const key = entries[index]?.[0] ?? '';
-        if (outcome.status === 'fulfilled') {
-          defaultsByPair.set(
-            key,
-            outcome.value.stickers.map((sticker) => ({
-              stickerId: sticker.id,
-              name: sticker.name,
-              qty: sticker.defaultQty,
-            })),
-          );
-        } else if (isReferenceError(outcome.reason)) {
-          badPairs.add(key);
-        } else {
-          // Gangguan jaringan atau server: tidak ada baris yang ditandai salah; seluruh simpan dihentikan.
-          setNotice({
-            tone: 'error',
-            text: `Stiker yang berlaku gagal dimuat: ${describeError(outcome.reason)}`,
-          });
-          return false;
-        }
-      }
-      let skipped = 0;
-      setAllRows(
-        rowsRef.current.map((row) => {
-          if (!sendIds.has(row.clientId) || row.stickers !== null) return row;
-          const key = `${row.itemId}|${row.buId}`;
-          if (badPairs.has(key)) {
-            sendIds.delete(row.clientId);
-            skipped++;
-            return {
-              ...clearOutcome(row),
-              unresolved: ['item'] as ('item' | 'location' | 'stickers')[],
-            };
-          }
-          return { ...row, stickers: defaultsByPair.get(key) ?? [] };
-        }),
-      );
+      const { sendIds, skipped } = prepared;
 
       const batches = toBatches(rowsRef.current.filter((row) => sendIds.has(row.clientId)));
       const tally: SaveSummary = { created: 0, rechecked: 0, duplicate: 0, failed: 0, skipped };
+      const totalRows = batches.reduce((count, batch) => count + batch.length, 0);
+      let sentRows = 0;
       for (const [index, batch] of batches.entries()) {
+        setSaveProgress({
+          done: sentRows,
+          total: totalRows,
+          batch: index + 1,
+          batches: batches.length,
+        });
         try {
           const output = await saveBatch.mutateAsync({ rows: batch.map(toRowInput) });
+          sentRows += batch.length;
           for (const result of output.results) {
             if (result.result === 'created') tally.created++;
             else if (result.result === 'rechecked') tally.rechecked++;
@@ -1024,6 +1060,7 @@ function RecordPageInner({
         rowsRef.current.length === 0;
     } finally {
       setSaving(false);
+      setSaveProgress(null);
     }
     if (!mountedRef.current) {
       // Halaman sudah ditinggalkan: draf yang ditulis saat unlock masih memuat baris yang kini tersimpan; sinkronkan.
@@ -1200,6 +1237,33 @@ function RecordPageInner({
         ) : null}
       </div>
 
+      {saveProgress ? (
+        <div className="space-y-1.5" role="status" aria-live="polite">
+          <div
+            role="progressbar"
+            aria-label="Kemajuan penyimpanan"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={
+              saveProgress.total > 0
+                ? Math.round((saveProgress.done / saveProgress.total) * 100)
+                : 0
+            }
+            className="h-2 w-full overflow-hidden rounded-full bg-muted"
+          >
+            <div
+              className="h-full bg-primary transition-all"
+              style={{
+                width: `${saveProgress.total > 0 ? Math.round((saveProgress.done / saveProgress.total) * 100) : 0}%`,
+              }}
+            />
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Menyimpan {saveProgress.done} dari {saveProgress.total} serial (batch{' '}
+            {saveProgress.batch} dari {saveProgress.batches}). Jangan tutup halaman ini.
+          </p>
+        </div>
+      ) : null}
       {notice ? (
         <p
           role="status"
@@ -1395,8 +1459,9 @@ function RecordPageInner({
         />
       ) : null}
       <RescanWarningDialog
-        open={rescanWarnings !== null}
-        warnings={rescanWarnings ?? []}
+        open={saveConfirm !== null}
+        warnings={saveConfirm?.warnings ?? []}
+        summary={saveConfirm?.summary}
         onContinue={() => answerRescan(true)}
         onCancel={() => answerRescan(false)}
       />

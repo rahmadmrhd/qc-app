@@ -13,7 +13,7 @@ import { HANDOVER_LIMITS } from '@shared/handover';
 import { ITEM_LIMITS } from '@shared/items';
 import { POSTEL_LIMITS } from '@shared/postel';
 import { DEFAULT_QR_LAYOUT, DEFAULT_QR_STYLE, QR_LIMITS } from '@shared/qrcode';
-import { WAREHOUSE_LIMITS } from '@shared/serial-warehouse';
+import { WAREHOUSE_BOX_LIMITS, WAREHOUSE_LIMITS } from '@shared/serial-warehouse';
 import { SERIAL_LIMITS, SERIAL_PROOF_LIMITS } from '@shared/serials';
 import { GUIDE_LIMITS, INSTRUCTION_LIMITS, STICKER_LIMITS } from '@shared/stickers';
 import { MAX_JSON_BODY_BYTES, MAX_REQUEST_BODY_BYTES } from './body';
@@ -432,6 +432,15 @@ const WORST: Inputs = {
       locationId: `${UUID}-${index}`,
       testDate: '2026-11-26',
     })),
+  },
+  'serialWarehouse.dispatchUpdate': {
+    id: UUID,
+    dispatchedOn: '2026-11-26',
+    buId: UUID,
+    boxStart: 1,
+    boxSize: WAREHOUSE_BOX_LIMITS.sizeMax,
+    note: '\u{1F600}'.repeat(WAREHOUSE_LIMITS.noteMax),
+    handoverIds: longList(WAREHOUSE_LIMITS.handoverLinksMax, (index) => `${UUID}-${index}`),
   },
   'serialWarehouse.setLinks': {
     id: UUID,

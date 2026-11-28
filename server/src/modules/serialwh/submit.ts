@@ -4,14 +4,22 @@ import { DbError, type DbStatement } from '@server/core/db';
 import type { Env } from '@server/core/env';
 import { nowIso, nowOf } from '@server/core/env';
 import { appError } from '@server/core/errors';
+import { statementsFor } from '@server/core/events';
 import { newId } from '@server/core/id';
 import { liveWhere } from '@server/core/soft-delete';
 import type { UserContext } from '@server/modules/access/context';
 import { planCustomerByName } from '@server/modules/customer/service';
 import { applicableStickersOf } from '@server/modules/serial/applicable';
 import { newSerialStatements } from '@server/modules/serial/new-serial';
-import { activeLocationName } from '@server/modules/serial/repo';
+import {
+  activeLocationName,
+  insertNextEventStmt,
+  upsertSerialStickerStmt,
+} from '@server/modules/serial/repo';
 import type {
+  ApplicableStickerDto,
+  SerialChangeDto,
+  SerialStickerPick,
   WarehouseSkippedRowDto,
   WarehouseSubmitHeader,
   WarehouseSubmitInput,
@@ -81,6 +89,8 @@ export function headerHash(header: WarehouseSubmitHeader): string {
     ...(header.mode === 'ready' || header.mode === 'note'
       ? { mode: header.mode, boxStart: header.boxStart, boxSize: header.boxSize }
       : {}),
+    ...(header.locationId !== undefined ? { locationId: header.locationId } : {}),
+    ...(header.stickers !== undefined ? { stickers: header.stickers } : {}),
     dispatchedOn: header.dispatchedOn,
     orderKey: orderKey(header.orderNumber),
     buId: header.buId,
@@ -558,7 +568,27 @@ async function submitOnce(
   }
 
   const locationNames = new Map<string, string>();
-  let stickers: Awaited<ReturnType<typeof applicableStickersOf>> = [];
+  let stickers: ApplicableStickerDto[] = [];
+  let headerLocationId = '';
+  let headerLocationName = '';
+  if (header.locationId !== undefined && header.locationId !== '') {
+    const name = await activeLocationName(env.DB, header.locationId);
+    if (name === null) throw fieldError('locationId', 'Lokasi tidak ditemukan');
+    headerLocationId = header.locationId;
+    headerLocationName = name;
+    locationNames.set(headerLocationId, name);
+  }
+  const explicitStickers: readonly SerialStickerPick[] | undefined = header.stickers;
+  if (explicitStickers !== undefined && explicitStickers.length > 0) {
+    if (plans.some((plan) => !plan.createdNew) && headerLocationId === '') {
+      throw fieldError('locationId', 'Lokasi wajib dipilih');
+    }
+    stickers = await applicableStickersOf(env, header.itemId, buId);
+    const allowedIds = new Set(stickers.map((s) => s.id));
+    if (explicitStickers.some((pick) => !allowedIds.has(pick.stickerId))) {
+      throw fieldError('stickers', 'Ada stiker yang tidak berlaku bagi item ini');
+    }
+  }
   if (plans.some((plan) => plan.createdNew)) {
     // Item hidup/aktif/tertaut ke BU SO dan BU aktif hanya disyaratkan untuk serial BARU (tingkat header: tetap melempar).
     if (!(await itemUsable(env, header.itemId, buId))) throw fieldError('itemId', ITEM_MESSAGE);
@@ -578,7 +608,7 @@ async function submitOnce(
       skip(plan.serial, SKIP_REASONS.noLocation);
       return false;
     });
-    if (plans.some((plan) => plan.createdNew)) {
+    if (explicitStickers === undefined && plans.some((plan) => plan.createdNew)) {
       stickers = await applicableStickersOf(env, header.itemId, buId);
     }
   }
@@ -770,7 +800,31 @@ async function submitOnce(
         ? WAREHOUSE_SALE_NOTE
         : warehouseRecordedNote(orderNumber);
   const stickerNames = new Map(stickers.map((sticker) => [sticker.id, sticker.name]));
-  const picks = stickers.map((sticker) => ({ stickerId: sticker.id, qty: sticker.defaultQty }));
+  const picks: SerialStickerPick[] =
+    explicitStickers !== undefined
+      ? [...explicitStickers]
+      : stickers.map((sticker) => ({ stickerId: sticker.id, qty: sticker.defaultQty }));
+  // Serial yang sudah ada: muat stiker yang sudah tertempel agar yang sudah ada tidak memotong stok lagi.
+  const attachedBySerial = new Map<string, Set<string>>();
+  if (explicitStickers !== undefined && explicitStickers.length > 0) {
+    const existingIds = plans.filter((p) => !p.createdNew).map((p) => p.serialId);
+    const wantedIds = explicitStickers.map((p) => p.stickerId);
+    if (existingIds.length > 0 && wantedIds.length > 0) {
+      const attachedRows = await env.DB.prepare(
+        `SELECT serial_id, sticker_id, qty FROM serial_stickers WHERE serial_id IN (${placeholders(existingIds.length)}) AND sticker_id IN (${placeholders(wantedIds.length)})`,
+      )
+        .bind(...existingIds, ...wantedIds)
+        .all<{ serial_id: string; sticker_id: string; qty: number | string }>();
+      for (const row of attachedRows.results) {
+        if (Number(row.qty) <= 0) continue;
+        const sid = row.serial_id.trim();
+        const set = attachedBySerial.get(sid) ?? new Set<string>();
+        set.add(row.sticker_id.trim());
+        attachedBySerial.set(sid, set);
+      }
+    }
+  }
+  const settledStickers = new Set<string>();
   let created = 0;
   for (const plan of plans) {
     const seq = input.chunkIndex * header.chunkSize + plan.index;
@@ -816,6 +870,61 @@ async function submitOnce(
             : [header.itemId, dispatchId, buId, plan.serialId]),
         ),
       );
+      if (
+        explicitStickers !== undefined &&
+        explicitStickers.length > 0 &&
+        headerLocationId !== ''
+      ) {
+        const attached = attachedBySerial.get(plan.serialId);
+        const missingPicks = explicitStickers.filter((pick) => !attached?.has(pick.stickerId));
+        if (missingPicks.length > 0) {
+          const eventId = newId();
+          const changes: SerialChangeDto[] = [];
+          const raised: { stickerId: string; name: string; qtyFrom: number; qtyTo: number }[] = [];
+          for (const pick of missingPicks) {
+            const name = stickerNames.get(pick.stickerId) ?? '';
+            changes.push({
+              field: 'stickers',
+              from: null,
+              to: `${name} ×${pick.qty}`,
+            });
+            raised.push({ stickerId: pick.stickerId, name, qtyFrom: 0, qtyTo: pick.qty });
+            statements.push(
+              upsertSerialStickerStmt(env.DB, plan.serialId, pick.stickerId, pick.qty),
+            );
+            settledStickers.add(pick.stickerId);
+          }
+          statements.push(
+            insertNextEventStmt(env.DB, {
+              id: eventId,
+              serialId: plan.serialId,
+              caseId: '',
+              type: 'stickers_applied',
+              occurredOn: header.dispatchedOn,
+              now,
+              actorId: user.userId ?? '',
+              actorName: user.name,
+              actorTeam: 'qc',
+              message: '',
+              changes,
+              data: {
+                locationId: headerLocationId,
+                locationName: headerLocationName,
+                stickers: raised,
+              },
+            }),
+            ...(await statementsFor(env, 'serial.stickers_added', {
+              serialId: plan.serialId,
+              eventId,
+              locationId: headerLocationId,
+              picks: missingPicks,
+              actor: user.email,
+              now,
+              deferInactivate: true,
+            })),
+          );
+        }
+      }
     }
     statements.push(
       insertDispatchSerialStmt(env.DB, {
@@ -826,6 +935,15 @@ async function submitOnce(
         seq,
         createdNew: plan.createdNew,
       }),
+    );
+  }
+  if (settledStickers.size > 0) {
+    statements.push(
+      ...(await statementsFor(env, 'serial.stickers_settled', {
+        stickerIds: [...settledStickers],
+        actor: user.email,
+        now,
+      })),
     );
   }
   if (ready && header.boxStart !== undefined && header.boxSize !== undefined) {

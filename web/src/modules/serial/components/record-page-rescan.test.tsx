@@ -182,7 +182,7 @@ test('BU dan lokasi sama dengan catatan terakhir: dialog muncul, Lanjut menyimpa
   await pickDefaults();
   await paste('OLD001');
   await waitFor(() => expect(screen.getByText('Cek ulang')).toBeInTheDocument());
-  await userEvent.click(screen.getByRole('button', { name: /^Simpan/ }));
+  await userEvent.click(await screen.findByRole('button', { name: /^Simpan/ }));
   const dialog = await screen.findByRole('alertdialog');
   expect(within(dialog).getByText('Lanjut atau tidak?')).toBeInTheDocument();
   expect(within(dialog).getByText('OLD001')).toBeInTheDocument();
@@ -199,7 +199,7 @@ test('Batal pada dialog tidak menyimpan dan draf tetap utuh', async () => {
   await pickDefaults();
   await paste('OLD001');
   await waitFor(() => expect(screen.getByText('Cek ulang')).toBeInTheDocument());
-  await userEvent.click(screen.getByRole('button', { name: /^Simpan/ }));
+  await userEvent.click(await screen.findByRole('button', { name: /^Simpan/ }));
   const dialog = await screen.findByRole('alertdialog');
   await userEvent.click(within(dialog).getByRole('button', { name: 'Batal' }));
   await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
@@ -207,7 +207,7 @@ test('Batal pada dialog tidak menyimpan dan draf tetap utuh', async () => {
   expect(await rowOf('OLD001')).toBeInTheDocument();
 });
 
-test('lokasi unit beda dengan lokasi baris: tidak ada dialog, langsung simpan', async () => {
+test('lokasi unit beda dengan lokasi baris: dialog ringkasan tampil lalu tersimpan', async () => {
   found = [
     existing({
       buId: 'b1',
@@ -222,7 +222,7 @@ test('lokasi unit beda dengan lokasi baris: tidak ada dialog, langsung simpan', 
   await pickDefaults();
   await paste('OLD001');
   await waitFor(() => expect(screen.getByText('Cek ulang')).toBeInTheDocument());
-  await userEvent.click(screen.getByRole('button', { name: /^Simpan/ }));
+  await clickSaveRow(/^Simpan/);
   await waitFor(() => expect(saved).toHaveLength(1));
   expect(screen.queryByRole('alertdialog')).toBeNull();
 });
@@ -273,14 +273,14 @@ function foundFor(serialBuId: string) {
   });
 }
 
-test('BU baris beda dengan lokasi sama: tanpa dialog, langsung simpan', async () => {
+test('BU baris beda dengan lokasi sama: dialog ringkasan tampil lalu tersimpan', async () => {
   found = [foundFor('b2')];
   saveResult = 'rechecked';
   resumeDraftWrites();
   saveDraft(me.email, [seedRecheckRow('b1', 'b2')]);
   renderPage();
   await rowOf('OLD001');
-  await userEvent.click(screen.getByRole('button', { name: /^Simpan/ }));
+  await clickSaveRow(/^Simpan/);
   await waitFor(() => expect(saved).toHaveLength(1));
   expect(screen.queryByRole('alertdialog')).toBeNull();
   expect(saved[0]).toMatchObject({ buId: 'b1' });
@@ -304,7 +304,7 @@ test('hanya metadata serial berubah antara pencarian dan Simpan: tidak diblokir,
       lastEventAt: '2026-11-26T04:00:00.000Z',
     }),
   ];
-  await userEvent.click(screen.getByRole('button', { name: /^Simpan/ }));
+  await userEvent.click(await screen.findByRole('button', { name: /^Simpan/ }));
   const dialog = await screen.findByRole('alertdialog');
   expect(within(dialog).getByText(/oleh Sari/)).toBeInTheDocument();
   expect(within(dialog).queryByText(/oleh Budi/)).toBeNull();
@@ -334,12 +334,12 @@ test('nilai BU, lokasi, dan stiker baris sama sebelum dan sesudah Batal', async 
   saveDraft(me.email, [seedRecheckRow('b1', 'b1')]);
   renderPage();
   await rowOf('OLD001');
-  await userEvent.click(screen.getByRole('button', { name: /^Simpan/ }));
+  await userEvent.click(await screen.findByRole('button', { name: /^Simpan/ }));
   const dialog = await screen.findByRole('alertdialog');
   await userEvent.click(within(dialog).getByRole('button', { name: 'Batal' }));
   await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
   expect(saved).toHaveLength(0);
-  await userEvent.click(screen.getByRole('button', { name: /^Simpan/ }));
+  await userEvent.click(await screen.findByRole('button', { name: /^Simpan/ }));
   const again = await screen.findByRole('alertdialog');
   await userEvent.click(within(again).getByRole('button', { name: 'Lanjut menyimpan' }));
   await waitFor(() => expect(saved).toHaveLength(1));
@@ -350,3 +350,14 @@ test('nilai BU, lokasi, dan stiker baris sama sebelum dan sesudah Batal', async 
     stickers: [{ stickerId: 's1', qty: 2 }],
   });
 });
+
+/** Klik Simpan pada baris/halaman, lalu konfirmasi ringkasan (dialog `alertdialog`) bila tampil. */
+async function clickSaveRow(namePattern: RegExp) {
+  await userEvent.click(await screen.findByRole('button', { name: namePattern }));
+  const dialog = screen.queryByRole('alertdialog');
+  if (dialog) {
+    await userEvent.click(
+      within(dialog).getByRole('button', { name: /^(Simpan|Lanjut menyimpan)$/ }),
+    );
+  }
+}

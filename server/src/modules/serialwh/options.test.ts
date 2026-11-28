@@ -32,6 +32,27 @@ describe('pilihan Keluar Gudang', () => {
     expect(viewer.ok).toBe(false);
   });
 
+  test('serials.stickerOptions dipakai dialog konfirmasi: pemegang serialwh: edit pada BU itu saja', async () => {
+    const ok = await call(WH_USERS.edit, 'serials.stickerOptions', {
+      itemId: 'i-a1',
+      buId: 'bu-a',
+    });
+    expect(ok.ok).toBe(true);
+    expect(Array.isArray(ok.data.stickers)).toBe(true);
+    // BU tanpa hak edit WH, atau item yang tidak terpasang pada BU itu: NOT_FOUND seragam.
+    const otherBu = await call(WH_USERS.edit, 'serials.stickerOptions', {
+      itemId: 'i-b',
+      buId: 'bu-b',
+    });
+    expect(otherBu.error?.code).toBe('NOT_FOUND');
+    // Pembaca WH saja tidak boleh.
+    const viewer = await call(WH_USERS.view, 'serials.stickerOptions', {
+      itemId: 'i-a1',
+      buId: 'bu-a',
+    });
+    expect(viewer.ok).toBe(false);
+  });
+
   test('itemOptions: boxSize dari master Item (0 bila belum diisi)', async () => {
     await env.DB.prepare("UPDATE items SET box_size = 12 WHERE id = 'i-a1'").run();
     const out = await call(WH_USERS.edit, 'serialWarehouse.itemOptions', {});

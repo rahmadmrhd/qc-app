@@ -2,6 +2,7 @@ import { formatBuLabel } from '@shared/business-units';
 import { WAREHOUSE_KIND_LABEL } from '@shared/serial-warehouse';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
+import { useState } from 'react';
 import { PageContent } from '@/components/page/page-container';
 import {
   DetailList,
@@ -24,6 +25,7 @@ import { formatDay } from '@/modules/serial/lib/labels';
 import { draftDispatchId } from '../lib/draft-store';
 import { warehouseDispatchQueryOptions } from '../queries';
 import { DISPATCH_STATUS, DispatchSerials, useCopyDispatch } from './dispatch-section';
+import { EditDispatchDialog } from './edit-dispatch-dialog';
 
 export interface DispatchDetailPageProps {
   dispatchId: string;
@@ -45,6 +47,7 @@ export function DispatchDetailPage({ dispatchId }: DispatchDetailPageProps) {
   const stack = useStackNavigation();
   const query = useQuery(warehouseDispatchQueryOptions(dispatchId));
   const copy = useCopyDispatch(dispatchId);
+  const [editOpen, setEditOpen] = useState(false);
   const dispatch = query.data;
 
   if (query.isPending) {
@@ -77,9 +80,19 @@ export function DispatchDetailPage({ dispatchId }: DispatchDetailPageProps) {
   const hasDraft = draftDispatchId(me.email) === dispatch.id;
   const actionItems: ViewAction[] = [
     {
+      id: 'edit',
+      action: 'edit',
+      label: 'Ubah',
+      onSelect: () => setEditOpen(true),
+      hidden: !(dispatch.canEdit && dispatch.kind === 'note' && dispatch.status === 'done'),
+      primary: true,
+    },
+    {
       id: 'copy',
       action: 'copy',
       label: 'Salin ulang',
+      color: 'primary',
+      variant: 'solid',
       onSelect: () => void copy.copyAgain(),
       busy: copy.copying,
       hidden: dispatch.status !== 'done',
@@ -252,6 +265,7 @@ export function DispatchDetailPage({ dispatchId }: DispatchDetailPageProps) {
         ) : null}
       </ViewPage>
       {copy.dialog}
+      <EditDispatchDialog open={editOpen} onOpenChange={setEditOpen} dispatch={dispatch} />
     </>
   );
 }

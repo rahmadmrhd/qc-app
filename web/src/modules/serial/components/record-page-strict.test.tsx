@@ -1,6 +1,6 @@
 import type { MeDto } from '@shared/contract';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { expectLinkValue, pickLink } from '@/test/link-field';
@@ -185,7 +185,7 @@ test('item wajib foto: tempel satu serial membuka dialog di langkah 2; Simpan me
   await waitFor(() => expect(loadDraft('a@gmail.com')[0]?.proofMin).toBe(2));
   expect(loadDraft('a@gmail.com')[0]?.proofPhotos.map((photo) => photo.id)).toEqual(['p1', 'p2']);
   // Simpan semua: foto ikut terkirim.
-  await userEvent.click(screen.getByRole('button', { name: /^Simpan 1 serial/ }));
+  await clickSaveRow(/^Simpan 1 serial/);
   await waitFor(() => expect(saved).toHaveLength(1));
   expect(saved[0]?.rows[0]).toMatchObject({ serial: 'S1', proofPhotoIds: ['p1', 'p2'] });
 });
@@ -283,3 +283,14 @@ test('Simpan di dialog saat 1 foto masih diunggah: baris masuk dengan foto seles
     expect(loadDraft('a@gmail.com')[0]?.proofPhotos.map((photo) => photo.id)).toEqual(['p1', 'p2']),
   );
 });
+
+/** Klik Simpan pada baris/halaman, lalu konfirmasi ringkasan (dialog `alertdialog`) bila tampil. */
+async function clickSaveRow(namePattern: RegExp) {
+  await userEvent.click(await screen.findByRole('button', { name: namePattern }));
+  const dialog = screen.queryByRole('alertdialog');
+  if (dialog) {
+    await userEvent.click(
+      within(dialog).getByRole('button', { name: /^(Simpan|Lanjut menyimpan)$/ }),
+    );
+  }
+}

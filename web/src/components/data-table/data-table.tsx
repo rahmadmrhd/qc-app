@@ -77,12 +77,16 @@ interface DataTableBase<T> {
    * Ditulis ke atribut `data-box-tone` baris; hanya tampilan tabel desktop.
    */
   rowTone?: (row: T) => 'a' | 'b' | undefined;
+  /** Kelas tambahan per baris tabel desktop (mis. batas lebih tegas saat pergantian kardus). */
+  rowClassName?: (row: T) => string | undefined;
   /**
    * Desktop: `viewport` = pembungkus gulir dua sumbu setinggi sisa layar (header tetap menempel, scrollbar horizontal
    * selalu terlihat di dasar layar); `content` = hanya gulir horizontal tanpa batas tinggi (tabel yang tertanam di View
    * atau dialog). Bawaan: `viewport` di dalam `ListPage`, selain itu `content`.
    */
   fit?: 'viewport' | 'content';
+  /** `fit="viewport"` di dalam halaman yang bleed ke tepi `<main>` (mis. `FormPage` di layar lebar). */
+  fitBleed?: boolean;
 }
 
 export interface RowTarget {
@@ -165,7 +169,9 @@ function DataTableImpl<T>({
   onOpen,
   rowHighlighted,
   rowTone,
+  rowClassName,
   fit: fitProp,
+  fitBleed = false,
 }: DataTableProps<T>) {
   const desktop = useIsDesktop();
   const inList = useContext(ListFrameContext);
@@ -176,7 +182,8 @@ function DataTableImpl<T>({
   const fitHeight = useViewportFit(
     scroller,
     desktop && fit === 'viewport',
-    loadMoreError ? 64 : hasMore ? 48 : 0,
+    loadMoreError ? 64 : hasMore ? 44 : 0,
+    fitBleed,
   );
   // Lebar nyata kolom menempel (checkbox + Aksi) dipakai `scroll-padding-left` agar fokus keyboard tak tertutup kolom itu;
   // Aksi bisa lebih lebar dari perkiraan tetap karena jumlah tombol ikon berbeda per tabel.
@@ -300,6 +307,7 @@ function DataTableImpl<T>({
                   className={cn(
                     'group/row transition-colors data-[box-tone=b]:bg-foreground/9 data-[highlight]:bg-success-text/15 data-[state=selected]:bg-info-text/8',
                     openRow && 'cursor-pointer',
+                    rowClassName?.(row),
                   )}
                   {...(openRow
                     ? {

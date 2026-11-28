@@ -58,7 +58,7 @@ test('tabel: baris item wajib foto yang fotonya kurang menampilkan "Butuh n foto
   ]);
   renderPage();
   expect(await screen.findByText('Butuh 2 foto lagi')).toBeInTheDocument();
-  await userEvent.click(screen.getByRole('button', { name: /^Simpan 2 serial/ }));
+  await clickSaveRow(/^Simpan 2 serial/);
   expect(await screen.findByText(/1 baris belum lengkap/)).toBeInTheDocument();
   expect(saveCalls()).toHaveLength(0);
 });
@@ -69,7 +69,7 @@ test('kartu: baris item wajib foto menampilkan "Butuh n foto lagi" dan memblokir
   renderPage();
   const card = await screen.findByRole('listitem');
   expect(within(card).getByText('Butuh 3 foto lagi')).toBeInTheDocument();
-  await userEvent.click(screen.getByRole('button', { name: /^Simpan 1 serial/ }));
+  await clickSaveRow(/^Simpan 1 serial/);
   expect(await screen.findByText(/1 baris belum lengkap/)).toBeInTheDocument();
   expect(saveCalls()).toHaveLength(0);
 });
@@ -171,7 +171,7 @@ test('draft lama tanpa proofMin: item wajib foto disegarkan saat dibuka dan lang
   expect(
     itemOptionCalls().filter((call) => (call[1] as { itemIds?: string[] }).itemIds),
   ).toHaveLength(1);
-  await userEvent.click(screen.getByRole('button', { name: /^Simpan 2 serial/ }));
+  await clickSaveRow(/^Simpan 2 serial/);
   expect(await screen.findByText(/1 baris belum lengkap/)).toBeInTheDocument();
   expect(saveCalls()).toHaveLength(0);
 });
@@ -234,3 +234,14 @@ test('balapan: penyegaran proofMin selesai selagi Ubah baris terbuka; Terapkan t
   await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
   expect(screen.getByText('Butuh 2 foto lagi')).toBeInTheDocument();
 });
+
+/** Klik Simpan pada baris/halaman, lalu konfirmasi ringkasan (dialog `alertdialog`) bila tampil. */
+async function clickSaveRow(namePattern: RegExp) {
+  await userEvent.click(await screen.findByRole('button', { name: namePattern }));
+  const dialog = screen.queryByRole('alertdialog');
+  if (dialog) {
+    await userEvent.click(
+      within(dialog).getByRole('button', { name: /^(Simpan|Lanjut menyimpan)$/ }),
+    );
+  }
+}

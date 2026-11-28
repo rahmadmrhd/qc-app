@@ -1390,6 +1390,12 @@
     "status": 200
   },
   {
+    "id": "serialWarehouse.dispatchUpdate",
+    "verb": "PUT",
+    "path": "/serial-warehouse/dispatches/{id}",
+    "status": 200
+  },
+  {
     "id": "serialWarehouse.getOrder",
     "verb": "GET",
     "path": "/serial-warehouse/orders/{id}",

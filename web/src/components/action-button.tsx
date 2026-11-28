@@ -321,6 +321,9 @@ export type ActionButtonProps = {
    * outline). Hanya berlaku bagi aksi berwarna primary; aksi lain (Hapus, Pulihkan, …) mempertahankan warnanya.
    */
   emphasis?: 'primary';
+  /** Menimpa warna/gaya bawaan aksi (mis. tombol Salin ulang berwarna primary). */
+  color?: UiColor;
+  variant?: UiVariant;
 } & Omit<ComponentProps<typeof Button>, 'color' | 'variant' | 'children'>;
 
 function busyText(action: ActionKind, label: string): string {
@@ -336,6 +339,8 @@ export function ActionButton({
   disabled,
   size,
   emphasis,
+  color,
+  variant,
   onClick,
   ...rest
 }: ActionButtonProps) {
@@ -389,12 +394,16 @@ export function ActionButton({
     );
   }
 
+  const resolvedColor = color ?? spec.color;
+  const resolvedVariant =
+    variant ?? (emphasis === 'primary' && resolvedColor === 'primary' ? 'solid' : spec.variant);
+
   return (
     <Button
       type="button"
       {...rest}
-      color={spec.color}
-      variant={emphasis === 'primary' && spec.color === 'primary' ? 'solid' : spec.variant}
+      color={resolvedColor}
+      variant={resolvedVariant}
       size={size}
       disabled={disabled || busy}
       onClick={handleClick}

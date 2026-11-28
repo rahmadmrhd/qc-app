@@ -165,18 +165,6 @@ export function canReadSerials(me: MeDto | null | undefined): boolean {
   return canAnywhere(me, 'serial', 'view') || canAnywhere(me, 'serialservice', 'view');
 }
 
-/**
- * Tujuan cadangan tombol Batal form Keluar Gudang (mis. tab baru atau tautan langsung): halaman yang memang boleh
- * dibuka pengguna ini, jadi pemegang `serialwh` saja tidak mendarat di /forbidden.
- */
-export function warehouseCancelTarget(
-  me: MeDto | null | undefined,
-): '/serial' | '/serial/gudang/riwayat' | '/' {
-  if (canReadSerials(me)) return '/serial';
-  if (canReadWarehouse(me)) return '/serial/gudang/riwayat';
-  return '/';
-}
-
 /** Boleh membuka Riwayat Gudang: `serialwh: view` pada minimal satu BU. */
 export function canReadWarehouse(me: MeDto | null | undefined): boolean {
   return buIdsWithLevelOf(me, 'serialwh', 'view').length > 0;
